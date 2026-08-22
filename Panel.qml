@@ -21,6 +21,7 @@ Panel {
   property string serverIdText: ""
   property string dnsText: ""
   property int nowTick: 0
+  property bool keyboardNavigation: false
 
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color urgent: bar ? bar.urgent : Color.urgent
@@ -149,6 +150,7 @@ Panel {
 
   function moveCursor(dx, dy) {
     cursorActive = true
+    keyboardNavigation = true
     ensureCursor()
     if (dy === 0) return
     var order = focusOrder
@@ -260,6 +262,7 @@ Panel {
 
   function setFocusSection(name) {
     cursorActive = true
+    keyboardNavigation = false
     focusSection = name
     ensureCursor()
   }
@@ -297,7 +300,7 @@ Panel {
     else if (focusSection === "dns") scrollItemIntoView(dnsField)
     else if (focusSection === "config:netshield") scrollItemIntoView(netshieldDropdown)
     else if (focusSection === "config:kill-switch") scrollItemIntoView(killSwitchDropdown)
-    else if (focusSection === "config:custom-dns") scrollItemIntoView(dnsField.visible ? dnsField : configColumn)
+    else if (focusSection === "config:custom-dns") scrollItemIntoView(customDnsToggle)
     else if (configColumn) {
       for (var i = 0; i < configColumn.children.length; i++) {
         var child = configColumn.children[i]
@@ -330,6 +333,7 @@ Panel {
 
   onOpenedChanged: if (opened) {
     cursorActive = false
+    keyboardNavigation = false
     if (panelFlick) panelFlick.contentY = 0
     refreshAll()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
@@ -419,6 +423,7 @@ Panel {
       anchors.fill: parent
       blocked: root.pickerOpen || root.editorFocused
       onMoveRequested: function(dx, dy) {
+        root.keyboardNavigation = true
         if (!root.cursorActive) { root.cursorActive = true; return }
         root.moveCursor(dx, dy)
       }
@@ -668,7 +673,7 @@ Panel {
                 SettingTip {
                   id: modeTip
                   text: Model.modeTooltip(root.selectedMode)
-                  tipCursor: modeDropdown.hasCursor
+                  tipCursor: root.keyboardNavigation && modeDropdown.hasCursor
                   tipPopupOpen: modeDropdown.popupOpen
                 }
               }
@@ -711,7 +716,7 @@ Panel {
                 SettingTip {
                   id: countryTip
                   text: Model.connectFieldTooltip("country")
-                  tipCursor: countryDropdown.hasCursor
+                  tipCursor: root.keyboardNavigation && countryDropdown.hasCursor
                   tipPopupOpen: countryDropdown.popupOpen
                 }
               }
@@ -754,7 +759,7 @@ Panel {
                 SettingTip {
                   id: cityTip
                   text: Model.connectFieldTooltip("city")
-                  tipCursor: cityDropdown.hasCursor
+                  tipCursor: root.keyboardNavigation && cityDropdown.hasCursor
                   tipPopupOpen: cityDropdown.popupOpen
                 }
               }
@@ -791,7 +796,7 @@ Panel {
                 SettingTip {
                   text: Model.connectFieldTooltip("server")
                   tipHovered: serverField.hovered
-                  tipCursor: root.cursorActive && root.focusSection === "server"
+                  tipCursor: root.keyboardNavigation && root.cursorActive && root.focusSection === "server"
                 }
               }
             }
@@ -865,7 +870,7 @@ Panel {
                   SettingTip {
                     id: netshieldTip
                     text: Model.settingTooltip("netshield")
-                    tipCursor: netshieldDropdown.hasCursor
+                    tipCursor: root.keyboardNavigation && netshieldDropdown.hasCursor
                     tipPopupOpen: netshieldDropdown.popupOpen
                   }
                 }
@@ -916,7 +921,7 @@ Panel {
                   SettingTip {
                     id: killSwitchTip
                     text: Model.settingTooltip("kill-switch")
-                    tipCursor: killSwitchDropdown.hasCursor
+                    tipCursor: root.keyboardNavigation && killSwitchDropdown.hasCursor
                     tipPopupOpen: killSwitchDropdown.popupOpen
                   }
                 }
@@ -963,7 +968,7 @@ Panel {
                   SettingTip {
                     id: customDnsTip
                     text: Model.settingTooltip("custom-dns")
-                    tipCursor: customDnsToggle.hasCursor
+                    tipCursor: root.keyboardNavigation && customDnsToggle.hasCursor
                   }
                 }
 
@@ -980,6 +985,11 @@ Panel {
                   onAccepted: root.applyDns()
                 }
               }
+            }
+
+            Item {
+              width: parent.width
+              height: Style.space(6)
             }
           }
         }
@@ -1085,6 +1095,7 @@ Panel {
   }
 
   component ToggleSettingRow: Toggle {
+    id: toggleSettingRow
     property var setting: ({})
     property bool tipHovered: false
     readonly property string key: String(setting.key || "")
@@ -1106,9 +1117,9 @@ Panel {
     onClicked: vpn.setConfig(key, checked ? "off" : "on")
 
     SettingTip {
-      text: Model.settingTooltip(key)
-      tipHovered: parent.tipHovered
-      tipCursor: parent.hasCursor
+      text: Model.settingTooltip(toggleSettingRow.key)
+      tipHovered: toggleSettingRow.tipHovered
+      tipCursor: root.keyboardNavigation && toggleSettingRow.hasCursor
     }
   }
 }

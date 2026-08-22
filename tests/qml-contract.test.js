@@ -40,6 +40,8 @@ describe("QML scheduler contract", () => {
 
   it("shows Proton setting help as hover and keyboard-focus tooltips", () => {
     assert.match(panel, /component SettingTip: PanelToolTip/)
+    assert.match(panel, /property bool keyboardNavigation: false/)
+    assert.match(panel, /tipCursor: root\.keyboardNavigation && modeDropdown\.hasCursor/)
     assert.match(panel, /Model\.modeTooltip\(root\.selectedMode\)/)
     assert.match(panel, /Model\.connectFieldTooltip\("country"\)/)
     assert.match(panel, /Model\.connectFieldTooltip\("city"\)/)
@@ -47,11 +49,18 @@ describe("QML scheduler contract", () => {
     assert.match(panel, /Model\.settingTooltip\("netshield"\)/)
     assert.match(panel, /Model\.settingTooltip\("kill-switch"\)/)
     assert.match(panel, /Model\.settingTooltip\("custom-dns"\)/)
-    assert.match(panel, /Model\.settingTooltip\(key\)/)
+    assert.match(panel, /Model\.settingTooltip\(toggleSettingRow\.key\)/)
     assert.match(panel, /Model\.modeSummary\(root\.selectedMode\)/)
     assert.match(panel, /Model\.settingSummary\("netshield"\)/)
     assert.doesNotMatch(panel, /Model\.modeHelp\(/)
     assert.doesNotMatch(panel, /Model\.settingCaption\(/)
     assert.doesNotMatch(panel, /Model\.connectFieldHelp\(/)
+  })
+
+  it("scrolls the Custom DNS row itself into view with bottom breathing room", () => {
+    assert.match(panel, /focusSection === "config:custom-dns"\) scrollItemIntoView\(customDnsToggle\)/)
+    assert.doesNotMatch(panel, /focusSection === "config:custom-dns"\) scrollItemIntoView\(dnsField\.visible \? dnsField : configColumn\)/)
+    assert.match(panel, /id: customDnsToggle/)
+    assert.match(panel, /height: Style\.space\(6\)/)
   })
 })
