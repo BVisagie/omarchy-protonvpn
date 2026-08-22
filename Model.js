@@ -22,54 +22,64 @@ var HEALTHY_TOGGLE_STATES = [STATES.connected, STATES.disconnected]
 
 var CONNECT_SECTION_HELP = "Fastest connects to the fastest VPN server available on your plan."
 var SETTINGS_SECTION_HELP = "Most CLI settings apply without reconnecting. IPv6 and custom DNS need a new VPN connection."
+var TOOLTIP_MAX_LENGTH = 90
+var OPTION_DESCRIPTION_MAX_LENGTH = 60
 
 var CONNECTION_MODES = [
   {
     value: "fastest",
     label: "Fastest server",
     help: "Connects to the fastest VPN server available on your plan.",
+    tooltip: "Connects to the fastest VPN server on your plan.",
     description: "Fastest server on your plan"
   },
   {
     value: "country",
     label: "Country",
     help: "Connects to a server in the selected country, using a country code such as US or the full name.",
+    tooltip: "Connects to a server in the selected country.",
     description: "A country code or full name"
   },
   {
     value: "city",
     label: "City",
     help: "Connects to a server in the selected city after you choose the country.",
+    tooltip: "Connects to a server in the selected city.",
     description: "A city in the selected country"
   },
   {
     value: "server",
     label: "Server ID",
     help: "Connects to a specific server such as CH#242. Proton lists IDs in the account WireGuard server list.",
+    tooltip: "Connects to a specific server such as CH#242.",
     description: "A specific server such as CH#242"
   },
   {
     value: "securecore",
     label: "Secure Core",
     help: "Routes traffic through extra Proton-owned Secure Core servers before the exit country, which makes it harder to trace the connection back to you. Available on paid plans.",
+    tooltip: "Extra Proton-owned hop before the exit. Paid plans.",
     description: "Extra Proton-owned hop before the exit"
   },
   {
     value: "p2p",
     label: "P2P",
     help: "Connects to a peer-to-peer server. Proton uses these servers for file sharing, and port forwarding requires a P2P server.",
+    tooltip: "Peer-to-peer servers. Required for port forwarding.",
     description: "Peer-to-peer servers"
   },
   {
     value: "tor",
     label: "Tor",
     help: "Connects to a Tor-over-VPN server so traffic enters the Tor network, including .onion sites. Proton recommends this only when you need that extra anonymity. NetShield does not work on Tor servers.",
+    tooltip: "Tor over VPN, including .onion sites. NetShield will not work.",
     description: "Tor over VPN, including .onion sites"
   },
   {
     value: "random",
     label: "Random",
     help: "Asks the CLI to connect to a random Proton VPN server.",
+    tooltip: "Connects to a random Proton VPN server.",
     description: "A random Proton VPN server"
   }
 ]
@@ -78,17 +88,23 @@ var CONNECT_FIELDS = [
   {
     key: "country",
     label: "Country",
-    help: "Use a country code such as US, or the full country name."
+    help: "Use a country code such as US, or the full country name.",
+    tooltip: "Use a country code such as US, or the full country name.",
+    summary: "Country code or full name."
   },
   {
     key: "city",
     label: "City",
-    help: "Choose a city in that country. Multi-word names such as New York are supported."
+    help: "Choose a city in that country. Multi-word names such as New York are supported.",
+    tooltip: "Choose a city in that country. Multi-word names work.",
+    summary: "Multi-word names are supported."
   },
   {
     key: "server",
     label: "Server ID",
-    help: "Enter a server ID such as CH#242. Proton publishes IDs in the account WireGuard server list."
+    help: "Enter a server ID such as CH#242. Proton publishes IDs in the account WireGuard server list.",
+    tooltip: "Enter a server ID such as CH#242.",
+    summary: "IDs are listed in the account WireGuard list."
   }
 ]
 
@@ -105,10 +121,12 @@ var CONFIG_SETTINGS = [
     },
     valueDescriptions: {
       off: "No DNS filtering.",
-      "malware-only": "Blocks domains known to host malware, spyware, or other malicious software.",
-      "malware-ads-trackers": "Blocks ads, trackers, and malware. Proton describes this as the default on several apps, not specifically for the Linux CLI."
+      "malware-only": "Blocks malware, spyware, and malicious domains.",
+      "malware-ads-trackers": "Blocks ads, trackers, and malware."
     },
     help: "Proton's DNS filtering while you are connected. It does not work with Tor over VPN or custom DNS, because those send DNS queries somewhere Proton cannot filter.",
+    tooltip: "Proton's DNS filtering while you are connected.",
+    summary: "Does not work with Tor over VPN or custom DNS.",
     free: false,
     restart: false
   },
@@ -120,9 +138,10 @@ var CONFIG_SETTINGS = [
     valueLabels: { off: "Off", standard: "Standard" },
     valueDescriptions: {
       off: "Internet stays available if the VPN drops.",
-      standard: "Blocks all internet traffic if the VPN drops accidentally. A deliberate disconnect is not blocked."
+      standard: "Blocks all internet if the VPN drops accidentally."
     },
     help: "Standard kill switch blocks internet traffic if the VPN connection drops accidentally, so your IP address and DNS queries are not exposed. The Linux CLI does not offer Advanced kill switch.",
+    tooltip: "Blocks internet if the VPN drops accidentally. CLI has Standard only.",
     free: true,
     restart: false,
     disconnectFirst: true
@@ -133,6 +152,8 @@ var CONFIG_SETTINGS = [
     type: "toggle",
     values: ["off", "on"],
     help: "Opens a path for incoming connections through Proton's firewall. You must be connected to a P2P server. It cannot be used with Moderate NAT. Proton notes that opening a port carries a small risk.",
+    tooltip: "Opens incoming connections. Proton notes a small risk.",
+    summary: "Requires a P2P server. Cannot be used with Moderate NAT.",
     free: false,
     restart: false
   },
@@ -142,6 +163,8 @@ var CONFIG_SETTINGS = [
     type: "dns",
     values: ["off", "on"],
     help: "Sends DNS queries to third-party resolvers you choose instead of Proton's DNS. Cannot be used with NetShield, because NetShield filters DNS at Proton.",
+    tooltip: "Third-party DNS instead of Proton's. Needs a new connection.",
+    summary: "Cannot be used with NetShield.",
     free: false,
     restart: true
   },
@@ -151,6 +174,7 @@ var CONFIG_SETTINGS = [
     type: "toggle",
     values: ["off", "on"],
     help: "Uses Proton's VPN Accelerator technologies to improve connection stability and, in some cases, speed.",
+    tooltip: "Improves connection stability and, in some cases, speed.",
     free: false,
     restart: false
   },
@@ -160,6 +184,8 @@ var CONFIG_SETTINGS = [
     type: "toggle",
     values: ["off", "on"],
     help: "Allows direct peer-to-peer connections for gaming and WebRTC. Proton says this slightly reduces privacy compared with strict NAT, and it cannot be used with port forwarding.",
+    tooltip: "Allows direct P2P for gaming and WebRTC. Slightly less private.",
+    summary: "Proton recommends leaving this off (strict NAT).",
     defaultHint: "Proton recommends leaving this off (strict NAT) unless you need those connections.",
     free: false,
     restart: false
@@ -170,6 +196,8 @@ var CONFIG_SETTINGS = [
     type: "toggle",
     values: ["off", "on"],
     help: "Routes traffic inside the VPN tunnel over IPv6 when the server supports it.",
+    tooltip: "IPv6 inside the tunnel when supported. Needs a new connection.",
+    summary: "Proton's Linux apps turn IPv6 on by default.",
     defaultHint: "Proton's Linux apps turn IPv6 on by default.",
     free: true,
     restart: true
@@ -180,6 +208,7 @@ var CONFIG_SETTINGS = [
     type: "toggle",
     values: ["off", "on"],
     help: "Sends anonymous crash reports to Proton VPN to help them fix bugs and improve the software.",
+    tooltip: "Sends anonymous crash reports to help Proton fix bugs.",
     free: true,
     restart: false
   }
@@ -667,6 +696,16 @@ function captionFor(item) {
   return help || hint
 }
 
+function tooltipFor(item) {
+  if (!item) return ""
+  return String(item.tooltip || "").trim()
+}
+
+function summaryFor(item) {
+  if (!item) return ""
+  return String(item.summary || "").trim()
+}
+
 function settingCaption(key) {
   return captionFor(settingDef(key))
 }
@@ -679,18 +718,36 @@ function connectFieldHelp(key) {
   return captionFor(connectFieldDef(key))
 }
 
+function settingTooltip(key) {
+  return tooltipFor(settingDef(key))
+}
+
+function modeTooltip(value) {
+  return tooltipFor(modeDef(value))
+}
+
+function connectFieldTooltip(key) {
+  return tooltipFor(connectFieldDef(key))
+}
+
+function settingSummary(key) {
+  return summaryFor(settingDef(key))
+}
+
+function modeSummary(value) {
+  return summaryFor(modeDef(value))
+}
+
+function connectFieldSummary(key) {
+  return summaryFor(connectFieldDef(key))
+}
+
 function settingDescription(key, options) {
   var opts = options || {}
   if (opts.upgrade === true) {
     return "Upgrade to enable. Changing it still sends the CLI command so Proton can report the restriction."
   }
-  var def = settingDef(key)
-  var text = captionFor(def)
-  if (opts.reconnect === true || (def && def.restart === true)) {
-    var extra = "Requires a new VPN connection to apply."
-    text = text !== "" ? text + " " + extra : extra
-  }
-  return text
+  return settingSummary(key)
 }
 
 function isIPv4(value) {
@@ -1048,6 +1105,8 @@ if (typeof module !== "undefined") {
     CONFIG_SETTINGS: CONFIG_SETTINGS,
     CONNECT_SECTION_HELP: CONNECT_SECTION_HELP,
     SETTINGS_SECTION_HELP: SETTINGS_SECTION_HELP,
+    TOOLTIP_MAX_LENGTH: TOOLTIP_MAX_LENGTH,
+    OPTION_DESCRIPTION_MAX_LENGTH: OPTION_DESCRIPTION_MAX_LENGTH,
     emptyStatus: emptyStatus,
     defaultView: defaultView,
     normalizeOutput: normalizeOutput,
@@ -1073,6 +1132,12 @@ if (typeof module !== "undefined") {
     settingCaption: settingCaption,
     modeHelp: modeHelp,
     connectFieldHelp: connectFieldHelp,
+    settingTooltip: settingTooltip,
+    modeTooltip: modeTooltip,
+    connectFieldTooltip: connectFieldTooltip,
+    settingSummary: settingSummary,
+    modeSummary: modeSummary,
+    connectFieldSummary: connectFieldSummary,
     settingDescription: settingDescription,
     isIPv4: isIPv4,
     isIPv6: isIPv6,
