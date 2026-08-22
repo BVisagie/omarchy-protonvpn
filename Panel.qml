@@ -646,7 +646,7 @@ Panel {
               }
 
               SettingHelp {
-                text: Model.modeHelp(root.selectedMode)
+                text: Model.modeSummary(root.selectedMode)
               }
 
               SearchableDropdown {
@@ -659,8 +659,18 @@ Panel {
                 fontFamily: root.fontFamily
                 hasCursor: root.cursorActive && root.focusSection === "mode"
                 placeholderText: "Search modes"
-                onHovered: function(on) { if (on) root.setFocusSection("mode") }
+                onHovered: function(on) {
+                  modeTip.tipHovered = on
+                  if (on) root.setFocusSection("mode")
+                }
                 onChanged: function(value) { root.selectedMode = value }
+
+                SettingTip {
+                  id: modeTip
+                  text: Model.modeTooltip(root.selectedMode)
+                  tipCursor: modeDropdown.hasCursor
+                  tipPopupOpen: modeDropdown.popupOpen
+                }
               }
             }
 
@@ -678,7 +688,7 @@ Panel {
               }
 
               SettingHelp {
-                text: Model.connectFieldHelp("country")
+                text: Model.connectFieldSummary("country")
               }
 
               SearchableDropdown {
@@ -692,8 +702,18 @@ Panel {
                 hasCursor: root.cursorActive && root.focusSection === "country"
                 placeholderText: "Search countries"
                 emptyText: root.countryEmptyText()
-                onHovered: function(on) { if (on) root.setFocusSection("country") }
+                onHovered: function(on) {
+                  countryTip.tipHovered = on
+                  if (on) root.setFocusSection("country")
+                }
                 onChanged: function(value) { root.selectedCountry = value }
+
+                SettingTip {
+                  id: countryTip
+                  text: Model.connectFieldTooltip("country")
+                  tipCursor: countryDropdown.hasCursor
+                  tipPopupOpen: countryDropdown.popupOpen
+                }
               }
             }
 
@@ -711,7 +731,7 @@ Panel {
               }
 
               SettingHelp {
-                text: Model.connectFieldHelp("city")
+                text: Model.connectFieldSummary("city")
               }
 
               SearchableDropdown {
@@ -725,8 +745,18 @@ Panel {
                 hasCursor: root.cursorActive && root.focusSection === "city"
                 placeholderText: "Search cities"
                 emptyText: root.cityEmptyText()
-                onHovered: function(on) { if (on) root.setFocusSection("city") }
+                onHovered: function(on) {
+                  cityTip.tipHovered = on
+                  if (on) root.setFocusSection("city")
+                }
                 onChanged: function(value) { root.selectedCity = value }
+
+                SettingTip {
+                  id: cityTip
+                  text: Model.connectFieldTooltip("city")
+                  tipCursor: cityDropdown.hasCursor
+                  tipPopupOpen: cityDropdown.popupOpen
+                }
               }
             }
 
@@ -744,7 +774,7 @@ Panel {
               }
 
               SettingHelp {
-                text: Model.connectFieldHelp("server")
+                text: Model.connectFieldSummary("server")
               }
 
               TextField {
@@ -757,6 +787,12 @@ Panel {
                 onHoveredChanged: if (hovered) root.setFocusSection("server")
                 onTextChanged: root.serverIdText = text
                 onAccepted: root.tryToggle()
+
+                SettingTip {
+                  text: Model.connectFieldTooltip("server")
+                  tipHovered: serverField.hovered
+                  tipCursor: root.cursorActive && root.focusSection === "server"
+                }
               }
             }
           }
@@ -806,7 +842,7 @@ Panel {
                 }
 
                 SettingHelp {
-                  text: Model.settingCaption("netshield")
+                  text: Model.settingSummary("netshield")
                 }
 
                 SearchableDropdown {
@@ -820,8 +856,18 @@ Panel {
                   hasCursor: root.cursorActive && root.focusSection === "config:netshield"
                   placeholderText: "NetShield"
                   emptyText: vpn.configUpgrade.netshield ? "Upgrade to enable" : "No values"
-                  onHovered: function(on) { if (on) root.setFocusSection("config:netshield") }
+                  onHovered: function(on) {
+                    netshieldTip.tipHovered = on
+                    if (on) root.setFocusSection("config:netshield")
+                  }
                   onChanged: function(value) { if (value !== vpn.configDisplayValue("netshield")) vpn.setConfig("netshield", value) }
+
+                  SettingTip {
+                    id: netshieldTip
+                    text: Model.settingTooltip("netshield")
+                    tipCursor: netshieldDropdown.hasCursor
+                    tipPopupOpen: netshieldDropdown.popupOpen
+                  }
                 }
 
                 Text {
@@ -848,7 +894,7 @@ Panel {
                 }
 
                 SettingHelp {
-                  text: Model.settingCaption("kill-switch")
+                  text: Model.settingSummary("kill-switch")
                 }
 
                 SearchableDropdown {
@@ -861,8 +907,18 @@ Panel {
                   fontFamily: root.fontFamily
                   hasCursor: root.cursorActive && root.focusSection === "config:kill-switch"
                   placeholderText: "Kill switch"
-                  onHovered: function(on) { if (on) root.setFocusSection("config:kill-switch") }
+                  onHovered: function(on) {
+                    killSwitchTip.tipHovered = on
+                    if (on) root.setFocusSection("config:kill-switch")
+                  }
                   onChanged: function(value) { if (value !== vpn.configDisplayValue("kill-switch")) vpn.setConfig("kill-switch", value) }
+
+                  SettingTip {
+                    id: killSwitchTip
+                    text: Model.settingTooltip("kill-switch")
+                    tipCursor: killSwitchDropdown.hasCursor
+                    tipPopupOpen: killSwitchDropdown.popupOpen
+                  }
                 }
 
                 Text {
@@ -890,6 +946,7 @@ Panel {
                 spacing: Style.space(6)
 
                 Toggle {
+                  id: customDnsToggle
                   width: parent.width
                   label: "Custom DNS"
                   description: Model.settingDescription("custom-dns", { upgrade: vpn.configUpgrade["custom-dns"] === true })
@@ -897,8 +954,17 @@ Panel {
                   hasCursor: root.cursorActive && root.focusSection === "config:custom-dns"
                   foreground: root.foreground
                   fontFamily: root.fontFamily
-                  onHovered: function(on) { if (on) root.setFocusSection("config:custom-dns") }
+                  onHovered: function(on) {
+                    customDnsTip.tipHovered = on
+                    if (on) root.setFocusSection("config:custom-dns")
+                  }
                   onClicked: root.toggleCustomDns()
+
+                  SettingTip {
+                    id: customDnsTip
+                    text: Model.settingTooltip("custom-dns")
+                    tipCursor: customDnsToggle.hasCursor
+                  }
                 }
 
                 TextField {
@@ -1010,8 +1076,17 @@ Panel {
     wrapMode: Text.WordWrap
   }
 
+  component SettingTip: PanelToolTip {
+    property bool tipHovered: false
+    property bool tipCursor: false
+    property bool tipPopupOpen: false
+    visible: text !== "" && (tipHovered || tipCursor) && !tipPopupOpen
+    fontFamily: root.fontFamily
+  }
+
   component ToggleSettingRow: Toggle {
     property var setting: ({})
+    property bool tipHovered: false
     readonly property string key: String(setting.key || "")
     readonly property string currentValue: vpn.configDisplayValue(key)
     readonly property bool upgrade: vpn.configUpgrade && vpn.configUpgrade[key] === true
@@ -1024,7 +1099,16 @@ Panel {
     hasCursor: root.cursorActive && root.focusSection === "config:" + key
     foreground: root.foreground
     fontFamily: root.fontFamily
-    onHovered: function(on) { if (on) root.setFocusSection("config:" + key) }
+    onHovered: function(on) {
+      tipHovered = on
+      if (on) root.setFocusSection("config:" + key)
+    }
     onClicked: vpn.setConfig(key, checked ? "off" : "on")
+
+    SettingTip {
+      text: Model.settingTooltip(key)
+      tipHovered: parent.tipHovered
+      tipCursor: parent.hasCursor
+    }
   }
 }

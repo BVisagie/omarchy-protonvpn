@@ -330,36 +330,64 @@ describe("display helpers", () => {
 })
 
 describe("Proton-sourced help copy", () => {
-  it("gives every connection mode a help caption and option description", () => {
+  it("gives every connection mode a help caption, tooltip, and option description", () => {
     Model.CONNECTION_MODES.forEach((mode) => {
       assert.ok(String(mode.help || "").trim() !== "", mode.value)
+      assert.ok(String(mode.tooltip || "").trim() !== "", mode.value)
+      assert.ok(String(mode.tooltip).length <= Model.TOOLTIP_MAX_LENGTH, mode.value)
       assert.ok(String(mode.description || "").trim() !== "", mode.value)
       assert.equal(Model.modeHelp(mode.value), mode.help)
+      assert.equal(Model.modeTooltip(mode.value), mode.tooltip)
+      assert.equal(Model.modeSummary(mode.value), "")
     })
   })
 
-  it("gives country, city, and server fields help captions", () => {
+  it("gives country, city, and server fields help captions, tooltips, and short hints", () => {
     Model.CONNECT_FIELDS.forEach((field) => {
       assert.ok(String(field.help || "").trim() !== "", field.key)
+      assert.ok(String(field.tooltip || "").trim() !== "", field.key)
+      assert.ok(String(field.tooltip).length <= Model.TOOLTIP_MAX_LENGTH, field.key)
+      assert.ok(String(field.summary || "").trim() !== "", field.key)
       assert.equal(Model.connectFieldHelp(field.key), field.help)
+      assert.equal(Model.connectFieldTooltip(field.key), field.tooltip)
+      assert.equal(Model.connectFieldSummary(field.key), field.summary)
     })
   })
 
-  it("gives every setting a help caption", () => {
+  it("gives every setting a help caption and a one-line tooltip", () => {
     Model.CONFIG_SETTINGS.forEach((setting) => {
       assert.ok(String(setting.help || "").trim() !== "", setting.key)
+      assert.ok(String(setting.tooltip || "").trim() !== "", setting.key)
+      assert.ok(String(setting.tooltip).length <= Model.TOOLTIP_MAX_LENGTH, setting.key)
       assert.match(Model.settingCaption(setting.key), /\S/)
+      assert.equal(Model.settingTooltip(setting.key), setting.tooltip)
     })
   })
 
-  it("describes NetShield and Kill Switch values", () => {
+  it("keeps operational summaries off settings that have nothing extra to say", () => {
+    assert.equal(Model.settingSummary("kill-switch"), "")
+    assert.equal(Model.settingSummary("vpn-accelerator"), "")
+    assert.equal(Model.settingSummary("anonymous-crash-reports"), "")
+    assert.equal(Model.settingDescription("vpn-accelerator"), "")
+    assert.match(Model.settingSummary("netshield"), /Tor/i)
+    assert.match(Model.settingSummary("port-forwarding"), /P2P/i)
+    assert.match(Model.settingSummary("custom-dns"), /NetShield/i)
+    assert.match(Model.settingSummary("moderate-nat"), /strict NAT/i)
+    assert.match(Model.settingSummary("ipv6"), /Linux apps turn IPv6 on by default/i)
+  })
+
+  it("describes NetShield and Kill Switch values in one unelided line", () => {
     const netshield = Model.settingDef("netshield")
     const killSwitch = Model.settingDef("kill-switch")
     netshield.values.forEach((value) => {
-      assert.ok(String(netshield.valueDescriptions[value] || "").trim() !== "", value)
+      const description = String(netshield.valueDescriptions[value] || "").trim()
+      assert.ok(description !== "", value)
+      assert.ok(description.length <= Model.OPTION_DESCRIPTION_MAX_LENGTH, value)
     })
     killSwitch.values.forEach((value) => {
-      assert.ok(String(killSwitch.valueDescriptions[value] || "").trim() !== "", value)
+      const description = String(killSwitch.valueDescriptions[value] || "").trim()
+      assert.ok(description !== "", value)
+      assert.ok(description.length <= Model.OPTION_DESCRIPTION_MAX_LENGTH, value)
     })
   })
 
@@ -368,7 +396,10 @@ describe("Proton-sourced help copy", () => {
     assert.match(Model.settingCaption("ipv6"), /Linux apps turn IPv6 on by default/i)
     assert.equal(Model.settingDef("vpn-accelerator").defaultHint, undefined)
     assert.equal(Model.settingDef("netshield").defaultHint, undefined)
-    assert.match(Model.settingDescription("custom-dns"), /new VPN connection/i)
+    assert.match(Model.settingTooltip("custom-dns"), /new connection/i)
+    assert.match(Model.settingTooltip("ipv6"), /new connection/i)
+    assert.doesNotMatch(Model.settingDescription("custom-dns"), /help them fix bugs|third-party resolvers/i)
+    assert.match(Model.settingDescription("custom-dns"), /NetShield/i)
     assert.match(Model.settingDescription("port-forwarding", { upgrade: true }), /Upgrade to enable/)
     assert.match(Model.CONNECT_SECTION_HELP, /fastest/i)
     assert.match(Model.SETTINGS_SECTION_HELP, /IPv6 and custom DNS/i)

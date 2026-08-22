@@ -8,11 +8,23 @@ This plugin talks only to the installed CLI. It does not reimplement Proton prot
 
 The widget is a third-party Omarchy plugin. Plugins run unsandboxed inside the long-lived `omarchy-shell` process with your user privileges. Review the code before enabling it.
 
-```sh
-omarchy plugin add https://github.com/BVisagie/omarchy-protonvpn.git --enable
+Omarchy’s **Add plugin** prompt asks only for the git URL. Paste this and nothing else:
+
+```
+https://github.com/BVisagie/omarchy-protonvpn.git
 ```
 
-With `--enable` in a terminal, Omarchy asks which bar section should host the widget: **left**, **center**, or **right**. Right is pre-selected. Do not pass `--yes` if you want that prompt.
+From a terminal, the same URL is the only required argument:
+
+```sh
+omarchy plugin add https://github.com/BVisagie/omarchy-protonvpn.git
+```
+
+That clones the plugin disabled so you can review it. Enable it when you are ready; Omarchy then asks which bar section should host the widget (**left**, **center**, or **right**). Right is the default.
+
+```sh
+omarchy plugin enable io.github.BVisagie.protonvpn --section right
+```
 
 To move it later:
 
@@ -54,7 +66,7 @@ Connection modes match the current CLI: fastest, country, city, specific server 
 
 Settings cover every value exposed by `protonvpn config` on CLI 1.0.1: NetShield, kill switch, port forwarding, custom DNS, VPN Accelerator, moderate NAT, IPv6, and anonymous crash reports. Kill switch changes require disconnecting first. IPv6 and custom DNS need a new VPN connection to apply. Custom DNS is validated locally and passed as one `--dns` argument.
 
-The panel shows a short caption above each connect option and setting. That copy is paraphrased from Proton’s official support articles and the Linux CLI guide. It is not a substitute for those pages, and the widget does not fetch Proton’s website.
+The panel shows a short operational caption above some controls. Hover a CONNECT or SETTINGS control, or move onto it with `j` / `k`, for a Proton-sourced tooltip. That copy is paraphrased from Proton’s official support articles and the Linux CLI guide. It is not a substitute for those pages, and the widget does not fetch Proton’s website.
 
 ## Privacy
 
