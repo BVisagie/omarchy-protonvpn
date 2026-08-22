@@ -1,0 +1,10 @@
+
+Cities in United States:
+City            Features
+--------------  ----------
+Ashburn         P2P
+Atlanta         P2P, Tor
+Los Angeles     P2P
+New York        P2P
+Salt Lake City  P2P
+Washington      P2P

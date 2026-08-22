@@ -1,0 +1,3 @@
+Error: Invalid country code 'XX'. Please use a valid country code.
+
+Try 'protonvpn cities list --help' for more information.

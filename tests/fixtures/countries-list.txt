@@ -1,0 +1,6 @@
+Country                           Code
+--------------------------------  ------
+Afghanistan                       AF
+Albania                           AL
+Bosnia and Herzegovina            BA
+United States                     US

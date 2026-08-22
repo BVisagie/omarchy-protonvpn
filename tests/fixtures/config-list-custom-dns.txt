@@ -1,0 +1,15 @@
+
+Current configuration
+Setting                  Value
+-----------------------  --------------------
+netshield                malware-ads-trackers
+kill-switch              standard
+port-forwarding          on
+custom-dns               on  [1.1.1.1, 8.8.8.8]
+vpn-accelerator          on
+moderate-nat             off
+ipv6                     off
+anonymous-crash-reports  off
+
+Use 'protonvpn config set <setting> <value>' to change settings.
+Use 'protonvpn config set <setting> --help' for available values.

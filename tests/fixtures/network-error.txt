@@ -1,0 +1,2 @@
+Error: Could not resolve host: vpn-api.proton.me
+Temporary failure in name resolution

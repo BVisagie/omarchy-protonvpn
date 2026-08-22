@@ -1,0 +1,17 @@
+
+Current configuration
+Setting                  Value
+-----------------------  ----------------
+netshield                Upgrade to enable
+kill-switch              off
+port-forwarding          Upgrade to enable
+custom-dns               Upgrade to enable
+vpn-accelerator          Upgrade to enable
+moderate-nat             Upgrade to enable
+ipv6                     on
+anonymous-crash-reports  on
+
+To upgrade to VPN Plus visit: https://account.protonvpn.com/pricing
+After upgrading online:
+    Sign out and sign in again to activate your new plan:
+    protonvpn signout && protonvpn signin

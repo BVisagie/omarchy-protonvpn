@@ -1,0 +1,2 @@
+Error: Proton VPN desktop app is currently running
+The CLI and GUI cannot run simultaneously. Please close the GUI application and try again.

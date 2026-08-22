@@ -1,0 +1,5 @@
+Server list is outdated, updating... This may take a moment.
+Status: Connected
+Server: NL#14 in Amsterdam, Netherlands
+Load: 41%
+Protocol: WireGuard
