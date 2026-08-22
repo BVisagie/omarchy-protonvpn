@@ -4,9 +4,18 @@ Native Omarchy Quattro bar widget and keyboard-friendly panel for the official P
 
 This plugin talks only to the installed CLI. It does not reimplement Proton protocols, call Proton's private APIs, collect credentials, or run unofficial VPN wrappers.
 
-## Install
+## Privacy
 
-The widget is a third-party Omarchy plugin. Plugins run unsandboxed inside the long-lived `omarchy-shell` process with your user privileges. Review the code before enabling it.
+- The plugin executes only fixed official CLI commands as argument arrays. It never interpolates values into a shell.
+- It never collects, logs, stores, or passes Proton credentials.
+- It never invokes `sudo` or `pkexec`.
+- It never makes extra network requests such as “what is my IP” lookups or telemetry.
+- Connection details stay in memory. Captured test fixtures are redacted.
+- Raw CLI diagnostics are capped before they are shown.
+
+Omarchy plugins run unsandboxed inside the long-lived `omarchy-shell` process with your user privileges. This plugin invokes `protonvpn` only after discovering it on `PATH`. Review the code before enabling it.
+
+## Install
 
 Omarchy’s **Add plugin** prompt asks only for the git URL. Paste this and nothing else:
 
@@ -20,13 +29,13 @@ From a terminal, the same URL is the only required argument:
 omarchy plugin add https://github.com/BVisagie/omarchy-protonvpn.git
 ```
 
-That clones the plugin disabled so you can review it. Enable it when you are ready; Omarchy then asks which bar section should host the widget (**left**, **center**, or **right**). Right is the default.
+That clones the plugin disabled so you can review it. Enable it when you are ready; right is the default section:
 
 ```sh
 omarchy plugin enable io.github.BVisagie.protonvpn --section right
 ```
 
-To move it later:
+Omit `--section` to be asked **left**, **center**, or **right**. To move it later:
 
 ```sh
 omarchy bar move io.github.BVisagie.protonvpn --section right
@@ -55,7 +64,7 @@ protonvpn signin USERNAME
 
 Inside the panel:
 
-- `j` / `k` or arrows move the cursor
+- `j` / `k` or arrows move the cursor (`h` / `l` also work)
 - `Enter` / `Space` activates the selected control
 - `t` toggles connect/disconnect with the same safety gate as right-click
 - `r` refreshes
@@ -66,18 +75,7 @@ Connection modes match the current CLI: fastest, country, city, specific server 
 
 Settings cover every value exposed by `protonvpn config` on CLI 1.0.1: NetShield, kill switch, port forwarding, custom DNS, VPN Accelerator, moderate NAT, IPv6, and anonymous crash reports. Kill switch changes require disconnecting first. IPv6 and custom DNS need a new VPN connection to apply. Custom DNS is validated locally and passed as one `--dns` argument.
 
-The panel shows a short operational caption above some controls. Hover a CONNECT or SETTINGS control, or move onto it with `j` / `k`, for a Proton-sourced tooltip. That copy is paraphrased from Proton’s official support articles and the Linux CLI guide. It is not a substitute for those pages, and the widget does not fetch Proton’s website.
-
-## Privacy
-
-- The plugin executes only fixed official CLI commands as argument arrays. It never interpolates values into a shell.
-- It never collects, logs, stores, or passes Proton credentials.
-- It never invokes `sudo` or `pkexec`.
-- It never makes extra network requests such as “what is my IP” lookups or telemetry.
-- Connection details stay in memory. Captured test fixtures are redacted.
-- Raw CLI diagnostics are capped before they are shown.
-
-Omarchy plugins run with the user's privileges. This plugin invokes `protonvpn` only after discovering it on `PATH`.
+Some rows show a short caption. Hover a CONNECT or SETTINGS control, or move onto it with `j` / `k`, for a Proton-sourced tooltip. That copy is paraphrased from Proton’s official support articles and the Linux CLI guide. It is not a substitute for those pages, and the widget does not fetch Proton’s website.
 
 ## Limitations
 
@@ -85,7 +83,7 @@ Omarchy plugins run with the user's privileges. This plugin invokes `protonvpn` 
 - Headless setups and split tunneling are not supported by the CLI, so they are out of scope here.
 - Location, feature, and some configuration choices can require a paid plan. The panel shows the CLI's error instead of guessing the account tier.
 - `protonvpn status` does not provide the current exit IP; the widget does not add another lookup to display one.
-- One widget instance is created per monitor. Commands are serialized per instance. After the scheduler fix, duplicate simultaneous CLI invocations should not occur from a single panel; if they appear across monitors, a shared backend can be added later while keeping per-monitor panels.
+- One widget instance is created per monitor. Commands are serialized per instance, so a single panel will not run two Proton commands at once.
 - Status polling defaults to 30 seconds because `protonvpn status` initializes Proton components and may refresh server data while connected.
 
 ## Troubleshooting
