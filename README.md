@@ -10,6 +10,13 @@ The widget is a third-party Omarchy plugin. Plugins run unsandboxed inside the l
 
 ```sh
 omarchy plugin add https://github.com/BVisagie/omarchy-protonvpn.git --enable
+```
+
+With `--enable` in a terminal, Omarchy asks which bar section should host the widget: **left**, **center**, or **right**. Right is pre-selected. Do not pass `--yes` if you want that prompt.
+
+To move it later:
+
+```sh
 omarchy bar move io.github.BVisagie.protonvpn --section right
 ```
 

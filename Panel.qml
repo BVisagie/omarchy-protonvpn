@@ -209,7 +209,6 @@ Panel {
     cursorActive = true
     focusSection = name
     ensureCursor()
-    scrollCursorIntoView()
   }
 
   function setHeaderCursor() {
@@ -370,6 +369,15 @@ Panel {
         flickableDirection: Flickable.VerticalFlick
         interactive: contentHeight > height
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+        function clampContentY() {
+          var maxY = Math.max(0, contentHeight - height)
+          if (contentY > maxY) contentY = maxY
+          else if (contentY < 0) contentY = 0
+        }
+
+        onContentHeightChanged: clampContentY()
+        onHeightChanged: clampContentY()
 
         Column {
           id: column
