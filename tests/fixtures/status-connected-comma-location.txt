@@ -1,0 +1,4 @@
+Status: Connected
+Server: US#88 in Washington, D.C., United States
+Load: 12%
+Protocol: WireGuard

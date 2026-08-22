@@ -1,0 +1,4 @@
+Status: Connected
+Server: IS-CH#1 in Reykjavik, via Switzerland
+Load: 8%
+Protocol: WireGuard

@@ -1,0 +1,1 @@
+Error: Location selection is not available on the free plan. Please use 'protonvpn connect' to connect to available free servers or upgrade to choose your location.

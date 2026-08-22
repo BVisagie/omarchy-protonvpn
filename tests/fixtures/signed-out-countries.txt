@@ -1,0 +1,1 @@
+Error: Authentication required to view complete country list. Please sign in with 'protonvpn signin'
