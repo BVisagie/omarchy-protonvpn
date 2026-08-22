@@ -16,10 +16,12 @@ Panel {
   property string focusSection: "header"
   property bool cursorActive: false
   property string selectedMode: "fastest"
+  property string lastMode: "fastest"
   property string selectedCountry: ""
   property string selectedCity: ""
   property string serverIdText: ""
   property string dnsText: ""
+  property bool dnsEditorOpen: false
   property int nowTick: 0
   property bool keyboardNavigation: false
 
@@ -112,6 +114,20 @@ Panel {
     }
   }
 
+  function applyConnectDraft(draft) {
+    selectedCountry = draft.country
+    selectedCity = draft.city
+    serverIdText = draft.serverId
+    if (countryDropdown) countryDropdown.value = selectedCountry
+    if (cityDropdown) cityDropdown.value = selectedCity
+  }
+
+  function refreshConnectLists() {
+    if (needsCountry) vpn.refreshCountries()
+    if (needsCity && selectedCountry !== "") vpn.refreshCities(selectedCountry)
+    else vpn.clearCities()
+  }
+
   function visibleFocusOrder() {
     var order = []
     if (vpn.installed && (Model.canWrite(view.state) || view.state === Model.STATES.connecting || view.state === Model.STATES.disconnecting)) order.push("header")
@@ -127,7 +143,7 @@ Panel {
       if (vpn.configLoaded) {
         for (var i = 0; i < configSettings.length; i++) {
           order.push("config:" + configSettings[i].key)
-          if (configSettings[i].key === "custom-dns" && dnsEnabled()) order.push("dns")
+          if (configSettings[i].key === "custom-dns" && showDnsField()) order.push("dns")
         }
       }
     }
@@ -137,6 +153,10 @@ Panel {
   function dnsEnabled() {
     var value = String(vpn.configDisplayValue("custom-dns") || "")
     return Model.parseCustomDnsValue(value).enabled === true || vpn.pendingSetting === "custom-dns" && vpn.pendingValue === "on"
+  }
+
+  function showDnsField() {
+    return dnsEnabled() || dnsEditorOpen
   }
 
   function ensureCursor() {
@@ -170,7 +190,7 @@ Panel {
     else if (focusSection === "terminal") vpn.openTerminal()
     else if (focusSection === "mode") modeDropdown.toggle()
     else if (focusSection === "country") countryDropdown.toggle()
-    else if (focusSection === "city") cityDropdown.toggle()
+    else if (focusSection === "city" && selectedCountry !== "") cityDropdown.toggle()
     else if (focusSection === "server") Qt.callLater(function() { if (serverField) serverField.forceActiveFocus() })
     else if (focusSection === "dns") applyDns()
     else if (focusSection.indexOf("config:") === 0) activateConfig(focusSection.substring(7))
@@ -248,6 +268,7 @@ Panel {
   function toggleCustomDns() {
     var dns = Model.parseCustomDnsValue(vpn.configDisplayValue("custom-dns"))
     if (dns.enabled) {
+      dnsEditorOpen = false
       vpn.setConfig("custom-dns", "off")
       return
     }
@@ -256,6 +277,7 @@ Panel {
       applyDns()
       return
     }
+    dnsEditorOpen = true
     setFocusSection("dns")
     Qt.callLater(function() { if (dnsField) dnsField.forceActiveFocus() })
   }
@@ -339,13 +361,27 @@ Panel {
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
   onSelectedModeChanged: {
-    if (needsCountry) vpn.refreshCountries()
-    if (needsCity && selectedCountry !== "") vpn.refreshCities(selectedCountry)
+    var draft = Model.connectDraftForModeChange(lastMode, selectedMode, {
+      country: selectedCountry,
+      city: selectedCity,
+      serverId: serverIdText
+    })
+    lastMode = selectedMode
+    applyConnectDraft(draft)
+    refreshConnectLists()
     ensureCursor()
   }
   onSelectedCountryChanged: {
-    selectedCity = ""
+    var draft = Model.connectDraftForCountryChange({
+      country: selectedCountry,
+      city: selectedCity,
+      serverId: serverIdText
+    })
+    selectedCity = draft.city
+    if (cityDropdown) cityDropdown.value = selectedCity
+    if (countryDropdown) countryDropdown.value = selectedCountry
     if (needsCity && selectedCountry !== "") vpn.refreshCities(selectedCountry)
+    else vpn.clearCities()
     ensureCursor()
   }
 
@@ -361,6 +397,7 @@ Panel {
       if (vpn.configLoaded) {
         var dns = Model.parseCustomDnsValue(vpn.configDisplayValue("custom-dns"))
         if (dns.ips.length > 0) root.dnsText = dns.ips.join(", ")
+        if (!dns.enabled && vpn.pendingSetting !== "custom-dns") root.dnsEditorOpen = false
       }
       root.ensureCursor()
     }
@@ -702,6 +739,7 @@ Panel {
                 fontFamily: root.fontFamily
                 hasCursor: root.cursorActive && root.focusSection === "country"
                 placeholderText: "Search countries"
+                triggerLabel: Model.connectFieldTriggerLabel("country", { mode: root.selectedMode, country: root.selectedCountry })
                 emptyText: root.countryEmptyText()
                 onHovered: function(on) {
                   countryTip.tipHovered = on
@@ -745,7 +783,9 @@ Panel {
                 fontFamily: root.fontFamily
                 hasCursor: root.cursorActive && root.focusSection === "city"
                 placeholderText: "Search cities"
+                triggerLabel: Model.connectFieldTriggerLabel("city", { mode: root.selectedMode, country: root.selectedCountry })
                 emptyText: root.cityEmptyText()
+                enabled: root.selectedCountry !== ""
                 onHovered: function(on) {
                   cityTip.tipHovered = on
                   if (on) root.setFocusSection("city")
@@ -944,7 +984,7 @@ Panel {
 
               Column {
                 width: parent.width
-                spacing: Style.space(6)
+                spacing: 0
 
                 Toggle {
                   id: customDnsToggle
@@ -968,17 +1008,25 @@ Panel {
                   }
                 }
 
-                TextField {
-                  id: dnsField
-                  visible: root.dnsEnabled() || root.focusSection === "dns" || root.focusSection === "config:custom-dns"
+                Item {
                   width: parent.width
-                  foreground: root.foreground
-                  placeholderText: "1.1.1.1, 8.8.8.8"
-                  text: root.dnsText
-                  hasCursor: root.cursorActive && root.focusSection === "dns" && !activeFocus
-                  onHoveredChanged: if (hovered) root.setFocusSection("dns")
-                  onTextChanged: root.dnsText = text
-                  onAccepted: root.applyDns()
+                  height: root.showDnsField() ? dnsField.implicitHeight + Style.space(6) : 0
+                  visible: height > 0
+                  clip: true
+
+                  TextField {
+                    id: dnsField
+                    y: Style.space(6)
+                    width: parent.width
+                    visible: root.showDnsField()
+                    foreground: root.foreground
+                    placeholderText: "1.1.1.1, 8.8.8.8"
+                    text: root.dnsText
+                    hasCursor: root.cursorActive && root.focusSection === "dns" && !activeFocus
+                    onHoveredChanged: if (hovered) root.setFocusSection("dns")
+                    onTextChanged: root.dnsText = text
+                    onAccepted: root.applyDns()
+                  }
                 }
               }
             }

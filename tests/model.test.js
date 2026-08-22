@@ -258,6 +258,37 @@ describe("connection commands", () => {
     assert.equal(Model.buildConnectCommand({ mode: "server", serverId: "nope" }).ok, false)
     assert.equal(Model.buildConnectCommand({ mode: "server", serverId: "IT#23", country: "IT" }).ok, false)
   })
+
+  it("cascade-resets connect draft fields when the mode changes", () => {
+    const filled = { country: "US", city: "New York", serverId: "IT#23" }
+    assert.deepEqual(Model.connectDraftForModeChange("city", "fastest", filled), { country: "", city: "", serverId: "" })
+    assert.deepEqual(Model.connectDraftForModeChange("fastest", "city", filled), { country: "", city: "", serverId: "" })
+    assert.deepEqual(Model.connectDraftForModeChange("country", "city", filled), { country: "US", city: "", serverId: "" })
+    assert.deepEqual(Model.connectDraftForModeChange("city", "country", filled), { country: "US", city: "", serverId: "" })
+    assert.deepEqual(Model.connectDraftForModeChange("city", "p2p", filled), { country: "US", city: "", serverId: "" })
+    assert.deepEqual(Model.connectDraftForModeChange("p2p", "securecore", filled), { country: "US", city: "", serverId: "" })
+    assert.deepEqual(Model.connectDraftForModeChange("city", "server", filled), { country: "", city: "", serverId: "" })
+    assert.deepEqual(Model.connectDraftForModeChange("server", "fastest", filled), { country: "", city: "", serverId: "" })
+    assert.deepEqual(Model.connectDraftForModeChange("server", "server", filled), { country: "", city: "", serverId: "IT#23" })
+  })
+
+  it("clears city when the country draft changes", () => {
+    assert.deepEqual(
+      Model.connectDraftForCountryChange({ country: "DE", city: "Berlin", serverId: "IT#23" }),
+      { country: "DE", city: "", serverId: "IT#23" }
+    )
+  })
+
+  it("labels empty connect dropdowns by required versus optional country", () => {
+    assert.equal(Model.connectFieldTriggerLabel("country", { mode: "city" }), "Choose a country")
+    assert.equal(Model.connectFieldTriggerLabel("country", { mode: "country" }), "Choose a country")
+    assert.equal(Model.connectFieldTriggerLabel("country", { mode: "p2p" }), "Any country")
+    assert.equal(Model.connectFieldTriggerLabel("country", { mode: "securecore" }), "Any country")
+    assert.equal(Model.connectFieldTriggerLabel("country", { mode: "tor" }), "Any country")
+    assert.equal(Model.connectFieldTriggerLabel("city", { mode: "city", country: "" }), "Choose a country first")
+    assert.equal(Model.connectFieldTriggerLabel("city", { mode: "city", country: "US" }), "Choose a city")
+    assert.equal(Model.connectFieldTriggerLabel("server", { mode: "server" }), "")
+  })
 })
 
 describe("config writes", () => {
