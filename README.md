@@ -54,6 +54,8 @@ Connection modes match the current CLI: fastest, country, city, specific server 
 
 Settings cover every value exposed by `protonvpn config` on CLI 1.0.1: NetShield, kill switch, port forwarding, custom DNS, VPN Accelerator, moderate NAT, IPv6, and anonymous crash reports. Kill switch changes require disconnecting first. IPv6 and custom DNS need a new VPN connection to apply. Custom DNS is validated locally and passed as one `--dns` argument.
 
+The panel shows a short caption above each connect option and setting. That copy is paraphrased from Proton’s official support articles and the Linux CLI guide. It is not a substitute for those pages, and the widget does not fetch Proton’s website.
+
 ## Privacy
 
 - The plugin executes only fixed official CLI commands as argument arrays. It never interpolates values into a shell.
@@ -71,10 +73,20 @@ Omarchy plugins run with the user's privileges. This plugin invokes `protonvpn` 
 - Headless setups and split tunneling are not supported by the CLI, so they are out of scope here.
 - Location, feature, and some configuration choices can require a paid plan. The panel shows the CLI's error instead of guessing the account tier.
 - `protonvpn status` does not provide the current exit IP; the widget does not add another lookup to display one.
-- One widget instance is created per monitor. Commands are serialized per instance. Shared singleton polling can be added later if duplicate polls become a problem.
+- One widget instance is created per monitor. Commands are serialized per instance. After the scheduler fix, duplicate simultaneous CLI invocations should not occur from a single panel; if they appear across monitors, a shared backend can be added later while keeping per-monitor panels.
 - Status polling defaults to 30 seconds because `protonvpn status` initializes Proton components and may refresh server data while connected.
 
 ## Troubleshooting
+
+Confirm the Proton CLI itself before assuming a widget bug. These failures belong to Proton, Arch packaging, or the local session:
+
+```sh
+protonvpn --version
+protonvpn status
+protonvpn countries list
+```
+
+The recorded parser fixtures target `proton-vpn-cli` 1.0.1-1. If `protonvpn --version` differs, CLI output may have changed.
 
 **CLI not installed.** Install `proton-vpn-cli` from Arch extra, then refresh. The bar tooltip reads “Proton VPN CLI not installed.”
 
@@ -82,21 +94,25 @@ Omarchy plugins run with the user's privileges. This plugin invokes `protonvpn` 
 
 **Desktop app is running.** Quit the Proton VPN GUI. The CLI refuses to operate until it is closed.
 
-**Status looks outdated.** A failed or timed-out poll keeps the last good result and marks it stale. Refresh after the network or Proton daemon recovers.
+**Keyring or Secret Service failure.** The CLI could not read saved credentials from the session keyring. Unlock or restart the keyring, then run `protonvpn status` in a terminal. The widget reports this as a local session error, not as signed-out and not as a parser bug.
+
+**Daemon unavailable.** `proton-vpn-daemon` did not respond. Check the Proton CLI service, then refresh. This is a Proton CLI/service problem.
+
+**Connection timeout.** `Timed out after 10s waiting for event(s): CONNECTED` means the CLI reached Proton but the handshake did not finish. Retry or check the network. This is separate from the widget's command-queue watchdog.
+
+**Status looks outdated.** A failed or timed-out poll keeps the last good result and marks it stale. Connection and settings changes stay disabled until a fresh probe succeeds. Refresh after the network or Proton daemon recovers.
 
 **Paid-plan or invalid option.** The panel shows the CLI message and keeps the previous healthy status when it can. Fastest connect remains available.
 
-**Hung command.** A watchdog stops a stuck process so later refreshes can run.
+**Hung command.** A watchdog stops a stuck process so later refreshes can run. Late process exits cannot complete a newer job.
 
 **Validate the plugin:**
 
 ```sh
-omarchy plugin validate .
-node --test tests/model.test.js
-/usr/lib/qt6/bin/qmllint -I "$OMARCHY_PATH/shell" Panel.qml Service.qml ProtonVpnIcon.qml
+./scripts/check.sh
 ```
 
-Recorded parser fixtures target `proton-vpn-cli` 1.0.1-1. When a newer CLI changes output, update the fixtures and parser together.
+That script runs Node tests, `omarchy plugin validate .`, a QML contract check, and a shell-load smoke test. Do not treat an unresolved-import `qmllint` warning flood as a pass; those imports only resolve inside `omarchy-shell`.
 
 ## Uninstall
 

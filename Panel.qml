@@ -29,9 +29,10 @@ Panel {
   readonly property color hoverFill: bar ? Style.hoverFillFor(bar.foreground, Color.accent) : "transparent"
   readonly property color selectedFill: bar ? Style.selectedFillFor(bar.foreground, Color.accent) : "transparent"
   readonly property var view: vpn.view
-  readonly property bool degraded: view.state === Model.STATES.cliMissing || view.state === Model.STATES.signedOut || view.state === Model.STATES.guiConflict || view.state === Model.STATES.error
-  readonly property bool showHealthy: !degraded
-  readonly property bool headerHasCursor: cursorActive && focusSection === "header" && vpn.installed && Model.canToggleConnection(view.state)
+  readonly property bool degraded: view.state === Model.STATES.cliMissing || view.state === Model.STATES.signedOut || view.state === Model.STATES.guiConflict || view.state === Model.STATES.error || view.state === Model.STATES.stale
+  readonly property bool showHealthy: view.state === Model.STATES.connected || view.state === Model.STATES.disconnected || view.state === Model.STATES.connecting || view.state === Model.STATES.disconnecting
+  readonly property bool showWrites: showHealthy && vpn.canChangeSettings
+  readonly property bool headerHasCursor: cursorActive && focusSection === "header" && vpn.installed && Model.canWrite(view.state)
   readonly property color barIconColor: {
     if (Model.iconUrgent(view.state)) return bar ? bar.urgent : Color.urgent
     if (Model.iconDim(view.state)) return Qt.darker(barForeground, 1.55)
@@ -42,7 +43,12 @@ Panel {
     if (Model.iconDim(view.state)) return dim
     return foreground
   }
-  readonly property string toggleHint: view.state === Model.STATES.connected || view.state === Model.STATES.disconnecting ? "Disconnect Proton VPN" : "Connect Proton VPN"
+  readonly property string toggleHint: {
+    if (view.state === Model.STATES.connecting) return "Connecting…"
+    if (view.state === Model.STATES.disconnecting) return "Disconnecting…"
+    if (view.state === Model.STATES.connected) return "Disconnect Proton VPN"
+    return "Connect Proton VPN"
+  }
   readonly property var countryOptions: countryOptionList()
   readonly property var cityOptions: cityOptionList()
   readonly property var modeOptions: Model.CONNECTION_MODES
@@ -83,6 +89,19 @@ Panel {
     return list
   }
 
+  function countryEmptyText() {
+    if (vpn.countriesLoading) return "Loading countries…"
+    if (vpn.countriesError !== "") return vpn.countriesError
+    return "No countries found"
+  }
+
+  function cityEmptyText() {
+    if (vpn.citiesLoading) return "Loading cities…"
+    if (vpn.citiesError !== "") return vpn.citiesError
+    if (selectedCountry === "") return "Choose a country first"
+    return "No cities found"
+  }
+
   function connectOptions() {
     return {
       mode: selectedMode,
@@ -94,11 +113,12 @@ Panel {
 
   function visibleFocusOrder() {
     var order = []
-    if (vpn.installed && (Model.canToggleConnection(view.state) || view.state === Model.STATES.connecting || view.state === Model.STATES.disconnecting)) order.push("header")
+    if (vpn.installed && (Model.canWrite(view.state) || view.state === Model.STATES.connecting || view.state === Model.STATES.disconnecting)) order.push("header")
     if (copyCommand !== "") order.push("copy")
     if (view.state === Model.STATES.signedOut) order.push("terminal")
     order.push("refresh")
-    if (showHealthy && vpn.installed) {
+    if (vpn.countriesError !== "" || vpn.citiesError !== "") order.push("retry-locations")
+    if (showWrites && vpn.installed) {
       order.push("mode")
       if (needsCountry) order.push("country")
       if (needsCity) order.push("city")
@@ -143,6 +163,7 @@ Panel {
     ensureCursor()
     if (focusSection === "header") tryToggle()
     else if (focusSection === "refresh") refreshAll()
+    else if (focusSection === "retry-locations") retryLocations()
     else if (focusSection === "copy") vpn.copyText(copyCommand)
     else if (focusSection === "terminal") vpn.openTerminal()
     else if (focusSection === "mode") modeDropdown.toggle()
@@ -167,15 +188,11 @@ Panel {
     }
     if (key === "netshield") netshieldDropdown.toggle()
     else if (key === "kill-switch") killSwitchDropdown.toggle()
-    else if (key === "custom-dns") {
-      var dns = Model.parseCustomDnsValue(vpn.configDisplayValue("custom-dns"))
-      if (dns.enabled) vpn.setConfig("custom-dns", "off")
-      else applyDns()
-    }
+    else if (key === "custom-dns") toggleCustomDns()
   }
 
   function tryToggle() {
-    if (!Model.canToggleConnection(view.state) || vpn.actionBusy) {
+    if (!Model.canWrite(view.state) || vpn.actionBusy) {
       if (!root.opened) root.open()
       return
     }
@@ -192,9 +209,23 @@ Panel {
     vpn.connectWith(connectOptions())
   }
 
+  function connectNow() {
+    vpn.connectWith(connectOptions())
+  }
+
+  function disconnectNow() {
+    vpn.disconnect()
+  }
+
+  function retryLocations() {
+    if (!vpn.installed) return
+    vpn.refreshCountries(true)
+    if (needsCity && selectedCountry !== "") vpn.refreshCities(selectedCountry, true)
+  }
+
   function refreshAll() {
     vpn.refresh()
-    if (vpn.installed && showHealthy) {
+    if (vpn.installed && (showHealthy || view.state === Model.STATES.stale)) {
       vpn.refreshCountries(true)
       vpn.refreshConfig()
       if (needsCity && selectedCountry !== "") vpn.refreshCities(selectedCountry, true)
@@ -202,7 +233,29 @@ Panel {
   }
 
   function applyDns() {
+    var checked = Model.validateDnsList(dnsText)
+    if (!checked.ok) {
+      vpn.reportError(checked.message)
+      setFocusSection("dns")
+      Qt.callLater(function() { if (dnsField) dnsField.forceActiveFocus() })
+      return
+    }
     vpn.setConfig("custom-dns", "on", { dns: dnsText })
+  }
+
+  function toggleCustomDns() {
+    var dns = Model.parseCustomDnsValue(vpn.configDisplayValue("custom-dns"))
+    if (dns.enabled) {
+      vpn.setConfig("custom-dns", "off")
+      return
+    }
+    var checked = Model.validateDnsList(dnsText)
+    if (checked.ok) {
+      applyDns()
+      return
+    }
+    setFocusSection("dns")
+    Qt.callLater(function() { if (dnsField) dnsField.forceActiveFocus() })
   }
 
   function setFocusSection(name) {
@@ -234,6 +287,7 @@ Panel {
   function scrollCursorIntoView() {
     if (focusSection === "header") scrollItemIntoView(header)
     else if (focusSection === "refresh") scrollItemIntoView(refreshRow)
+    else if (focusSection === "retry-locations") scrollItemIntoView(retryLocationsRow)
     else if (focusSection === "copy") scrollItemIntoView(copyRow)
     else if (focusSection === "terminal") scrollItemIntoView(terminalRow)
     else if (focusSection === "mode") scrollItemIntoView(modeDropdown)
@@ -241,7 +295,19 @@ Panel {
     else if (focusSection === "city") scrollItemIntoView(cityDropdown)
     else if (focusSection === "server") scrollItemIntoView(serverField)
     else if (focusSection === "dns") scrollItemIntoView(dnsField)
-    else if (configColumn) scrollItemIntoView(configColumn)
+    else if (focusSection === "config:netshield") scrollItemIntoView(netshieldDropdown)
+    else if (focusSection === "config:kill-switch") scrollItemIntoView(killSwitchDropdown)
+    else if (focusSection === "config:custom-dns") scrollItemIntoView(dnsField.visible ? dnsField : configColumn)
+    else if (configColumn) {
+      for (var i = 0; i < configColumn.children.length; i++) {
+        var child = configColumn.children[i]
+        if (child && child.objectName === focusSection) {
+          scrollItemIntoView(child)
+          return
+        }
+      }
+      scrollItemIntoView(configColumn)
+    }
   }
 
   function choiceOptions(def) {
@@ -249,7 +315,12 @@ Panel {
     if (!def || !def.values) return options
     for (var i = 0; i < def.values.length; i++) {
       var value = def.values[i]
-      options.push({ value: value, label: def.valueLabels && def.valueLabels[value] ? def.valueLabels[value] : value })
+      var option = {
+        value: value,
+        label: def.valueLabels && def.valueLabels[value] ? def.valueLabels[value] : value
+      }
+      if (def.valueDescriptions && def.valueDescriptions[value]) option.description = def.valueDescriptions[value]
+      options.push(option)
     }
     return options
   }
@@ -301,8 +372,8 @@ Panel {
     function hide(): void { root.close() }
     function toggle(): void { root.toggle() }
     function refresh(): string { root.refreshAll(); return "ok" }
-    function connectVpn(): string { root.tryToggle(); return "ok" }
-    function disconnectVpn(): string { vpn.disconnect(); return "ok" }
+    function connectVpn(): string { root.connectNow(); return "ok" }
+    function disconnectVpn(): string { root.disconnectNow(); return "ok" }
     function status(): string { return Model.tooltipText(root.view) }
   }
 
@@ -412,7 +483,7 @@ Panel {
               trailingControl: Component {
                 ToggleSwitch {
                   id: powerSwitch
-                  visible: vpn.installed && (Model.canToggleConnection(root.view.state) || root.view.state === Model.STATES.connecting || root.view.state === Model.STATES.disconnecting)
+                  visible: vpn.installed && (Model.canWrite(root.view.state) || root.view.state === Model.STATES.connecting || root.view.state === Model.STATES.disconnecting)
                   checked: root.view.state === Model.STATES.connected || root.view.state === Model.STATES.connecting
                   busy: vpn.actionBusy
                   hasCursor: header.ringVisible
@@ -456,10 +527,20 @@ Panel {
 
             Text {
               width: parent.width
-              text: Model.degradedRemediation(root.view.state)
+              text: Model.degradedRemediation(root.view)
               color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.bodySmall
+              wrapMode: Text.WordWrap
+            }
+
+            Text {
+              visible: Model.diagnosticDetail(root.view) !== ""
+              width: parent.width
+              text: Model.diagnosticDetail(root.view)
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
               wrapMode: Text.WordWrap
             }
           }
@@ -485,7 +566,7 @@ Panel {
           }
 
           Column {
-            visible: root.showHealthy && vpn.installed
+            visible: vpn.installed && (root.showHealthy || root.view.state === Model.STATES.stale)
             width: parent.width
             spacing: Style.spacing.labelGap
 
@@ -525,8 +606,18 @@ Panel {
             onActivated: root.refreshAll()
           }
 
+          ActionRow {
+            id: retryLocationsRow
+            visible: (vpn.countriesError !== "" || vpn.citiesError !== "") && vpn.installed
+            width: parent.width
+            title: "Retry locations"
+            subtitle: vpn.countriesError !== "" ? vpn.countriesError : vpn.citiesError
+            sectionName: "retry-locations"
+            onActivated: root.retryLocations()
+          }
+
           Column {
-            visible: root.showHealthy && vpn.installed
+            visible: root.showWrites && vpn.installed
             width: parent.width
             spacing: Style.space(10)
 
@@ -538,50 +629,105 @@ Panel {
               fontFamily: root.fontFamily
             }
 
-            SearchableDropdown {
-              id: modeDropdown
-              width: parent.width
-              label: "Mode"
-              value: root.selectedMode
-              options: root.modeOptions
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-              hasCursor: root.cursorActive && root.focusSection === "mode"
-              placeholderText: "Search modes"
-              onHovered: function(on) { if (on) root.setFocusSection("mode") }
-              onChanged: function(value) { root.selectedMode = value }
+            SettingHelp {
+              text: Model.CONNECT_SECTION_HELP
             }
 
-            SearchableDropdown {
-              id: countryDropdown
+            Column {
+              width: parent.width
+              spacing: Style.spacing.labelGap
+
+              Text {
+                text: "Mode"
+                color: root.dim
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+              }
+
+              SettingHelp {
+                text: Model.modeHelp(root.selectedMode)
+              }
+
+              SearchableDropdown {
+                id: modeDropdown
+                width: parent.width
+                showLabel: false
+                value: root.selectedMode
+                options: root.modeOptions
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+                hasCursor: root.cursorActive && root.focusSection === "mode"
+                placeholderText: "Search modes"
+                onHovered: function(on) { if (on) root.setFocusSection("mode") }
+                onChanged: function(value) { root.selectedMode = value }
+              }
+            }
+
+            Column {
               visible: root.needsCountry
               width: parent.width
-              label: "Country"
-              value: root.selectedCountry
-              options: root.countryOptions
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-              hasCursor: root.cursorActive && root.focusSection === "country"
-              placeholderText: "Search countries"
-              emptyText: vpn.countriesError !== "" ? vpn.countriesError : "No countries found"
-              onHovered: function(on) { if (on) root.setFocusSection("country") }
-              onChanged: function(value) { root.selectedCountry = value }
+              spacing: Style.spacing.labelGap
+
+              Text {
+                text: "Country"
+                color: root.dim
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+              }
+
+              SettingHelp {
+                text: Model.connectFieldHelp("country")
+              }
+
+              SearchableDropdown {
+                id: countryDropdown
+                width: parent.width
+                showLabel: false
+                value: root.selectedCountry
+                options: root.countryOptions
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+                hasCursor: root.cursorActive && root.focusSection === "country"
+                placeholderText: "Search countries"
+                emptyText: root.countryEmptyText()
+                onHovered: function(on) { if (on) root.setFocusSection("country") }
+                onChanged: function(value) { root.selectedCountry = value }
+              }
             }
 
-            SearchableDropdown {
-              id: cityDropdown
+            Column {
               visible: root.needsCity
               width: parent.width
-              label: "City"
-              value: root.selectedCity
-              options: root.cityOptions
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-              hasCursor: root.cursorActive && root.focusSection === "city"
-              placeholderText: "Search cities"
-              emptyText: vpn.citiesError !== "" ? vpn.citiesError : "No cities found"
-              onHovered: function(on) { if (on) root.setFocusSection("city") }
-              onChanged: function(value) { root.selectedCity = value }
+              spacing: Style.spacing.labelGap
+
+              Text {
+                text: "City"
+                color: root.dim
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+              }
+
+              SettingHelp {
+                text: Model.connectFieldHelp("city")
+              }
+
+              SearchableDropdown {
+                id: cityDropdown
+                width: parent.width
+                showLabel: false
+                value: root.selectedCity
+                options: root.cityOptions
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+                hasCursor: root.cursorActive && root.focusSection === "city"
+                placeholderText: "Search cities"
+                emptyText: root.cityEmptyText()
+                onHovered: function(on) { if (on) root.setFocusSection("city") }
+                onChanged: function(value) { root.selectedCity = value }
+              }
             }
 
             Column {
@@ -597,6 +743,10 @@ Panel {
                 font.bold: true
               }
 
+              SettingHelp {
+                text: Model.connectFieldHelp("server")
+              }
+
               TextField {
                 id: serverField
                 width: parent.width
@@ -608,20 +758,11 @@ Panel {
                 onTextChanged: root.serverIdText = text
                 onAccepted: root.tryToggle()
               }
-
-              Text {
-                width: parent.width
-                text: "The CLI has no machine-readable server list. Proton publishes IDs at " + Model.SERVER_LIST_URL + "."
-                color: root.dim
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-                wrapMode: Text.WordWrap
-              }
             }
           }
 
           Column {
-            visible: root.showHealthy && vpn.installed
+            visible: root.showWrites && vpn.installed
             width: parent.width
             spacing: Style.space(10)
 
@@ -631,6 +772,10 @@ Panel {
               text: "SETTINGS"
               foreground: root.foreground
               fontFamily: root.fontFamily
+            }
+
+            SettingHelp {
+              text: Model.SETTINGS_SECTION_HELP
             }
 
             Text {
@@ -648,53 +793,87 @@ Panel {
               width: parent.width
               spacing: Style.space(10)
 
-              SearchableDropdown {
-                id: netshieldDropdown
+              Column {
                 width: parent.width
-                label: "NetShield"
-                value: vpn.configDisplayValue("netshield")
-                options: root.choiceOptions(root.netshieldSetting)
-                foreground: root.foreground
-                fontFamily: root.fontFamily
-                hasCursor: root.cursorActive && root.focusSection === "config:netshield"
-                placeholderText: "NetShield"
-                emptyText: vpn.configUpgrade.netshield ? "Upgrade to enable" : "No values"
-                onHovered: function(on) { if (on) root.setFocusSection("config:netshield") }
-                onChanged: function(value) { if (value !== vpn.configDisplayValue("netshield")) vpn.setConfig("netshield", value) }
+                spacing: Style.spacing.labelGap
+
+                Text {
+                  text: "NetShield"
+                  color: root.dim
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                  font.bold: true
+                }
+
+                SettingHelp {
+                  text: Model.settingCaption("netshield")
+                }
+
+                SearchableDropdown {
+                  id: netshieldDropdown
+                  width: parent.width
+                  showLabel: false
+                  value: vpn.configDisplayValue("netshield")
+                  options: root.choiceOptions(root.netshieldSetting)
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                  hasCursor: root.cursorActive && root.focusSection === "config:netshield"
+                  placeholderText: "NetShield"
+                  emptyText: vpn.configUpgrade.netshield ? "Upgrade to enable" : "No values"
+                  onHovered: function(on) { if (on) root.setFocusSection("config:netshield") }
+                  onChanged: function(value) { if (value !== vpn.configDisplayValue("netshield")) vpn.setConfig("netshield", value) }
+                }
+
+                Text {
+                  visible: vpn.configUpgrade.netshield === true
+                  width: parent.width
+                  text: "Upgrade to enable. Changing it still sends the CLI command so Proton can report the restriction."
+                  color: root.dim
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                  wrapMode: Text.WordWrap
+                }
               }
 
-              Text {
-                visible: vpn.configUpgrade.netshield === true
+              Column {
                 width: parent.width
-                text: "Upgrade to enable. Changing it still sends the CLI command so Proton can report the restriction."
-                color: root.dim
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-                wrapMode: Text.WordWrap
-              }
+                spacing: Style.spacing.labelGap
 
-              SearchableDropdown {
-                id: killSwitchDropdown
-                width: parent.width
-                label: "Kill switch"
-                value: vpn.configDisplayValue("kill-switch")
-                options: root.choiceOptions(root.killSwitchSetting)
-                foreground: root.foreground
-                fontFamily: root.fontFamily
-                hasCursor: root.cursorActive && root.focusSection === "config:kill-switch"
-                placeholderText: "Kill switch"
-                onHovered: function(on) { if (on) root.setFocusSection("config:kill-switch") }
-                onChanged: function(value) { if (value !== vpn.configDisplayValue("kill-switch")) vpn.setConfig("kill-switch", value) }
-              }
+                Text {
+                  text: "Kill switch"
+                  color: root.dim
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                  font.bold: true
+                }
 
-              Text {
-                visible: root.view.state === Model.STATES.connected
-                width: parent.width
-                text: "Disconnect before changing Kill Switch."
-                color: root.dim
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-                wrapMode: Text.WordWrap
+                SettingHelp {
+                  text: Model.settingCaption("kill-switch")
+                }
+
+                SearchableDropdown {
+                  id: killSwitchDropdown
+                  width: parent.width
+                  showLabel: false
+                  value: vpn.configDisplayValue("kill-switch")
+                  options: root.choiceOptions(root.killSwitchSetting)
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                  hasCursor: root.cursorActive && root.focusSection === "config:kill-switch"
+                  placeholderText: "Kill switch"
+                  onHovered: function(on) { if (on) root.setFocusSection("config:kill-switch") }
+                  onChanged: function(value) { if (value !== vpn.configDisplayValue("kill-switch")) vpn.setConfig("kill-switch", value) }
+                }
+
+                Text {
+                  visible: Model.isVpnActive(root.view)
+                  width: parent.width
+                  text: "Disconnect before changing Kill Switch."
+                  color: root.dim
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                  wrapMode: Text.WordWrap
+                }
               }
 
               Repeater {
@@ -713,22 +892,18 @@ Panel {
                 Toggle {
                   width: parent.width
                   label: "Custom DNS"
-                  description: vpn.configUpgrade["custom-dns"] ? "Upgrade to enable." : "Passed as one --dns argument after local validation. Requires a new VPN connection."
+                  description: Model.settingDescription("custom-dns", { upgrade: vpn.configUpgrade["custom-dns"] === true })
                   checked: Model.parseCustomDnsValue(vpn.configDisplayValue("custom-dns")).enabled
                   hasCursor: root.cursorActive && root.focusSection === "config:custom-dns"
                   foreground: root.foreground
                   fontFamily: root.fontFamily
                   onHovered: function(on) { if (on) root.setFocusSection("config:custom-dns") }
-                  onClicked: {
-                    var enabled = Model.parseCustomDnsValue(vpn.configDisplayValue("custom-dns")).enabled
-                    if (enabled) vpn.setConfig("custom-dns", "off")
-                    else root.applyDns()
-                  }
+                  onClicked: root.toggleCustomDns()
                 }
 
                 TextField {
                   id: dnsField
-                  visible: Model.parseCustomDnsValue(vpn.configDisplayValue("custom-dns")).enabled || root.focusSection === "dns"
+                  visible: root.dnsEnabled() || root.focusSection === "dns" || root.focusSection === "config:custom-dns"
                   width: parent.width
                   foreground: root.foreground
                   placeholderText: "1.1.1.1, 8.8.8.8"
@@ -826,15 +1001,25 @@ Panel {
     }
   }
 
+  component SettingHelp: Text {
+    width: parent.width
+    visible: text !== ""
+    color: root.dim
+    font.family: root.fontFamily
+    font.pixelSize: Style.font.caption
+    wrapMode: Text.WordWrap
+  }
+
   component ToggleSettingRow: Toggle {
     property var setting: ({})
     readonly property string key: String(setting.key || "")
     readonly property string currentValue: vpn.configDisplayValue(key)
     readonly property bool upgrade: vpn.configUpgrade && vpn.configUpgrade[key] === true
+    objectName: "config:" + key
 
     width: parent.width
     label: setting.label || ""
-    description: upgrade ? "Upgrade to enable. The CLI will report the plan requirement if changed." : (setting.restart ? "Requires a new VPN connection to apply." : "")
+    description: Model.settingDescription(key, { upgrade: upgrade })
     checked: String(currentValue) === "on"
     hasCursor: root.cursorActive && root.focusSection === "config:" + key
     foreground: root.foreground
