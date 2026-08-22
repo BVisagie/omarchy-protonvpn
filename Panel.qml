@@ -634,10 +634,6 @@ Panel {
               fontFamily: root.fontFamily
             }
 
-            SettingHelp {
-              text: Model.CONNECT_SECTION_HELP
-            }
-
             Column {
               width: parent.width
               spacing: Style.spacing.labelGap
