@@ -384,9 +384,20 @@ Item {
     enqueue({ type: "discovery", kind: "countries", command: ["protonvpn", "countries", "list"], timeout: 30000 })
   }
 
+  function clearCities() {
+    cities = []
+    citiesCountry = ""
+    citiesError = ""
+    citiesLoading = false
+  }
+
   function refreshCities(country, force) {
     var code = String(country || "").trim()
-    if (!installed || code === "") return
+    if (code === "") {
+      clearCities()
+      return
+    }
+    if (!installed) return
     if (force !== true && citiesCountry === code && cities.length > 0 && citiesError === "" && !citiesLoading) return
     citiesCountry = code
     cities = []

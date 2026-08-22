@@ -64,4 +64,28 @@ describe("QML scheduler contract", () => {
     assert.match(panel, /id: customDnsToggle/)
     assert.match(panel, /height: Style\.space\(6\)/)
   })
+
+  it("cascade-resets CONNECT fields without touching SETTINGS", () => {
+    assert.match(panel, /Model\.connectDraftForModeChange/)
+    assert.match(panel, /Model\.connectDraftForCountryChange/)
+    assert.match(panel, /Model\.connectFieldTriggerLabel\("country"/)
+    assert.match(panel, /Model\.connectFieldTriggerLabel\("city"/)
+    assert.match(panel, /cityDropdown\.value = selectedCity/)
+    assert.match(panel, /countryDropdown\.value = selectedCountry/)
+    assert.match(panel, /enabled: root\.selectedCountry !== ""/)
+    assert.match(panel, /focusSection === "city" && selectedCountry !== ""/)
+    assert.match(panel, /vpn\.clearCities\(\)/)
+    assert.match(service, /function clearCities\(\)/)
+    const modeHandler = panel.match(/onSelectedModeChanged: \{[\s\S]*?\n  \}/)
+    assert.ok(modeHandler, "mode-change handler must exist")
+    assert.doesNotMatch(modeHandler[0], /setConfig|dnsText|dnsEditorOpen|configDisplayValue/)
+  })
+
+  it("does not reveal the DNS field merely by hovering Custom DNS", () => {
+    assert.match(panel, /property bool dnsEditorOpen: false/)
+    assert.match(panel, /function showDnsField\(\)/)
+    assert.match(panel, /height: root\.showDnsField\(\) \? dnsField\.implicitHeight \+ Style\.space\(6\) : 0/)
+    assert.match(panel, /visible: root\.showDnsField\(\)/)
+    assert.doesNotMatch(panel, /dnsEnabled\(\) \|\| root\.focusSection === "dns"/)
+  })
 })

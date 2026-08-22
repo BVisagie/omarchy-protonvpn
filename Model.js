@@ -821,6 +821,39 @@ function modeNeedsServer(mode) {
   return mode === "server"
 }
 
+function connectDraft(draft) {
+  var current = draft || {}
+  return {
+    country: String(current.country || "").trim(),
+    city: String(current.city || "").trim(),
+    serverId: String(current.serverId || "").trim()
+  }
+}
+
+function connectDraftForModeChange(prevMode, nextMode, draft) {
+  var prev = String(prevMode || "")
+  var next = String(nextMode || "fastest")
+  var current = connectDraft(draft)
+  if (!modeNeedsCountry(prev) || !modeNeedsCountry(next)) current.country = ""
+  current.city = ""
+  if (prev !== "server" || next !== "server") current.serverId = ""
+  return current
+}
+
+function connectDraftForCountryChange(draft) {
+  var current = connectDraft(draft)
+  current.city = ""
+  return current
+}
+
+function connectFieldTriggerLabel(field, context) {
+  var ctx = context || {}
+  var country = String(ctx.country || "").trim()
+  if (field === "country") return modeRequiresCountry(ctx.mode) ? "Choose a country" : "Any country"
+  if (field === "city") return country === "" ? "Choose a country first" : "Choose a city"
+  return ""
+}
+
 function buildConnectCommand(options) {
   var opts = options || {}
   var mode = String(opts.mode || "fastest")
@@ -1145,6 +1178,9 @@ if (typeof module !== "undefined") {
     modeRequiresCountry: modeRequiresCountry,
     modeNeedsCity: modeNeedsCity,
     modeNeedsServer: modeNeedsServer,
+    connectDraftForModeChange: connectDraftForModeChange,
+    connectDraftForCountryChange: connectDraftForCountryChange,
+    connectFieldTriggerLabel: connectFieldTriggerLabel,
     buildConnectCommand: buildConnectCommand,
     buildConfigSetCommand: buildConfigSetCommand,
     displayLoad: displayLoad,
