@@ -108,9 +108,10 @@ describe("probe classification", () => {
     assert.equal(view.status.server, "CH#42")
   })
 
-  it("does not invent a disconnected state after a parse failure", () => {
+  it("marks a parse failure stale when a valid status exists", () => {
     const view = Model.classifyProbe(probe({ exitCode: 0, stdout: fixture("status-partial.txt") }), connected)
-    assert.equal(view.state, "error")
+    assert.equal(view.state, "stale")
+    assert.equal(view.status.server, "CH#42")
     assert.notEqual(view.state, "disconnected")
   })
 
@@ -118,6 +119,36 @@ describe("probe classification", () => {
     const view = Model.classifyProbe(probe({ exitCode: 0, stdout: "" }))
     assert.equal(view.state, "error")
     assert.notEqual(view.state, "disconnected")
+  })
+
+  it("keeps a generic probe failure as stale when a prior status exists", () => {
+    const view = Model.classifyProbe(probe({ stderr: "Error: boom", exitCode: 1 }), connected)
+    assert.equal(view.state, "stale")
+    assert.equal(view.status.server, "CH#42")
+    assert.equal(view.connectedSnapshot, true)
+    assert.equal(Model.canWrite(view.state), false)
+  })
+
+  it("classifies keyring failures without treating them as signed out", () => {
+    const view = Model.classifyProbe(probe({ stderr: fixture("keyring-error.txt") }))
+    assert.equal(view.state, "error")
+    assert.equal(view.kind, "keyring")
+    assert.notEqual(view.state, "signedOut")
+    assert.match(view.message, /keyring/i)
+  })
+
+  it("classifies Proton connection timeouts separately from plugin watchdog timeouts", () => {
+    const result = Model.classifyCommandResult(probe({ stderr: fixture("connect-timeout.txt") }))
+    assert.equal(result.ok, false)
+    assert.equal(result.kind, "connectionTimeout")
+    assert.notEqual(result.stateHint, "signedOut")
+    assert.match(result.message, /handshake/i)
+  })
+
+  it("classifies daemon failures separately from authentication", () => {
+    const view = Model.classifyProbe(probe({ stderr: fixture("daemon-error.txt") }))
+    assert.equal(view.kind, "daemon")
+    assert.notEqual(view.state, "signedOut")
   })
 })
 
@@ -127,7 +158,19 @@ describe("safety gate", () => {
     assert.equal(Model.canToggleConnection("disconnected"), true)
     ;["checking", "cliMissing", "guiConflict", "signedOut", "connecting", "disconnecting", "error", "stale"].forEach((state) => {
       assert.equal(Model.canToggleConnection(state), false, state)
+      assert.equal(Model.canWrite(state), false, state)
     })
+  })
+
+  it("blocks kill-switch changes when a stale snapshot is still connected", () => {
+    const prior = Model.classifyProbe(probe({ exitCode: 0, stdout: fixture("status-connected.txt") }))
+    const stale = Model.classifyProbe(probe({ stderr: fixture("network-error.txt") }), prior)
+    assert.equal(stale.state, "stale")
+    assert.equal(Model.isVpnActive(stale), true)
+    const blocked = Model.buildConfigSetCommand("kill-switch", "standard", { connected: Model.isVpnActive(stale) })
+    assert.equal(blocked.ok, false)
+    assert.equal(blocked.kind, "prerequisite")
+    assert.match(Model.writeBlockedReason("stale"), /outdated/i)
   })
 })
 
@@ -149,6 +192,18 @@ describe("location tables", () => {
     assert.ok(ny)
     assert.ok(slc)
     assert.equal(atl.features, "P2P, Tor")
+  })
+
+  it("treats country-list authentication as signed out, not empty", () => {
+    const result = Model.classifyCommandResult(probe({ stderr: fixture("signed-out-countries.txt") }))
+    assert.equal(result.stateHint, "signedOut")
+    assert.notEqual(result.kind, "empty")
+  })
+
+  it("parses an empty country table without inventing rows", () => {
+    const parsed = Model.parseCountries(fixture("countries-empty.txt"))
+    assert.equal(parsed.ok, true)
+    assert.equal(parsed.countries.length, 0)
   })
 })
 
@@ -176,6 +231,12 @@ describe("configuration parsing", () => {
     const dns = Model.parseCustomDnsValue(parsed.settings["custom-dns"])
     assert.equal(dns.enabled, true)
     assert.deepEqual(dns.ips, ["1.1.1.1", "8.8.8.8"])
+  })
+
+  it("rejects incompatible configuration tables", () => {
+    const parsed = Model.parseConfigList(fixture("config-incompatible.txt"))
+    assert.equal(parsed.ok, false)
+    assert.match(parsed.message, /incompatible/i)
   })
 })
 
@@ -216,6 +277,12 @@ describe("config writes", () => {
     const disabled = Model.buildConfigSetCommand("custom-dns", "off")
     assert.deepEqual(disabled.command, ["protonvpn", "config", "set", "custom-dns", "off"])
     assert.equal(Model.buildConfigSetCommand("custom-dns", "on", { dns: "not-an-ip" }).ok, false)
+    assert.equal(Model.validateDnsList("").ok, false)
+    assert.equal(Model.validateDnsList("   ").ok, false)
+    assert.equal(Model.validateDnsList("1.1.1.1, 999.1.1.1").ok, false)
+    const ipv6 = Model.validateDnsList("2001:4860:4860::8888")
+    assert.equal(ipv6.ok, true)
+    assert.deepEqual(ipv6.ips, ["2001:4860:4860::8888"])
   })
 
   it("encodes kill-switch disconnect prerequisite and restart notices", () => {
@@ -256,5 +323,54 @@ describe("display helpers", () => {
     assert.equal(Model.copyCommandFor("signedOut"), Model.SIGNIN_COMMAND)
     assert.equal(Model.clampRefreshIntervalSec(3), 10)
     assert.equal(Model.clampRefreshIntervalSec(9000), 3600)
+    assert.equal(Model.CLI_PACKAGE, fixture("cli-version.txt").trim())
+    assert.match(Model.degradedRemediation({ state: "error", kind: "keyring" }), /keyring/i)
+    assert.match(Model.diagnosticDetail({ detail: "Secret Service not available" }), /Secret Service/)
+  })
+})
+
+describe("Proton-sourced help copy", () => {
+  it("gives every connection mode a help caption and option description", () => {
+    Model.CONNECTION_MODES.forEach((mode) => {
+      assert.ok(String(mode.help || "").trim() !== "", mode.value)
+      assert.ok(String(mode.description || "").trim() !== "", mode.value)
+      assert.equal(Model.modeHelp(mode.value), mode.help)
+    })
+  })
+
+  it("gives country, city, and server fields help captions", () => {
+    Model.CONNECT_FIELDS.forEach((field) => {
+      assert.ok(String(field.help || "").trim() !== "", field.key)
+      assert.equal(Model.connectFieldHelp(field.key), field.help)
+    })
+  })
+
+  it("gives every setting a help caption", () => {
+    Model.CONFIG_SETTINGS.forEach((setting) => {
+      assert.ok(String(setting.help || "").trim() !== "", setting.key)
+      assert.match(Model.settingCaption(setting.key), /\S/)
+    })
+  })
+
+  it("describes NetShield and Kill Switch values", () => {
+    const netshield = Model.settingDef("netshield")
+    const killSwitch = Model.settingDef("kill-switch")
+    netshield.values.forEach((value) => {
+      assert.ok(String(netshield.valueDescriptions[value] || "").trim() !== "", value)
+    })
+    killSwitch.values.forEach((value) => {
+      assert.ok(String(killSwitch.valueDescriptions[value] || "").trim() !== "", value)
+    })
+  })
+
+  it("keeps Proton default hints only where Proton is explicit", () => {
+    assert.match(Model.settingCaption("moderate-nat"), /strict NAT/i)
+    assert.match(Model.settingCaption("ipv6"), /Linux apps turn IPv6 on by default/i)
+    assert.equal(Model.settingDef("vpn-accelerator").defaultHint, undefined)
+    assert.equal(Model.settingDef("netshield").defaultHint, undefined)
+    assert.match(Model.settingDescription("custom-dns"), /new VPN connection/i)
+    assert.match(Model.settingDescription("port-forwarding", { upgrade: true }), /Upgrade to enable/)
+    assert.match(Model.CONNECT_SECTION_HELP, /fastest/i)
+    assert.match(Model.SETTINGS_SECTION_HELP, /IPv6 and custom DNS/i)
   })
 })

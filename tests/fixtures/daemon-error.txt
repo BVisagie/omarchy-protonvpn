@@ -1,0 +1,1 @@
+Error: proton-vpn-daemon did not respond. org.proton.vpn is unavailable.

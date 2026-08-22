@@ -20,15 +20,76 @@ var STATES = {
 
 var HEALTHY_TOGGLE_STATES = [STATES.connected, STATES.disconnected]
 
+var CONNECT_SECTION_HELP = "Fastest connects to the fastest VPN server available on your plan."
+var SETTINGS_SECTION_HELP = "Most CLI settings apply without reconnecting. IPv6 and custom DNS need a new VPN connection."
+
 var CONNECTION_MODES = [
-  { value: "fastest", label: "Fastest server" },
-  { value: "country", label: "Country" },
-  { value: "city", label: "City" },
-  { value: "server", label: "Server ID" },
-  { value: "securecore", label: "Secure Core" },
-  { value: "p2p", label: "P2P" },
-  { value: "tor", label: "Tor" },
-  { value: "random", label: "Random" }
+  {
+    value: "fastest",
+    label: "Fastest server",
+    help: "Connects to the fastest VPN server available on your plan.",
+    description: "Fastest server on your plan"
+  },
+  {
+    value: "country",
+    label: "Country",
+    help: "Connects to a server in the selected country, using a country code such as US or the full name.",
+    description: "A country code or full name"
+  },
+  {
+    value: "city",
+    label: "City",
+    help: "Connects to a server in the selected city after you choose the country.",
+    description: "A city in the selected country"
+  },
+  {
+    value: "server",
+    label: "Server ID",
+    help: "Connects to a specific server such as CH#242. Proton lists IDs in the account WireGuard server list.",
+    description: "A specific server such as CH#242"
+  },
+  {
+    value: "securecore",
+    label: "Secure Core",
+    help: "Routes traffic through extra Proton-owned Secure Core servers before the exit country, which makes it harder to trace the connection back to you. Available on paid plans.",
+    description: "Extra Proton-owned hop before the exit"
+  },
+  {
+    value: "p2p",
+    label: "P2P",
+    help: "Connects to a peer-to-peer server. Proton uses these servers for file sharing, and port forwarding requires a P2P server.",
+    description: "Peer-to-peer servers"
+  },
+  {
+    value: "tor",
+    label: "Tor",
+    help: "Connects to a Tor-over-VPN server so traffic enters the Tor network, including .onion sites. Proton recommends this only when you need that extra anonymity. NetShield does not work on Tor servers.",
+    description: "Tor over VPN, including .onion sites"
+  },
+  {
+    value: "random",
+    label: "Random",
+    help: "Asks the CLI to connect to a random Proton VPN server.",
+    description: "A random Proton VPN server"
+  }
+]
+
+var CONNECT_FIELDS = [
+  {
+    key: "country",
+    label: "Country",
+    help: "Use a country code such as US, or the full country name."
+  },
+  {
+    key: "city",
+    label: "City",
+    help: "Choose a city in that country. Multi-word names such as New York are supported."
+  },
+  {
+    key: "server",
+    label: "Server ID",
+    help: "Enter a server ID such as CH#242. Proton publishes IDs in the account WireGuard server list."
+  }
 ]
 
 var CONFIG_SETTINGS = [
@@ -42,6 +103,12 @@ var CONFIG_SETTINGS = [
       "malware-only": "Malware only",
       "malware-ads-trackers": "Malware, ads, and trackers"
     },
+    valueDescriptions: {
+      off: "No DNS filtering.",
+      "malware-only": "Blocks domains known to host malware, spyware, or other malicious software.",
+      "malware-ads-trackers": "Blocks ads, trackers, and malware. Proton describes this as the default on several apps, not specifically for the Linux CLI."
+    },
+    help: "Proton's DNS filtering while you are connected. It does not work with Tor over VPN or custom DNS, because those send DNS queries somewhere Proton cannot filter.",
     free: false,
     restart: false
   },
@@ -51,6 +118,11 @@ var CONFIG_SETTINGS = [
     type: "choice",
     values: ["off", "standard"],
     valueLabels: { off: "Off", standard: "Standard" },
+    valueDescriptions: {
+      off: "Internet stays available if the VPN drops.",
+      standard: "Blocks all internet traffic if the VPN drops accidentally. A deliberate disconnect is not blocked."
+    },
+    help: "Standard kill switch blocks internet traffic if the VPN connection drops accidentally, so your IP address and DNS queries are not exposed. The Linux CLI does not offer Advanced kill switch.",
     free: true,
     restart: false,
     disconnectFirst: true
@@ -60,6 +132,7 @@ var CONFIG_SETTINGS = [
     label: "Port forwarding",
     type: "toggle",
     values: ["off", "on"],
+    help: "Opens a path for incoming connections through Proton's firewall. You must be connected to a P2P server. It cannot be used with Moderate NAT. Proton notes that opening a port carries a small risk.",
     free: false,
     restart: false
   },
@@ -68,6 +141,7 @@ var CONFIG_SETTINGS = [
     label: "Custom DNS",
     type: "dns",
     values: ["off", "on"],
+    help: "Sends DNS queries to third-party resolvers you choose instead of Proton's DNS. Cannot be used with NetShield, because NetShield filters DNS at Proton.",
     free: false,
     restart: true
   },
@@ -76,6 +150,7 @@ var CONFIG_SETTINGS = [
     label: "VPN Accelerator",
     type: "toggle",
     values: ["off", "on"],
+    help: "Uses Proton's VPN Accelerator technologies to improve connection stability and, in some cases, speed.",
     free: false,
     restart: false
   },
@@ -84,6 +159,8 @@ var CONFIG_SETTINGS = [
     label: "Moderate NAT",
     type: "toggle",
     values: ["off", "on"],
+    help: "Allows direct peer-to-peer connections for gaming and WebRTC. Proton says this slightly reduces privacy compared with strict NAT, and it cannot be used with port forwarding.",
+    defaultHint: "Proton recommends leaving this off (strict NAT) unless you need those connections.",
     free: false,
     restart: false
   },
@@ -92,6 +169,8 @@ var CONFIG_SETTINGS = [
     label: "IPv6",
     type: "toggle",
     values: ["off", "on"],
+    help: "Routes traffic inside the VPN tunnel over IPv6 when the server supports it.",
+    defaultHint: "Proton's Linux apps turn IPv6 on by default.",
     free: true,
     restart: true
   },
@@ -100,6 +179,7 @@ var CONFIG_SETTINGS = [
     label: "Anonymous crash reports",
     type: "toggle",
     values: ["off", "on"],
+    help: "Sends anonymous crash reports to Proton VPN to help them fix bugs and improve the software.",
     free: true,
     restart: false
   }
@@ -117,7 +197,8 @@ function defaultView() {
     detail: "",
     stale: false,
     status: emptyStatus(),
-    signedIn: false
+    signedIn: false,
+    connectedSnapshot: false
   }
 }
 
@@ -153,15 +234,18 @@ function hasAuthRequired(text) {
   return false
 }
 
-function isTransientFailure(kind) {
-  return kind === "timeout" || kind === "network"
-}
-
 function classifyFailureKind(text, timedOut) {
   if (timedOut === true) return "timeout"
   var value = String(text || "")
   if (hasGuiConflict(value)) return "gui"
+  if (/Keyring error|SecretService|Failed to create the collection|Secret Service not available|Remote peer disconnected/i.test(value)) {
+    return "keyring"
+  }
   if (hasAuthRequired(value)) return "auth"
+  if (/Timed out after \d+s waiting for event/i.test(value) || /Connect timeout/i.test(value)) {
+    return "connectionTimeout"
+  }
+  if (/proton-vpn-daemon|VPN daemon|daemon did not|org\.proton\.vpn/i.test(value)) return "daemon"
   if (/not available on the free plan/i.test(value) || /Upgrade to enable/i.test(value) || /Please upgrade to access/i.test(value)) {
     return "plan"
   }
@@ -294,24 +378,20 @@ function classifyProbe(result, prior) {
         detail: "",
         stale: false,
         status: parsed.status,
-        signedIn: previous.signedIn === true
+        signedIn: true,
+        connectedSnapshot: parsed.state === STATES.connected
       }
+    }
+    if (hasValidStatus(previous)) {
+      return staleView(previous, "parse", parsed.message || "Proton VPN status output is incompatible with this plugin.", combined)
     }
     return viewFor(STATES.error, "parse", parsed.message || "Proton VPN status output is incompatible with this plugin.", combined, previous, false)
   }
 
   var failureKind = classifyFailureKind(combined, timedOut)
   var message = failureMessage(failureKind, combined)
-  if (isTransientFailure(failureKind) && hasValidStatus(previous)) {
-    return {
-      state: STATES.stale,
-      kind: failureKind,
-      message: message,
-      detail: capOutput(combined),
-      stale: true,
-      status: retainStatus(previous),
-      signedIn: previous.signedIn === true
-    }
+  if (hasValidStatus(previous)) {
+    return staleView(previous, failureKind, message, combined)
   }
 
   return viewFor(STATES.error, failureKind, message, combined, previous, false)
@@ -319,6 +399,9 @@ function classifyProbe(result, prior) {
 
 function failureMessage(kind, combined) {
   if (kind === "timeout") return "Proton VPN did not respond in time."
+  if (kind === "connectionTimeout") return "Proton VPN timed out while connecting. The CLI reached a server but the handshake did not finish."
+  if (kind === "keyring") return "Proton VPN could not read saved credentials from the system keyring."
+  if (kind === "daemon") return "The Proton VPN daemon did not respond."
   if (kind === "network") return "Proton VPN could not reach the network."
   if (kind === "parse") return "Proton VPN status output is incompatible with this plugin."
   if (kind === "plan") return sanitizeMessage(combined, "This option is not available on the current plan.")
@@ -329,8 +412,30 @@ function failureMessage(kind, combined) {
   return sanitizeMessage(combined, "Proton VPN command failed.")
 }
 
+function snapshotConnected(previous) {
+  if (!previous) return false
+  if (previous.connectedSnapshot === true) return true
+  return previous.state === STATES.connected || previous.state === STATES.connecting
+}
+
+function staleView(previous, kind, message, combined) {
+  return {
+    state: STATES.stale,
+    kind: kind,
+    message: message,
+    detail: capOutput(combined),
+    stale: true,
+    status: retainStatus(previous),
+    signedIn: previous && previous.signedIn === true,
+    connectedSnapshot: snapshotConnected(previous)
+  }
+}
+
 function viewFor(state, kind, message, combined, previous, stale) {
   var keepStatus = state === STATES.stale || (stale === true && hasValidStatus(previous))
+  var connected = state === STATES.connected
+  if (state === STATES.stale) connected = snapshotConnected(previous)
+  else if (state === STATES.disconnected || state === STATES.signedOut || state === STATES.cliMissing) connected = false
   return {
     state: state,
     kind: kind,
@@ -338,7 +443,8 @@ function viewFor(state, kind, message, combined, previous, stale) {
     detail: capOutput(combined),
     stale: state === STATES.stale,
     status: keepStatus ? retainStatus(previous) : emptyStatus(),
-    signedIn: previous && previous.signedIn === true && state !== STATES.signedOut && state !== STATES.cliMissing
+    signedIn: (previous && previous.signedIn === true && state !== STATES.signedOut && state !== STATES.cliMissing) || state === STATES.connected || state === STATES.disconnected,
+    connectedSnapshot: connected
   }
 }
 
@@ -346,13 +452,31 @@ function classifyCommandResult(result, prior) {
   var previous = prior || defaultView()
   var combined = combineOutput(result && result.stdout, result && result.stderr)
   if (result && result.cliMissing === true) {
-    return viewFor(STATES.cliMissing, "cli", "Proton VPN CLI not installed.", combined, previous, false)
+    return {
+      ok: false,
+      kind: "cli",
+      message: "Proton VPN CLI not installed.",
+      detail: capOutput(combined),
+      stateHint: STATES.cliMissing
+    }
   }
   if (hasGuiConflict(combined)) {
-    return viewFor(STATES.guiConflict, "gui", "Close the Proton VPN desktop app to use the CLI.", combined, previous, false)
+    return {
+      ok: false,
+      kind: "gui",
+      message: "Close the Proton VPN desktop app to use the CLI.",
+      detail: capOutput(combined),
+      stateHint: STATES.guiConflict
+    }
   }
   if (hasAuthRequired(combined)) {
-    return viewFor(STATES.signedOut, "auth", "Sign in to Proton VPN from a terminal.", combined, previous, false)
+    return {
+      ok: false,
+      kind: "auth",
+      message: "Sign in to Proton VPN from a terminal.",
+      detail: capOutput(combined),
+      stateHint: STATES.signedOut
+    }
   }
   var timedOut = result && result.timedOut === true
   var exitCode = result && typeof result.exitCode === "number" ? result.exitCode : 1
@@ -376,6 +500,28 @@ function classifyCommandResult(result, prior) {
 
 function canToggleConnection(state) {
   return HEALTHY_TOGGLE_STATES.indexOf(String(state || "")) !== -1
+}
+
+function canWrite(state) {
+  return canToggleConnection(state)
+}
+
+function writeBlockedReason(state) {
+  if (canWrite(state)) return ""
+  if (state === STATES.checking) return "Wait for Proton VPN status before making changes."
+  if (state === STATES.stale) return "Refresh Proton VPN status before making changes. The last result may be outdated."
+  if (state === STATES.connecting || state === STATES.disconnecting) return "Wait for the current Proton VPN action to finish."
+  if (state === STATES.cliMissing) return "Install the Proton VPN CLI before making changes."
+  if (state === STATES.signedOut) return "Sign in to Proton VPN from a terminal before making changes."
+  if (state === STATES.guiConflict) return "Close the Proton VPN desktop app before making changes."
+  return "Proton VPN is not ready for changes."
+}
+
+function isVpnActive(view) {
+  if (!view) return false
+  if (view.state === STATES.connected || view.state === STATES.connecting) return true
+  if (view.connectedSnapshot === true && (view.state === STATES.stale || view.state === STATES.error)) return true
+  return false
 }
 
 function sliceTableColumn(line, start, end) {
@@ -495,6 +641,56 @@ function settingDef(key) {
     if (CONFIG_SETTINGS[i].key === key) return CONFIG_SETTINGS[i]
   }
   return null
+}
+
+function modeDef(value) {
+  var mode = String(value || "")
+  for (var i = 0; i < CONNECTION_MODES.length; i++) {
+    if (CONNECTION_MODES[i].value === mode) return CONNECTION_MODES[i]
+  }
+  return null
+}
+
+function connectFieldDef(key) {
+  var name = String(key || "")
+  for (var i = 0; i < CONNECT_FIELDS.length; i++) {
+    if (CONNECT_FIELDS[i].key === name) return CONNECT_FIELDS[i]
+  }
+  return null
+}
+
+function captionFor(item) {
+  if (!item) return ""
+  var help = String(item.help || "").trim()
+  var hint = String(item.defaultHint || "").trim()
+  if (help && hint) return help + " " + hint
+  return help || hint
+}
+
+function settingCaption(key) {
+  return captionFor(settingDef(key))
+}
+
+function modeHelp(value) {
+  return captionFor(modeDef(value))
+}
+
+function connectFieldHelp(key) {
+  return captionFor(connectFieldDef(key))
+}
+
+function settingDescription(key, options) {
+  var opts = options || {}
+  if (opts.upgrade === true) {
+    return "Upgrade to enable. Changing it still sends the CLI command so Proton can report the restriction."
+  }
+  var def = settingDef(key)
+  var text = captionFor(def)
+  if (opts.reconnect === true || (def && def.restart === true)) {
+    var extra = "Requires a new VPN connection to apply."
+    text = text !== "" ? text + " " + extra : extra
+  }
+  return text
 }
 
 function isIPv4(value) {
@@ -734,15 +930,38 @@ function degradedExplanation(state) {
     return "Proton VPN's desktop app is running. The official CLI refuses to operate until that app is closed."
   }
   if (state === STATES.error) {
-    return "Proton VPN could not complete the last command."
+    return "Proton VPN could not complete the last command. This can be a plugin, CLI, daemon, or keyring problem."
   }
   if (state === STATES.stale) {
-    return "The last status probe failed. The previous result is still shown and may be outdated."
+    return "The last status probe failed. The previous result is still shown and may be outdated. Connection and settings changes stay disabled until a fresh probe succeeds."
   }
   return ""
 }
 
-function degradedRemediation(state) {
+function kindRemediation(kind) {
+  if (kind === "keyring") {
+    return "Unlock or restart the system keyring (Secret Service), then refresh. This is a local session problem, not a widget parser bug."
+  }
+  if (kind === "daemon") {
+    return "Check that proton-vpn-daemon is running, then refresh. This is a Proton CLI/service problem."
+  }
+  if (kind === "connectionTimeout") {
+    return "The CLI reached Proton but the connection handshake timed out. Retry, or check the network. This is not a widget command-queue failure."
+  }
+  if (kind === "timeout") {
+    return "The Proton VPN command did not finish in time. Refresh after the CLI or daemon responds again."
+  }
+  if (kind === "network") {
+    return "Check local network connectivity, then refresh. A failed probe is not treated as disconnected."
+  }
+  return ""
+}
+
+function degradedRemediation(viewOrState) {
+  var view = typeof viewOrState === "string" ? { state: viewOrState } : (viewOrState || {})
+  var state = view.state
+  var fromKind = kindRemediation(view.kind)
+  if (fromKind !== "") return fromKind
   if (state === STATES.cliMissing) {
     return "Install with `" + INSTALL_COMMAND + "`. The package is in Arch extra; Proton's upstream Linux support list does not currently include Arch, so updates and support may be limited."
   }
@@ -753,9 +972,16 @@ function degradedRemediation(state) {
     return "Quit the Proton VPN desktop application, then refresh this panel."
   }
   if (state === STATES.stale || state === STATES.error) {
-    return "Use Refresh after the network, daemon, or CLI is available again."
+    return "Use Refresh after the network, daemon, or CLI is available again. Confirm `protonvpn status` in a terminal if the widget still fails."
   }
   return ""
+}
+
+function diagnosticDetail(view) {
+  if (!view) return ""
+  var detail = String(view.detail || "").trim()
+  if (detail === "") return ""
+  return capOutput(detail, 220)
 }
 
 function copyCommandFor(state) {
@@ -818,7 +1044,10 @@ if (typeof module !== "undefined") {
     SERVER_LIST_URL: SERVER_LIST_URL,
     STATES: STATES,
     CONNECTION_MODES: CONNECTION_MODES,
+    CONNECT_FIELDS: CONNECT_FIELDS,
     CONFIG_SETTINGS: CONFIG_SETTINGS,
+    CONNECT_SECTION_HELP: CONNECT_SECTION_HELP,
+    SETTINGS_SECTION_HELP: SETTINGS_SECTION_HELP,
     emptyStatus: emptyStatus,
     defaultView: defaultView,
     normalizeOutput: normalizeOutput,
@@ -831,11 +1060,20 @@ if (typeof module !== "undefined") {
     classifyProbe: classifyProbe,
     classifyCommandResult: classifyCommandResult,
     canToggleConnection: canToggleConnection,
+    canWrite: canWrite,
+    writeBlockedReason: writeBlockedReason,
+    isVpnActive: isVpnActive,
     parseCountries: parseCountries,
     parseCities: parseCities,
     parseConfigList: parseConfigList,
     parseCustomDnsValue: parseCustomDnsValue,
     settingDef: settingDef,
+    modeDef: modeDef,
+    connectFieldDef: connectFieldDef,
+    settingCaption: settingCaption,
+    modeHelp: modeHelp,
+    connectFieldHelp: connectFieldHelp,
+    settingDescription: settingDescription,
     isIPv4: isIPv4,
     isIPv6: isIPv6,
     validateDnsList: validateDnsList,
@@ -856,6 +1094,7 @@ if (typeof module !== "undefined") {
     lastUpdatedText: lastUpdatedText,
     degradedExplanation: degradedExplanation,
     degradedRemediation: degradedRemediation,
+    diagnosticDetail: diagnosticDetail,
     copyCommandFor: copyCommandFor,
     iconCrossed: iconCrossed,
     iconWarning: iconWarning,
