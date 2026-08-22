@@ -52,6 +52,7 @@ describe("QML scheduler contract", () => {
     assert.match(panel, /Model\.settingTooltip\(toggleSettingRow\.key\)/)
     assert.match(panel, /Model\.modeSummary\(root\.selectedMode\)/)
     assert.match(panel, /Model\.settingSummary\("netshield"\)/)
+    assert.doesNotMatch(panel, /Model\.CONNECT_SECTION_HELP/)
     assert.doesNotMatch(panel, /Model\.modeHelp\(/)
     assert.doesNotMatch(panel, /Model\.settingCaption\(/)
     assert.doesNotMatch(panel, /Model\.connectFieldHelp\(/)
