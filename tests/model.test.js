@@ -434,4 +434,23 @@ describe("Proton-sourced help copy", () => {
     assert.match(Model.settingDescription("port-forwarding", { upgrade: true }), /Upgrade to enable/)
     assert.match(Model.SETTINGS_SECTION_HELP, /IPv6 and custom DNS/i)
   })
+
+  it("title-cases setting names that were sentence-cased", () => {
+    assert.equal(Model.settingDef("kill-switch").label, "Kill Switch")
+    assert.equal(Model.settingDef("port-forwarding").label, "Port Forwarding")
+    assert.equal(Model.settingDef("anonymous-crash-reports").label, "Anonymous Crash Reports")
+  })
+})
+
+describe("last-updated copy", () => {
+  it("keeps the healthy last-updated value as a relative phrase only", () => {
+    const now = 1_700_000_000_000
+    const justNow = Model.lastUpdatedText({ state: "connected", lastUpdatedMs: now - 1000 }, now)
+    assert.equal(justNow, "just now")
+    assert.doesNotMatch(justNow, /^Updated /)
+    const seconds = Model.lastUpdatedText({ state: "disconnected", lastUpdatedMs: now - 13_000 }, now)
+    assert.equal(seconds, "13s ago")
+    const stale = Model.lastUpdatedText({ state: "stale", lastUpdatedMs: now - 60_000 }, now)
+    assert.equal(stale, "Last successful update 1m ago")
+  })
 })
