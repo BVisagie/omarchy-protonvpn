@@ -131,7 +131,7 @@ var CONFIG_SETTINGS = [
   },
   {
     key: "kill-switch",
-    label: "Kill switch",
+    label: "Kill Switch",
     type: "choice",
     values: ["off", "standard"],
     valueLabels: { off: "Off", standard: "Standard" },
@@ -147,7 +147,7 @@ var CONFIG_SETTINGS = [
   },
   {
     key: "port-forwarding",
-    label: "Port forwarding",
+    label: "Port Forwarding",
     type: "toggle",
     values: ["off", "on"],
     help: "Opens a path for incoming connections through Proton's firewall. You must be connected to a P2P server. It cannot be used with Moderate NAT. Proton notes that opening a port carries a small risk.",
@@ -203,7 +203,7 @@ var CONFIG_SETTINGS = [
   },
   {
     key: "anonymous-crash-reports",
-    label: "Anonymous crash reports",
+    label: "Anonymous Crash Reports",
     type: "toggle",
     values: ["off", "on"],
     help: "Sends anonymous crash reports to Proton VPN to help them fix bugs and improve the software.",
@@ -1005,7 +1005,7 @@ function lastUpdatedText(view, nowMs) {
   var when = relativeTime(view && view.lastUpdatedMs, nowMs)
   if (when === "") return ""
   if (view && view.state === STATES.stale) return "Last successful update " + when
-  return "Updated " + when
+  return when
 }
 
 function degradedExplanation(state) {
