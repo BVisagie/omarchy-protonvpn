@@ -66,6 +66,8 @@ Panel {
   readonly property var netshieldSetting: Model.settingDef("netshield")
   readonly property var killSwitchSetting: Model.settingDef("kill-switch")
   readonly property var toggleSettings: toggleSettingList()
+  readonly property var statusPairs: statusPairList()
+  readonly property var focusRows: visibleFocusRows()
   readonly property var focusOrder: visibleFocusOrder()
 
   function toggleSettingList() {
@@ -128,24 +130,47 @@ Panel {
     else vpn.clearCities()
   }
 
+  function statusPairList() {
+    var list = []
+    var status = view.status
+    if (!status) return list
+    if (view.state === Model.STATES.connected || (view.stale && status.protocol !== "")) {
+      list.push({ label: "Load", value: Model.displayLoad(status.load) })
+    }
+    var updated = Model.lastUpdatedText(view, Date.now() + nowTick)
+    if (updated !== "") list.push({ label: view.stale ? "Stale" : "Updated", value: updated })
+    return list
+  }
+
+  function visibleFocusRows() {
+    var rows = []
+    if (vpn.installed && (Model.canWrite(view.state) || view.state === Model.STATES.connecting || view.state === Model.STATES.disconnecting)) rows.push(["header"])
+    if (copyCommand !== "") rows.push(["copy"])
+    if (view.state === Model.STATES.signedOut) rows.push(["terminal"])
+    rows.push(["refresh"])
+    if (vpn.countriesError !== "" || vpn.citiesError !== "") rows.push(["retry-locations"])
+    if (showWrites && vpn.installed) {
+      var connect = ["mode"]
+      if (needsCountry) connect.push("country")
+      if (needsCity) connect.push("city")
+      if (needsServer) connect.push("server")
+      rows.push(connect)
+      if (vpn.configLoaded) {
+        rows.push(["config:netshield", "config:kill-switch"])
+        rows.push(["config:port-forwarding", "config:vpn-accelerator"])
+        rows.push(["config:moderate-nat", "config:ipv6"])
+        rows.push(["config:anonymous-crash-reports", "config:custom-dns"])
+        if (showDnsField()) rows.push(["dns"])
+      }
+    }
+    return rows
+  }
+
   function visibleFocusOrder() {
     var order = []
-    if (vpn.installed && (Model.canWrite(view.state) || view.state === Model.STATES.connecting || view.state === Model.STATES.disconnecting)) order.push("header")
-    if (copyCommand !== "") order.push("copy")
-    if (view.state === Model.STATES.signedOut) order.push("terminal")
-    order.push("refresh")
-    if (vpn.countriesError !== "" || vpn.citiesError !== "") order.push("retry-locations")
-    if (showWrites && vpn.installed) {
-      order.push("mode")
-      if (needsCountry) order.push("country")
-      if (needsCity) order.push("city")
-      if (needsServer) order.push("server")
-      if (vpn.configLoaded) {
-        for (var i = 0; i < configSettings.length; i++) {
-          order.push("config:" + configSettings[i].key)
-          if (configSettings[i].key === "custom-dns" && showDnsField()) order.push("dns")
-        }
-      }
+    var rows = focusRows
+    for (var i = 0; i < rows.length; i++) {
+      for (var j = 0; j < rows[i].length; j++) order.push(rows[i][j])
     }
     return order
   }
@@ -172,12 +197,28 @@ Panel {
     cursorActive = true
     keyboardNavigation = true
     ensureCursor()
-    if (dy === 0) return
-    var order = focusOrder
-    var index = order.indexOf(focusSection)
-    if (index < 0) index = 0
-    var next = Math.max(0, Math.min(order.length - 1, index + dy))
-    focusSection = order[next]
+    if (dx === 0 && dy === 0) return
+    var rows = focusRows
+    if (rows.length === 0) return
+    var row = 0
+    var col = 0
+    for (var i = 0; i < rows.length; i++) {
+      var found = rows[i].indexOf(focusSection)
+      if (found !== -1) {
+        row = i
+        col = found
+        break
+      }
+    }
+    if (dy !== 0) {
+      var nextRow = Math.max(0, Math.min(rows.length - 1, row + dy))
+      var nextCols = rows[nextRow]
+      col = Math.min(col, nextCols.length - 1)
+      focusSection = nextCols[col]
+    } else {
+      var nextCol = Math.max(0, Math.min(rows[row].length - 1, col + dx))
+      focusSection = rows[row][nextCol]
+    }
     scrollCursorIntoView()
   }
 
@@ -323,15 +364,20 @@ Panel {
     else if (focusSection === "config:netshield") scrollItemIntoView(netshieldDropdown)
     else if (focusSection === "config:kill-switch") scrollItemIntoView(killSwitchDropdown)
     else if (focusSection === "config:custom-dns") scrollItemIntoView(customDnsToggle)
-    else if (configColumn) {
-      for (var i = 0; i < configColumn.children.length; i++) {
-        var child = configColumn.children[i]
-        if (child && child.objectName === focusSection) {
-          scrollItemIntoView(child)
-          return
+    else {
+      var grids = [choiceGrid, toggleGrid]
+      for (var g = 0; g < grids.length; g++) {
+        var grid = grids[g]
+        if (!grid) continue
+        for (var i = 0; i < grid.children.length; i++) {
+          var child = grid.children[i]
+          if (child && child.objectName === focusSection) {
+            scrollItemIntoView(child)
+            return
+          }
         }
       }
-      scrollItemIntoView(configColumn)
+      if (toggleGrid) scrollItemIntoView(toggleGrid)
     }
   }
 
@@ -452,7 +498,7 @@ Panel {
     bar: root.bar
     open: root.opened
     focusTarget: keyCatcher
-    contentWidth: panel.fittedContentWidth(Style.space(420))
+    contentWidth: panel.fittedContentWidth(Style.space(520))
     contentHeight: panel.fittedContentHeight(column.implicitHeight, Style.space(640))
 
     PanelKeyCatcher {
@@ -495,7 +541,11 @@ Panel {
         Column {
           id: column
           width: panelFlick.width
-          spacing: Style.space(12)
+          spacing: Style.spacing.panelGap
+
+          Column {
+            width: parent.width
+            spacing: Style.spacing.rowGap
 
           Item {
             id: header
@@ -556,7 +606,7 @@ Panel {
           Column {
             visible: root.degraded
             width: parent.width
-            spacing: Style.space(10)
+            spacing: Style.spacing.xl
 
             Text {
               width: parent.width
@@ -607,45 +657,43 @@ Panel {
             onActivated: vpn.openTerminal()
           }
 
-          Column {
-            visible: vpn.installed && (root.showHealthy || root.view.state === Model.STATES.stale)
+          RowLayout {
+            id: statusRefreshRow
             width: parent.width
-            spacing: Style.spacing.labelGap
+            spacing: Style.spacing.rowGap
 
-            InfoPair {
-              visible: root.view.status && root.view.status.server !== ""
-              label: "Server"
-              value: root.view.status.server
-            }
-            InfoPair {
-              visible: root.view.status && root.view.status.location !== ""
-              label: "Location"
-              value: root.view.status.location
-            }
-            InfoPair {
-              visible: root.view.state === Model.STATES.connected || (root.view.stale && root.view.status && root.view.status.protocol !== "")
-              label: "Load"
-              value: Model.displayLoad(root.view.status.load)
-            }
-            InfoPair {
-              visible: root.view.status && root.view.status.protocol !== ""
-              label: "Protocol"
-              value: root.view.status.protocol
-            }
-            InfoPair {
-              visible: Model.lastUpdatedText(root.view, Date.now()) !== ""
-              label: root.view.stale ? "Stale" : "Updated"
-              value: Model.lastUpdatedText(root.view, Date.now() + root.nowTick)
-            }
-          }
+            GridLayout {
+              id: statusGrid
+              visible: vpn.installed && (root.showHealthy || root.view.state === Model.STATES.stale) && root.statusPairs.length > 0
+              Layout.fillWidth: false
+              Layout.alignment: Qt.AlignVCenter | Qt.AlignLeft
+              columns: 2
+              columnSpacing: Style.spacing.xxl
+              rowSpacing: Style.spacing.labelGap
 
-          ActionRow {
-            id: refreshRow
-            width: parent.width
-            title: "Refresh"
-            subtitle: vpn.refreshing ? "Checking Proton VPN…" : "Update status, locations, and settings"
-            sectionName: "refresh"
-            onActivated: root.refreshAll()
+              Repeater {
+                model: root.statusPairs
+                InfoPair {
+                  required property var modelData
+                  label: modelData.label
+                  value: modelData.value
+                }
+              }
+            }
+
+            Item { Layout.fillWidth: true }
+
+            Button {
+              id: refreshRow
+              Layout.alignment: Qt.AlignVCenter | Qt.AlignRight
+              text: vpn.refreshing ? "Refreshing…" : "Refresh"
+              tooltipText: vpn.refreshing ? "Checking Proton VPN…" : "Update status, locations, and settings"
+              hasCursor: root.cursorActive && root.focusSection === "refresh"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              onClicked: root.refreshAll()
+              onHovered: function(on) { if (on) root.setFocusSection("refresh") }
+            }
           }
 
           ActionRow {
@@ -657,11 +705,12 @@ Panel {
             sectionName: "retry-locations"
             onActivated: root.retryLocations()
           }
+          }
 
           Column {
             visible: root.showWrites && vpn.installed
             width: parent.width
-            spacing: Style.space(10)
+            spacing: Style.spacing.rowGap
 
             PanelSeparator { foreground: root.foreground }
 
@@ -671,168 +720,122 @@ Panel {
               fontFamily: root.fontFamily
             }
 
-            Column {
+            RowLayout {
+              id: connectRow
               width: parent.width
-              spacing: Style.spacing.labelGap
+              spacing: Style.spacing.rowGap
 
-              Text {
-                text: "Mode"
-                color: root.dim
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-                font.bold: true
-              }
+              FieldColumn {
+                FieldLabel { text: "Mode" }
+                SearchableDropdown {
+                  id: modeDropdown
+                  Layout.fillWidth: true
+                  Layout.preferredWidth: 0
+                  showLabel: false
+                  value: root.selectedMode
+                  options: root.modeOptions
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                  hasCursor: root.cursorActive && root.focusSection === "mode"
+                  placeholderText: "Search modes"
+                  onHovered: function(on) {
+                    modeTip.tipHovered = on
+                    if (on) root.setFocusSection("mode")
+                  }
+                  onChanged: function(value) { root.selectedMode = value }
 
-              SettingHelp {
-                text: Model.modeSummary(root.selectedMode)
-              }
-
-              SearchableDropdown {
-                id: modeDropdown
-                width: parent.width
-                showLabel: false
-                value: root.selectedMode
-                options: root.modeOptions
-                foreground: root.foreground
-                fontFamily: root.fontFamily
-                hasCursor: root.cursorActive && root.focusSection === "mode"
-                placeholderText: "Search modes"
-                onHovered: function(on) {
-                  modeTip.tipHovered = on
-                  if (on) root.setFocusSection("mode")
-                }
-                onChanged: function(value) { root.selectedMode = value }
-
-                SettingTip {
-                  id: modeTip
-                  text: Model.modeTooltip(root.selectedMode)
-                  tipCursor: root.keyboardNavigation && modeDropdown.hasCursor
-                  tipPopupOpen: modeDropdown.popupOpen
+                  SettingTip {
+                    id: modeTip
+                    text: Model.modeTooltip(root.selectedMode)
+                    tipCursor: root.keyboardNavigation && modeDropdown.hasCursor
+                    tipPopupOpen: modeDropdown.popupOpen
+                  }
                 }
               }
-            }
 
-            Column {
-              visible: root.needsCountry
-              width: parent.width
-              spacing: Style.spacing.labelGap
+              FieldColumn {
+                fieldVisible: root.needsCountry
+                FieldLabel { text: "Country" }
+                SearchableDropdown {
+                  id: countryDropdown
+                  Layout.fillWidth: true
+                  Layout.preferredWidth: 0
+                  showLabel: false
+                  value: root.selectedCountry
+                  options: root.countryOptions
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                  hasCursor: root.cursorActive && root.focusSection === "country"
+                  placeholderText: "Search countries"
+                  triggerLabel: Model.connectFieldTriggerLabel("country", { mode: root.selectedMode, country: root.selectedCountry })
+                  emptyText: root.countryEmptyText()
+                  onHovered: function(on) {
+                    countryTip.tipHovered = on
+                    if (on) root.setFocusSection("country")
+                  }
+                  onChanged: function(value) { root.selectedCountry = value }
 
-              Text {
-                text: "Country"
-                color: root.dim
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-                font.bold: true
-              }
-
-              SettingHelp {
-                text: Model.connectFieldSummary("country")
-              }
-
-              SearchableDropdown {
-                id: countryDropdown
-                width: parent.width
-                showLabel: false
-                value: root.selectedCountry
-                options: root.countryOptions
-                foreground: root.foreground
-                fontFamily: root.fontFamily
-                hasCursor: root.cursorActive && root.focusSection === "country"
-                placeholderText: "Search countries"
-                triggerLabel: Model.connectFieldTriggerLabel("country", { mode: root.selectedMode, country: root.selectedCountry })
-                emptyText: root.countryEmptyText()
-                onHovered: function(on) {
-                  countryTip.tipHovered = on
-                  if (on) root.setFocusSection("country")
-                }
-                onChanged: function(value) { root.selectedCountry = value }
-
-                SettingTip {
-                  id: countryTip
-                  text: Model.connectFieldTooltip("country")
-                  tipCursor: root.keyboardNavigation && countryDropdown.hasCursor
-                  tipPopupOpen: countryDropdown.popupOpen
+                  SettingTip {
+                    id: countryTip
+                    text: Model.connectFieldTooltip("country")
+                    tipCursor: root.keyboardNavigation && countryDropdown.hasCursor
+                    tipPopupOpen: countryDropdown.popupOpen
+                  }
                 }
               }
-            }
 
-            Column {
-              visible: root.needsCity
-              width: parent.width
-              spacing: Style.spacing.labelGap
+              FieldColumn {
+                fieldVisible: root.needsCity
+                FieldLabel { text: "City" }
+                SearchableDropdown {
+                  id: cityDropdown
+                  Layout.fillWidth: true
+                  Layout.preferredWidth: 0
+                  showLabel: false
+                  value: root.selectedCity
+                  options: root.cityOptions
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                  hasCursor: root.cursorActive && root.focusSection === "city"
+                  placeholderText: "Search cities"
+                  triggerLabel: Model.connectFieldTriggerLabel("city", { mode: root.selectedMode, country: root.selectedCountry })
+                  emptyText: root.cityEmptyText()
+                  enabled: root.selectedCountry !== ""
+                  onHovered: function(on) {
+                    cityTip.tipHovered = on
+                    if (on) root.setFocusSection("city")
+                  }
+                  onChanged: function(value) { root.selectedCity = value }
 
-              Text {
-                text: "City"
-                color: root.dim
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-                font.bold: true
-              }
-
-              SettingHelp {
-                text: Model.connectFieldSummary("city")
-              }
-
-              SearchableDropdown {
-                id: cityDropdown
-                width: parent.width
-                showLabel: false
-                value: root.selectedCity
-                options: root.cityOptions
-                foreground: root.foreground
-                fontFamily: root.fontFamily
-                hasCursor: root.cursorActive && root.focusSection === "city"
-                placeholderText: "Search cities"
-                triggerLabel: Model.connectFieldTriggerLabel("city", { mode: root.selectedMode, country: root.selectedCountry })
-                emptyText: root.cityEmptyText()
-                enabled: root.selectedCountry !== ""
-                onHovered: function(on) {
-                  cityTip.tipHovered = on
-                  if (on) root.setFocusSection("city")
-                }
-                onChanged: function(value) { root.selectedCity = value }
-
-                SettingTip {
-                  id: cityTip
-                  text: Model.connectFieldTooltip("city")
-                  tipCursor: root.keyboardNavigation && cityDropdown.hasCursor
-                  tipPopupOpen: cityDropdown.popupOpen
+                  SettingTip {
+                    id: cityTip
+                    text: Model.connectFieldTooltip("city")
+                    tipCursor: root.keyboardNavigation && cityDropdown.hasCursor
+                    tipPopupOpen: cityDropdown.popupOpen
+                  }
                 }
               }
-            }
 
-            Column {
-              visible: root.needsServer
-              width: parent.width
-              spacing: Style.spacing.labelGap
+              FieldColumn {
+                fieldVisible: root.needsServer
+                FieldLabel { text: "Server ID" }
+                TextField {
+                  id: serverField
+                  Layout.fillWidth: true
+                  Layout.preferredWidth: 0
+                  foreground: root.foreground
+                  placeholderText: "IT#23"
+                  text: root.serverIdText
+                  hasCursor: root.cursorActive && root.focusSection === "server" && !activeFocus
+                  onHoveredChanged: if (hovered) root.setFocusSection("server")
+                  onTextChanged: root.serverIdText = text
+                  onAccepted: root.tryToggle()
 
-              Text {
-                text: "Server ID"
-                color: root.dim
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-                font.bold: true
-              }
-
-              SettingHelp {
-                text: Model.connectFieldSummary("server")
-              }
-
-              TextField {
-                id: serverField
-                width: parent.width
-                foreground: root.foreground
-                placeholderText: "IT#23"
-                text: root.serverIdText
-                hasCursor: root.cursorActive && root.focusSection === "server" && !activeFocus
-                onHoveredChanged: if (hovered) root.setFocusSection("server")
-                onTextChanged: root.serverIdText = text
-                onAccepted: root.tryToggle()
-
-                SettingTip {
-                  text: Model.connectFieldTooltip("server")
-                  tipHovered: serverField.hovered
-                  tipCursor: root.keyboardNavigation && root.cursorActive && root.focusSection === "server"
+                  SettingTip {
+                    text: Model.connectFieldTooltip("server")
+                    tipHovered: serverField.hovered
+                    tipCursor: root.keyboardNavigation && root.cursorActive && root.focusSection === "server"
+                  }
                 }
               }
             }
@@ -841,18 +844,24 @@ Panel {
           Column {
             visible: root.showWrites && vpn.installed
             width: parent.width
-            spacing: Style.space(10)
+            spacing: Style.spacing.rowGap
 
             PanelSeparator { foreground: root.foreground }
 
-            PanelSectionHeader {
-              text: "SETTINGS"
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-            }
+            Column {
+              width: parent.width
+              spacing: Style.spacing.labelGap
 
-            SettingHelp {
-              text: Model.SETTINGS_SECTION_HELP
+              PanelSectionHeader {
+                text: "SETTINGS"
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+              }
+
+              SettingHelp {
+                width: parent.width
+                text: Model.SETTINGS_SECTION_HELP
+              }
             }
 
             Text {
@@ -865,30 +874,19 @@ Panel {
               wrapMode: Text.WordWrap
             }
 
-            Column {
-              id: configColumn
+            GridLayout {
+              id: choiceGrid
               width: parent.width
-              spacing: Style.space(10)
+              columns: 2
+              columnSpacing: Style.spacing.rowGap
+              rowSpacing: Style.spacing.labelGap
 
-              Column {
-                width: parent.width
-                spacing: Style.spacing.labelGap
-
-                Text {
-                  text: "NetShield"
-                  color: root.dim
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                  font.bold: true
-                }
-
-                SettingHelp {
-                  text: Model.settingSummary("netshield")
-                }
-
+              FieldColumn {
+                FieldLabel { text: "NetShield" }
                 SearchableDropdown {
                   id: netshieldDropdown
-                  width: parent.width
+                  Layout.fillWidth: true
+                  Layout.preferredWidth: 0
                   showLabel: false
                   value: vpn.configDisplayValue("netshield")
                   options: root.choiceOptions(root.netshieldSetting)
@@ -913,7 +911,7 @@ Panel {
 
                 Text {
                   visible: vpn.configUpgrade.netshield === true
-                  width: parent.width
+                  Layout.fillWidth: true
                   text: "Upgrade to enable. Changing it still sends the CLI command so Proton can report the restriction."
                   color: root.dim
                   font.family: root.fontFamily
@@ -922,32 +920,19 @@ Panel {
                 }
               }
 
-              Column {
-                width: parent.width
-                spacing: Style.spacing.labelGap
-
-                Text {
-                  text: "Kill switch"
-                  color: root.dim
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                  font.bold: true
-                }
-
-                SettingHelp {
-                  text: Model.settingSummary("kill-switch")
-                }
-
+              FieldColumn {
+                FieldLabel { text: "Kill Switch" }
                 SearchableDropdown {
                   id: killSwitchDropdown
-                  width: parent.width
+                  Layout.fillWidth: true
+                  Layout.preferredWidth: 0
                   showLabel: false
                   value: vpn.configDisplayValue("kill-switch")
                   options: root.choiceOptions(root.killSwitchSetting)
                   foreground: root.foreground
                   fontFamily: root.fontFamily
                   hasCursor: root.cursorActive && root.focusSection === "config:kill-switch"
-                  placeholderText: "Kill switch"
+                  placeholderText: "Kill Switch"
                   onHovered: function(on) {
                     killSwitchTip.tipHovered = on
                     if (on) root.setFocusSection("config:kill-switch")
@@ -964,7 +949,7 @@ Panel {
 
                 Text {
                   visible: Model.isVpnActive(root.view)
-                  width: parent.width
+                  Layout.fillWidth: true
                   text: "Disconnect before changing Kill Switch."
                   color: root.dim
                   font.family: root.fontFamily
@@ -972,25 +957,38 @@ Panel {
                   wrapMode: Text.WordWrap
                 }
               }
+            }
+
+            GridLayout {
+              id: toggleGrid
+              width: parent.width
+              columns: 2
+              columnSpacing: Style.spacing.rowGap
+              rowSpacing: Style.spacing.rowGap
 
               Repeater {
                 model: root.toggleSettings
                 ToggleSettingRow {
                   required property var modelData
-                  width: configColumn.width
+                  Layout.fillWidth: true
+                  Layout.preferredWidth: 1
+                  Layout.alignment: Qt.AlignTop | Qt.AlignLeft
                   setting: modelData
                 }
               }
 
-              Column {
-                width: parent.width
+              ColumnLayout {
+                Layout.fillWidth: true
+                Layout.preferredWidth: 1
+                Layout.alignment: Qt.AlignTop | Qt.AlignLeft
                 spacing: 0
 
                 Toggle {
                   id: customDnsToggle
-                  width: parent.width
+                  Layout.fillWidth: true
+                  implicitHeight: Style.spacing.controlHeight
+                  titleSize: Style.font.body
                   label: "Custom DNS"
-                  description: Model.settingDescription("custom-dns", { upgrade: vpn.configUpgrade["custom-dns"] === true })
                   checked: Model.parseCustomDnsValue(vpn.configDisplayValue("custom-dns")).enabled
                   hasCursor: root.cursorActive && root.focusSection === "config:custom-dns"
                   foreground: root.foreground
@@ -1009,7 +1007,7 @@ Panel {
                 }
 
                 Item {
-                  width: parent.width
+                  Layout.fillWidth: true
                   height: root.showDnsField() ? dnsField.implicitHeight + Style.space(6) : 0
                   visible: height > 0
                   clip: true
@@ -1048,11 +1046,30 @@ Panel {
     onTriggered: root.nowTick += 1
   }
 
+  component FieldColumn: ColumnLayout {
+    property bool fieldVisible: true
+    visible: fieldVisible
+    Layout.fillWidth: fieldVisible
+    Layout.preferredWidth: fieldVisible ? 1 : 0
+    Layout.minimumWidth: 0
+    Layout.alignment: Qt.AlignTop | Qt.AlignLeft
+    spacing: Style.spacing.labelGap
+  }
+
+  component FieldLabel: Text {
+    Layout.fillWidth: true
+    color: root.foreground
+    font.family: root.fontFamily
+    font.pixelSize: Style.font.subtitle
+    font.bold: true
+  }
+
   component ActionRow: CursorSurface {
     id: actionRow
     property string title: ""
     property string subtitle: ""
     property string sectionName: ""
+    property string tipText: ""
     signal activated()
 
     hasCursor: root.cursorActive && root.focusSection === sectionName
@@ -1061,11 +1078,18 @@ Panel {
     implicitHeight: actionInner.implicitHeight + Style.spacing.rowPaddingX
 
     MouseArea {
+      id: actionMouse
       anchors.fill: parent
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
       onEntered: root.setFocusSection(actionRow.sectionName)
       onClicked: actionRow.activated()
+    }
+
+    SettingTip {
+      text: actionRow.tipText
+      tipHovered: actionMouse.containsMouse
+      tipCursor: root.keyboardNavigation && actionRow.hasCursor
     }
 
     Column {
@@ -1101,15 +1125,14 @@ Panel {
   component InfoPair: Row {
     property string label: ""
     property string value: ""
-    width: parent.width
-    spacing: Style.space(8)
+    Layout.fillWidth: false
+    spacing: Style.spacing.controlGap
 
     Text {
       text: label
       color: root.dim
       font.family: root.fontFamily
       font.pixelSize: Style.font.bodySmall
-      width: Style.space(90)
     }
     Text {
       text: value
@@ -1117,13 +1140,13 @@ Panel {
       font.family: root.fontFamily
       font.pixelSize: Style.font.bodySmall
       elide: Text.ElideRight
-      width: Math.max(0, parent.width - Style.space(90) - parent.spacing)
     }
   }
 
   component SettingHelp: Text {
-    width: parent.width
-    visible: text !== ""
+    Layout.fillWidth: true
+    visible: true
+    opacity: text !== "" ? 1 : 0
     color: root.dim
     font.family: root.fontFamily
     font.pixelSize: Style.font.caption
@@ -1147,9 +1170,10 @@ Panel {
     readonly property bool upgrade: vpn.configUpgrade && vpn.configUpgrade[key] === true
     objectName: "config:" + key
 
-    width: parent.width
+    Layout.fillWidth: true
+    implicitHeight: Style.spacing.controlHeight
+    titleSize: Style.font.body
     label: setting.label || ""
-    description: Model.settingDescription(key, { upgrade: upgrade })
     checked: String(currentValue) === "on"
     hasCursor: root.cursorActive && root.focusSection === "config:" + key
     foreground: root.foreground
