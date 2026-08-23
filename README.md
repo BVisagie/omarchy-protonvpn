@@ -64,7 +64,8 @@ protonvpn signin USERNAME
 
 Inside the panel:
 
-- `j` / `k` or arrows move the cursor (`h` / `l` also work)
+- `j` / `k` or up/down arrows move the cursor between rows
+- `h` / `l` or left/right arrows move the cursor across a row
 - `Enter` / `Space` activates the selected control
 - `t` toggles connect/disconnect with the same safety gate as right-click
 - `r` refreshes
