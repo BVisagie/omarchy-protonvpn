@@ -1,5 +1,10 @@
 # Proton VPN for Omarchy
 
+<p align="center">
+  <img src="docs/images/panel-fastest.png" alt="Proton VPN panel connected to NL#660 in Amsterdam using the fastest server mode, with NetShield, Kill Switch, and toggle settings below" width="49%">
+  <img src="docs/images/panel-city.png" alt="Proton VPN panel in a green Omarchy theme choosing a Zurich, Switzerland city connection" width="49%">
+</p>
+
 Native Omarchy Quattro bar widget and keyboard-friendly panel for the official Proton VPN Linux CLI (`protonvpn`). NetworkManager is observed read-only so the bar reacts to tunnel changes without repeatedly starting the heavier CLI.
 
 Every VPN action and setting change goes through the installed official CLI. The plugin does not reimplement Proton protocols, call Proton's private APIs, collect credentials, edit Proton files, or run unofficial VPN clients.
