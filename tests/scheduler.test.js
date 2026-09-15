@@ -126,3 +126,33 @@ describe("timeouts", () => {
     assert.equal(Scheduler.timeoutFor({ type: "action", timeout: 12000 }), 12000)
   })
 })
+
+describe("priority jobs", () => {
+  it("lets a waiting-on-you job jump queued background work but not the running job", () => {
+    let queue = Scheduler.emptyQueue()
+    queue = Scheduler.enqueueJob(queue, command("status")).queue
+    let started = Scheduler.beginJob(queue)
+    queue = started.queue
+    queue = Scheduler.enqueueJob(queue, command("discovery", { kind: "countries" })).queue
+    queue = Scheduler.enqueueJob(queue, command("config", { kind: "list" })).queue
+    queue = Scheduler.enqueueJob(queue, command("discovery", { kind: "cities", country: "CH", priority: true })).queue
+    assert.equal(queue.current.type, "status")
+    assert.deepEqual(queue.jobs.map((job) => job.kind), ["cities", "countries", "list"])
+  })
+
+  it("keeps priority jobs in arrival order", () => {
+    let queue = Scheduler.emptyQueue()
+    queue = Scheduler.enqueueJob(queue, command("status")).queue
+    queue = Scheduler.enqueueJob(queue, command("discovery", { kind: "cities", country: "CH", priority: true })).queue
+    queue = Scheduler.enqueueJob(queue, command("action", { action: "connect", priority: true })).queue
+    assert.deepEqual(queue.jobs.map((job) => job.type), ["discovery", "action", "status"])
+  })
+
+  it("still replaces a queued city job when the newer one has priority", () => {
+    let queue = Scheduler.emptyQueue()
+    queue = Scheduler.enqueueJob(queue, command("status")).queue
+    queue = Scheduler.enqueueJob(queue, command("discovery", { kind: "cities", country: "US", priority: true })).queue
+    queue = Scheduler.enqueueJob(queue, command("discovery", { kind: "cities", country: "CH", priority: true })).queue
+    assert.deepEqual(queue.jobs.map((job) => job.country || job.type), ["CH", "status"])
+  })
+})

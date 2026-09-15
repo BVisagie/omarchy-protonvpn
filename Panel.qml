@@ -30,6 +30,8 @@ Panel {
   property bool dnsEditorOpen: false
   property int nowTick: 0
   property bool keyboardNavigation: false
+  // Set only by user edits to CONNECT, never by programmatic draft resets.
+  property bool connectDraftDirty: false
 
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color urgent: bar ? bar.urgent : Color.urgent
@@ -73,6 +75,13 @@ Panel {
   readonly property var killSwitchSetting: Model.settingDef("kill-switch")
   readonly property var toggleSettings: toggleSettingList()
   readonly property var statusPairs: statusPairList()
+  readonly property bool offerSwitch: Model.shouldOfferSwitch({
+    state: view.state,
+    busy: vpn.actionBusy,
+    draft: connectOptions(),
+    activeTarget: vpn.activeTarget,
+    draftDirty: connectDraftDirty
+  })
   readonly property var focusRows: visibleFocusRows()
   readonly property var focusOrder: visibleFocusOrder()
 
@@ -162,6 +171,7 @@ Panel {
       if (needsCity) connect.push("city")
       if (needsServer) connect.push("server")
       rows.push(connect)
+      if (offerSwitch) rows.push(["switch"])
       if (vpn.recentTargets.length > 0) {
         var recent = []
         for (var r = 0; r < vpn.recentTargets.length; r++) recent.push("recent:" + r)
@@ -245,6 +255,7 @@ Panel {
     else if (focusSection === "country") countryDropdown.toggle()
     else if (focusSection === "city" && selectedCountry !== "") cityDropdown.toggle()
     else if (focusSection === "server") Qt.callLater(function() { if (serverField) serverField.forceActiveFocus() })
+    else if (focusSection === "switch") switchNow()
     else if (focusSection.indexOf("recent:") === 0) vpn.connectRecent(parseInt(focusSection.substring(7), 10))
     else if (focusSection === "dns") applyDns()
     else if (focusSection.indexOf("config:") === 0) activateConfig(focusSection.substring(7))
@@ -285,6 +296,10 @@ Panel {
     vpn.connectWith(connectOptions())
   }
 
+  function switchNow() {
+    if (vpn.connectWith(connectOptions())) connectDraftDirty = false
+  }
+
   function connectNow() {
     vpn.connectWith(connectOptions())
   }
@@ -297,6 +312,17 @@ Panel {
     if (!vpn.installed) return
     vpn.refreshCountries(true)
     if (needsCity && selectedCountry !== "") vpn.refreshCities(selectedCountry, true)
+  }
+
+  // Opening the panel should not force slow list reloads ahead of what the
+  // user is about to pick; Refresh, r, and middle-click still force them.
+  function refreshOnOpen() {
+    vpn.refresh()
+    if (vpn.installed && (showHealthy || view.state === Model.STATES.stale)) {
+      vpn.refreshCountries()
+      vpn.refreshConfig()
+      if (needsCity && selectedCountry !== "") vpn.refreshCities(selectedCountry)
+    }
   }
 
   function refreshAll() {
@@ -373,6 +399,7 @@ Panel {
     else if (focusSection === "country") scrollItemIntoView(countryDropdown)
     else if (focusSection === "city") scrollItemIntoView(cityDropdown)
     else if (focusSection === "server") scrollItemIntoView(serverField)
+    else if (focusSection === "switch") scrollItemIntoView(switchButton)
     else if (focusSection.indexOf("recent:") === 0) scrollItemIntoView(recentGrid)
     else if (focusSection === "dns") scrollItemIntoView(dnsField)
     else if (focusSection === "config:netshield") scrollItemIntoView(netshieldDropdown)
@@ -417,7 +444,7 @@ Panel {
     cursorActive = false
     keyboardNavigation = false
     if (panelFlick) panelFlick.contentY = 0
-    refreshAll()
+    refreshOnOpen()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
   onVpnChanged: if (vpn) vpn.setSettings(root.settings)
@@ -774,7 +801,10 @@ Panel {
                     modeTip.tipHovered = on
                     if (on) root.setFocusSection("mode")
                   }
-                  onChanged: function(value) { root.selectedMode = value }
+                  onChanged: function(value) {
+                    root.connectDraftDirty = true
+                    root.selectedMode = value
+                  }
 
                   SettingTip {
                     id: modeTip
@@ -805,7 +835,10 @@ Panel {
                     countryTip.tipHovered = on
                     if (on) root.setFocusSection("country")
                   }
-                  onChanged: function(value) { root.selectedCountry = value }
+                  onChanged: function(value) {
+                    root.connectDraftDirty = true
+                    root.selectedCountry = value
+                  }
 
                   SettingTip {
                     id: countryTip
@@ -830,14 +863,21 @@ Panel {
                   fontFamily: root.fontFamily
                   hasCursor: root.cursorActive && root.focusSection === "city"
                   placeholderText: "Search cities"
-                  triggerLabel: Model.connectFieldTriggerLabel("city", { mode: root.selectedMode, country: root.selectedCountry })
+                  triggerLabel: Model.connectFieldTriggerLabel("city", {
+                    mode: root.selectedMode,
+                    country: root.selectedCountry,
+                    loading: vpn.citiesLoading && vpn.citiesCountry === root.selectedCountry
+                  })
                   emptyText: root.cityEmptyText()
                   enabled: root.selectedCountry !== ""
                   onHovered: function(on) {
                     cityTip.tipHovered = on
                     if (on) root.setFocusSection("city")
                   }
-                  onChanged: function(value) { root.selectedCity = value }
+                  onChanged: function(value) {
+                    root.connectDraftDirty = true
+                    root.selectedCity = value
+                  }
 
                   SettingTip {
                     id: cityTip
@@ -860,8 +900,11 @@ Panel {
                   text: root.serverIdText
                   hasCursor: root.cursorActive && root.focusSection === "server" && !activeFocus
                   onHoveredChanged: if (hovered) root.setFocusSection("server")
-                  onTextChanged: root.serverIdText = text
-                  onAccepted: root.tryToggle()
+                  onTextChanged: {
+                    if (text !== root.serverIdText) root.connectDraftDirty = true
+                    root.serverIdText = text
+                  }
+                  onAccepted: root.offerSwitch ? root.switchNow() : root.tryToggle()
 
                   SettingTip {
                     text: Model.connectFieldTooltip("server")
@@ -872,6 +915,20 @@ Panel {
               }
             }
 
+
+            Button {
+              id: switchButton
+              visible: root.offerSwitch
+              width: parent.width
+              bordered: true
+              text: Model.switchLabel(root.connectOptions())
+              tooltipText: "Reconnect with these choices. Proton replaces the current connection."
+              hasCursor: root.cursorActive && root.focusSection === "switch"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              onClicked: root.switchNow()
+              onHovered: function(on) { if (on) root.setFocusSection("switch") }
+            }
 
             PanelSectionHeader {
               visible: vpn.recentTargets.length > 0

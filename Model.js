@@ -989,8 +989,32 @@ function connectFieldTriggerLabel(field, context) {
   var ctx = context || {}
   var country = String(ctx.country || "").trim()
   if (field === "country") return modeRequiresCountry(ctx.mode) ? "Choose a country" : "Any country"
-  if (field === "city") return country === "" ? "Choose a country first" : "Choose a city"
+  if (field === "city") {
+    if (country === "") return "Choose a country first"
+    return ctx.loading === true ? "Loading cities…" : "Choose a city"
+  }
   return ""
+}
+
+// Two connection choices are the same target exactly when they build the same
+// CLI command, so fields a mode ignores never count as a change.
+function connectTargetKey(options) {
+  var plan = buildConnectCommand(options)
+  return plan.ok ? plan.command.join("\n") : ""
+}
+
+function shouldOfferSwitch(ctx) {
+  if (!ctx || ctx.state !== STATES.connected || ctx.busy === true) return false
+  var draftKey = connectTargetKey(ctx.draft)
+  if (draftKey === "") return false
+  // Without a known current target (connected before the shell started),
+  // offer a switch only once the user has changed the CONNECT fields.
+  if (!ctx.activeTarget) return ctx.draftDirty === true
+  return connectTargetKey(ctx.activeTarget) !== draftKey
+}
+
+function switchLabel(options) {
+  return "Switch to " + recentTarget(options).label
 }
 
 function buildConnectCommand(options) {
@@ -1339,6 +1363,9 @@ if (typeof module !== "undefined") {
     connectDraftForModeChange: connectDraftForModeChange,
     connectDraftForCountryChange: connectDraftForCountryChange,
     connectFieldTriggerLabel: connectFieldTriggerLabel,
+    connectTargetKey: connectTargetKey,
+    shouldOfferSwitch: shouldOfferSwitch,
+    switchLabel: switchLabel,
     buildConnectCommand: buildConnectCommand,
     buildConfigSetCommand: buildConfigSetCommand,
     displayLoad: displayLoad,
