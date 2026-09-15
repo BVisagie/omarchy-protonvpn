@@ -10,6 +10,9 @@ Item {
   property var shell: null
   property var manifest: null
   property var settings: ({})
+  // False keeps a panel-local fallback instance idle while the shared Omarchy
+  // service is available.
+  property bool active: true
 
   property string state: Model.STATES.checking
   property var status: Model.emptyStatus()
@@ -85,6 +88,8 @@ Item {
   property string _commandError: ""
   property string _linkOutput: ""
   property string _linkError: ""
+  property int _linkEpoch: 0
+  property int _linkStartedEpoch: 0
 
   function setSettings(next) {
     settings = next || ({})
@@ -276,9 +281,9 @@ Item {
     }, previous)
     if (next.state === Model.STATES.connected) {
       if (previous.status && previous.status.server === next.status.server) next.status.exitIp = String(previous.status.exitIp || "")
-      if (linkActive && linkServer !== "" && next.status.server === "") next.status.server = linkServer
+      if (linkConfirmed() && linkServer !== "" && next.status.server === "") next.status.server = linkServer
       applyView(next)
-    } else if (next.state === Model.STATES.disconnected && linkActive) {
+    } else if (next.state === Model.STATES.disconnected && linkConfirmed()) {
       var observed = statusCopy(previous.status)
       if (linkServer !== "") observed.server = linkServer
       applyView(connectedView(observed))
@@ -291,6 +296,8 @@ Item {
   }
 
   function handleAction(result, job) {
+    // Any nmcli poll that started before this result may describe the old tunnel.
+    _linkEpoch++
     var classified = Model.classifyCommandResult(result, job.snapshot || snapshot())
     if (classified.stateHint === Model.STATES.guiConflict || classified.stateHint === Model.STATES.signedOut) {
       applyView(Model.classifyProbe(result, job.snapshot || snapshot()))
@@ -309,6 +316,12 @@ Item {
       } else {
         var outcome = Model.parseConnectOutcome(result.stdout)
         var nextStatus = statusCopy((job.snapshot || snapshot()).status)
+        if (outcome.server !== "" && outcome.server !== nextStatus.server) {
+          // Load, protocol, and location belonged to the previous server.
+          nextStatus.location = ""
+          nextStatus.load = null
+          nextStatus.protocol = ""
+        }
         if (outcome.server !== "") nextStatus.server = outcome.server
         if (outcome.location !== "") nextStatus.location = outcome.location
         nextStatus.exitIp = outcome.exitIp
@@ -433,8 +446,13 @@ Item {
     watchLink()
   }
 
+  function linkConfirmed() {
+    return Model.linkConfirmsTunnel({ known: linkKnown, available: linkAvailable, active: linkActive })
+  }
+
   function watchLink() {
-    if (!installed || linkProcess.running) return
+    if (!active || !installed || linkProcess.running) return
+    _linkStartedEpoch = _linkEpoch
     _linkOutput = ""
     _linkError = ""
     linkProcess.command = boundedCommand(["/usr/bin/nmcli", "-t", "-e", "no", "-f", "NAME,TYPE,DEVICE,STATE", "connection", "show", "--active"], 5000)
@@ -442,6 +460,11 @@ Item {
   }
 
   function applyLinkResult(result) {
+    if (_linkStartedEpoch !== _linkEpoch) {
+      // An action finished while this poll was running; re-read the live link.
+      Qt.callLater(watchLink)
+      return
+    }
     if (result.exitCode !== 0 || result.timedOut === true) {
       linkAvailable = false
       return
@@ -458,6 +481,12 @@ Item {
     // connect, server change, or disconnect is in flight. Keep the live facts,
     // but let the action result own the transitional UI state.
     if (actionRunning) return
+    if (!Model.linkMayClaimConnected(state)) {
+      // Keep GUI-conflict, signed-out, and error verdicts in both directions;
+      // only a status check may clear them.
+      if (link.active !== previousActive) requestStatusRefresh()
+      return
+    }
     if (link.active) {
       var nextStatus = statusCopy(status)
       var changedServer = previousActive && previousServer !== "" && link.server !== "" && previousServer !== link.server
@@ -624,7 +653,7 @@ Item {
     id: refreshTimer
     interval: root.refreshIntervalSec * 1000
     repeat: true
-    running: true
+    running: root.active
     triggeredOnStart: true
     onTriggered: root.refresh()
   }
@@ -633,7 +662,7 @@ Item {
     id: linkTimer
     interval: root.linkWatchIntervalSec * 1000
     repeat: true
-    running: root.installed
+    running: root.active && root.installed
     triggeredOnStart: true
     onTriggered: root.watchLink()
   }
@@ -688,6 +717,10 @@ Item {
         timedOut: exitCode === 124 && /command timed out/i.test(errorText),
         runId: root._commandRunId
       })
+      // A watchdog kill finishes its job early, but Quickshell keeps `running`
+      // true (and defers any restart) until the process really exits. Nothing
+      // else wakes the queue after that late exit, so resume it here.
+      if (!root._currentJob) Qt.callLater(root.pump)
     }
   }
 

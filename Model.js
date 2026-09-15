@@ -677,6 +677,20 @@ function isVpnActive(view) {
   return false
 }
 
+// A live NetworkManager tunnel only proves the tunnel exists. It must not hide
+// a CLI verdict that the tunnel cannot explain: the desktop app uses the same
+// proton0 device, and sign-in or CLI errors still block writes.
+var LINK_CLAIMABLE_STATES = [STATES.checking, STATES.disconnected, STATES.connected, STATES.stale]
+
+function linkMayClaimConnected(state) {
+  return LINK_CLAIMABLE_STATES.indexOf(String(state || "")) !== -1
+}
+
+// Only a successful, current nmcli result may override a CLI "Disconnected".
+function linkConfirmsTunnel(link) {
+  return !!link && link.known === true && link.available === true && link.active === true
+}
+
 function sliceTableColumn(line, start, end) {
   var text = String(line || "")
   if (start < 0 || start >= text.length) return ""
@@ -1295,6 +1309,8 @@ if (typeof module !== "undefined") {
     canWrite: canWrite,
     writeBlockedReason: writeBlockedReason,
     isVpnActive: isVpnActive,
+    linkMayClaimConnected: linkMayClaimConnected,
+    linkConfirmsTunnel: linkConfirmsTunnel,
     parseCountries: parseCountries,
     parseCities: parseCities,
     parseConfigList: parseConfigList,
