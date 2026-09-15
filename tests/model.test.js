@@ -64,6 +64,71 @@ describe("status parsing", () => {
   })
 })
 
+describe("CLI compatibility", () => {
+  it("recognizes the supported 1.0.1 and 1.0.3 help banners", () => {
+    const oldCli = Model.parseCliHelp(fixture("cli-help-1.0.1.txt"))
+    const currentCli = Model.parseCliHelp(fixture("cli-help-1.0.3.txt"))
+    assert.equal(oldCli.version, "1.0.1")
+    assert.equal(currentCli.version, "1.0.3")
+    assert.equal(oldCli.support, "tested")
+    assert.equal(currentCli.support, "tested")
+    assert.equal(currentCli.commands.includes("servers"), true)
+    assert.equal(Model.compatibilityWarning(currentCli), "")
+  })
+
+  it("warns without blocking unknown or future versions", () => {
+    const future = Model.parseCliHelp("Proton VPN command-line interface 1.1.0\n  status  Show status\n")
+    assert.equal(future.support, "untested")
+    assert.match(Model.compatibilityWarning(future), /outside the tested/i)
+    assert.match(Model.compatibilityWarning(Model.parseCliHelp("Usage: protonvpn")), /identify/i)
+  })
+})
+
+describe("live NetworkManager status", () => {
+  it("recognizes only an activated Proton tunnel device", () => {
+    const link = Model.parseActiveVpn(fixture("nmcli-active.txt"))
+    assert.equal(link.active, true)
+    assert.equal(link.server, "NL#742")
+    assert.equal(link.device, "proton0")
+    assert.equal(link.type, "wireguard")
+  })
+
+  it("does not trust a misleading connection name or kill-switch device", () => {
+    assert.equal(Model.parseActiveVpn(fixture("nmcli-inactive.txt")).active, false)
+    assert.equal(Model.parseActiveVpn("ProtonVPN fake:wireguard:wg0:activated").active, false)
+    assert.equal(Model.parseActiveVpn("ProtonVPN real:vpn:proton1:deactivated").active, false)
+  })
+
+  it("takes fields from the right when a connection name contains a colon", () => {
+    const link = Model.parseActiveVpn("ProtonVPN NL\\: special:wireguard:proton2:activated")
+    assert.equal(link.active, true)
+    assert.equal(link.server, "NL: special")
+  })
+})
+
+describe("successful connection details", () => {
+  it("extracts server, location, and CLI-supplied exit IP", () => {
+    const outcome = Model.parseConnectOutcome(fixture("connect-success.txt"))
+    assert.deepEqual(outcome, {
+      server: "NL#742",
+      location: "Amsterdam, Netherlands",
+      exitIp: "185.246.211.74"
+    })
+  })
+
+  it("keeps three deduplicated session-only recent targets", () => {
+    const first = Model.recentTarget({ mode: "city", country: "NL", city: "Amsterdam" }, Model.parseConnectOutcome(fixture("connect-success.txt")))
+    let recents = Model.recordRecentTarget([], first)
+    recents = Model.recordRecentTarget(recents, Model.recentTarget({ mode: "p2p", country: "CH" }))
+    recents = Model.recordRecentTarget(recents, Model.recentTarget({ mode: "fastest" }))
+    recents = Model.recordRecentTarget(recents, first)
+    assert.equal(recents.length, 3)
+    assert.equal(recents[0].label, "Amsterdam")
+    assert.equal(recents[0].detail, "NL#742 · Amsterdam, Netherlands")
+    assert.equal(recents.filter((item) => item.mode === "city").length, 1)
+  })
+})
+
 describe("probe classification", () => {
   const connected = Model.classifyProbe(probe({ exitCode: 0, stdout: fixture("status-connected.txt") }))
 
@@ -354,6 +419,8 @@ describe("display helpers", () => {
     assert.equal(Model.copyCommandFor("signedOut"), Model.SIGNIN_COMMAND)
     assert.equal(Model.clampRefreshIntervalSec(3), 10)
     assert.equal(Model.clampRefreshIntervalSec(9000), 3600)
+    assert.equal(Model.clampLinkWatchIntervalSec(1), 2)
+    assert.equal(Model.clampLinkWatchIntervalSec(9000), 60)
     assert.equal(Model.CLI_PACKAGE, fixture("cli-version.txt").trim())
     assert.match(Model.degradedRemediation({ state: "error", kind: "keyring" }), /keyring/i)
     assert.match(Model.diagnosticDetail({ detail: "Secret Service not available" }), /Secret Service/)

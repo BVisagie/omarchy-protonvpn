@@ -1,0 +1,2 @@
+ProtonVPN coffee:802-11-wireless:wlan0:activated
+pvpn-killswitch:dummy:ipv6leakintrf0:activated

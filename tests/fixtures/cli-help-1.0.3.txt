@@ -1,0 +1,17 @@
+Usage: protonvpn [OPTIONS] COMMAND [ARGS]...
+
+   ____            _               __     ______  _   _
+  |  _ \ _ __ ___ | |_ ___  _ __   \ \   / /  _ \| \ | |
+  |_|   |_|  \___|\__|\___/|_| |_|    \_/  |_| |_|\_| 1.0.3
+
+Commands:
+  signin      Sign in to Proton VPN with your credentials.
+  signout     Sign out from Proton VPN and clear local credentials.
+  info        Display your Proton VPN account information.
+  connect     Connect to Proton VPN server.
+  disconnect  Disconnect from current VPN server.
+  status      Show current VPN connection status.
+  servers     View available servers.
+  countries   Discover all countries where Proton VPN servers are available.
+  cities      Discover cities where servers are available.
+  config      Configure Proton VPN settings.
