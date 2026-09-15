@@ -5,8 +5,9 @@ Omarchy plugins run unsandboxed inside the long-lived `omarchy-shell` process wi
 This plugin:
 
 - sends VPN actions and configuration changes only to the official `protonvpn` CLI;
+- runs only the fixed commands listed under [Commands this plugin runs](README.md#commands-this-plugin-runs);
 - passes commands as argument arrays without shell interpolation;
-- supervises collected commands with output limits, deadlines, and process-group cleanup;
+- supervises every command whose output it reads with output limits, deadlines, and process-group cleanup (`wl-copy` and `omarchy-launch-terminal` start directly, only when you use the matching control);
 - uses `nmcli` only to read active connection metadata;
 - never asks for or stores Proton credentials;
 - never invokes `sudo` or `pkexec`;
