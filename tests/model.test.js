@@ -538,3 +538,51 @@ describe("last-updated copy", () => {
     assert.equal(stale, "Last successful update 1m ago")
   })
 })
+
+describe("switching while connected", () => {
+  const fastest = { mode: "fastest", country: "", city: "", serverId: "" }
+  const zurich = { mode: "city", country: "CH", city: "Zurich", serverId: "" }
+
+  it("treats choices as the same target when they build the same CLI command", () => {
+    assert.equal(Model.connectTargetKey({ mode: "fastest", country: "NL" }), Model.connectTargetKey(fastest))
+    assert.notEqual(Model.connectTargetKey(zurich), Model.connectTargetKey(fastest))
+    assert.equal(Model.connectTargetKey({ mode: "city", country: "CH", city: "" }), "")
+    assert.equal(Model.connectTargetKey(Model.recentTarget(zurich)), Model.connectTargetKey(zurich))
+  })
+
+  it("offers a switch only for a changed, valid choice while connected and idle", () => {
+    const base = { state: "connected", busy: false, draft: zurich, activeTarget: Model.recentTarget(fastest), draftDirty: true }
+    assert.equal(Model.shouldOfferSwitch(base), true)
+    // A recreated panel or a RECENT reconnect leaves an untouched draft that
+    // differs from the connection; that alone must not offer a switch.
+    assert.equal(Model.shouldOfferSwitch(Object.assign({}, base, { draftDirty: false })), false)
+    assert.equal(Model.shouldOfferSwitch(Object.assign({}, base, { state: "disconnected" })), false)
+    assert.equal(Model.shouldOfferSwitch(Object.assign({}, base, { state: "stale" })), false)
+    assert.equal(Model.shouldOfferSwitch(Object.assign({}, base, { busy: true })), false)
+    assert.equal(Model.shouldOfferSwitch(Object.assign({}, base, { draft: { mode: "city", country: "CH", city: "" } })), false)
+    assert.equal(Model.shouldOfferSwitch(Object.assign({}, base, { activeTarget: Model.recentTarget(zurich) })), false)
+    assert.equal(Model.shouldOfferSwitch(Object.assign({}, base, { activeTarget: null, draftDirty: true })), true)
+    assert.equal(Model.shouldOfferSwitch(Object.assign({}, base, { activeTarget: null, draftDirty: false })), false)
+    assert.equal(Model.shouldOfferSwitch(null), false)
+  })
+
+  it("leaves the current connection out of RECENT", () => {
+    const tirana = Model.recentTarget({ mode: "city", country: "AL", city: "Tirana" })
+    const zurichTarget = Model.recentTarget(zurich)
+    assert.deepEqual(Model.recentChoices([tirana], tirana), [])
+    assert.deepEqual(Model.recentChoices([zurichTarget, tirana], zurichTarget).map((item) => item.label), ["Tirana"])
+    assert.deepEqual(Model.recentChoices([zurichTarget, tirana], null).map((item) => item.label), ["Zurich", "Tirana"])
+    assert.deepEqual(Model.recentChoices(null, null), [])
+  })
+
+  it("labels the switch like the RECENT buttons", () => {
+    assert.equal(Model.switchLabel(zurich), "Switch to Zurich")
+    assert.equal(Model.switchLabel(fastest), "Switch to Fastest server")
+    assert.equal(Model.switchLabel({ mode: "server", serverId: "IT#23" }), "Switch to IT#23")
+  })
+
+  it("shows city loading on the trigger without opening the picker", () => {
+    assert.equal(Model.connectFieldTriggerLabel("city", { mode: "city", country: "CH", loading: true }), "Loading cities…")
+    assert.equal(Model.connectFieldTriggerLabel("city", { mode: "city", country: "", loading: true }), "Choose a country first")
+  })
+})

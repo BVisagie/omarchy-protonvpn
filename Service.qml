@@ -39,6 +39,8 @@ Item {
   property string linkServer: ""
   property string linkDevice: ""
   property var recentTargets: []
+  // Options behind the current connection, when this session made it.
+  property var activeTarget: null
 
   property var countries: []
   property var cities: []
@@ -88,6 +90,7 @@ Item {
   property string _commandError: ""
   property string _linkOutput: ""
   property string _linkError: ""
+  property var _citiesCache: ({})
   property int _linkEpoch: 0
   property int _linkStartedEpoch: 0
 
@@ -136,6 +139,7 @@ Item {
     status = statusCopy(next.status || Model.emptyStatus())
     signedIn = next.signedIn === true
     connectedSnapshot = next.connectedSnapshot === true
+    if (state === Model.STATES.disconnected) activeTarget = null
     if (state === Model.STATES.connected || state === Model.STATES.disconnected) {
       lastUpdatedMs = Date.now()
       lastError = ""
@@ -327,12 +331,28 @@ Item {
         nextStatus.exitIp = outcome.exitIp
         applyView(connectedView(nextStatus))
         var target = Model.recentTarget(job.options || {}, outcome)
+        activeTarget = target
         recentTargets = Model.recordRecentTarget(recentTargets, target, 3)
       }
     } else {
       lastError = classified.message
       actionStatus = classified.message
-      if (job.snapshot) applyView(job.snapshot)
+      if (job.action === "connect" && job.snapshot && job.snapshot.state === Model.STATES.connected) {
+        // A failed switch can leave the old tunnel down; the CLI disconnects on
+        // connection errors. Re-check instead of restoring "connected".
+        applyView({
+          state: Model.STATES.checking,
+          kind: classified.kind,
+          message: classified.message,
+          detail: classified.detail,
+          stale: false,
+          status: job.snapshot.status,
+          signedIn: true,
+          connectedSnapshot: true
+        })
+      } else if (job.snapshot) {
+        applyView(job.snapshot)
+      }
       lastError = classified.message
     }
     actionStatusTimer.restart()
@@ -381,6 +401,11 @@ Item {
         return
       }
       cities = parsedCities.cities
+      if (parsedCities.cities.length > 0) {
+        var cache = Object.assign({}, _citiesCache)
+        cache[citiesCountry] = parsedCities.cities
+        _citiesCache = cache
+      }
       citiesError = parsedCities.cities.length === 0 ? "No cities returned for that country." : ""
       discoveryStale = false
     }
@@ -532,11 +557,19 @@ Item {
     }
     if (!installed) return
     if (force !== true && citiesCountry === code && cities.length > 0 && citiesError === "" && !citiesLoading) return
+    if (force !== true && _citiesCache[code]) {
+      // City lists rarely change; Refresh and Retry still force a new read.
+      citiesCountry = code
+      cities = _citiesCache[code]
+      citiesError = ""
+      citiesLoading = false
+      return
+    }
     citiesCountry = code
     cities = []
     citiesError = ""
     citiesLoading = true
-    enqueue({ type: "discovery", kind: "cities", country: code, command: ["protonvpn", "cities", "list", code], timeout: 30000 })
+    enqueue({ type: "discovery", kind: "cities", country: code, command: ["protonvpn", "cities", "list", code], timeout: 30000, priority: true })
   }
 
   function refreshConfig() {
@@ -586,6 +619,7 @@ Item {
       action: action,
       command: command,
       timeout: 60000,
+      priority: true,
       snapshot: snapshot(),
       options: options || ({})
     }
@@ -612,18 +646,12 @@ Item {
     pendingValue = value
     lastError = ""
     actionStatus = "Updating " + settingName + "…"
-    if (!enqueue({ type: "config", kind: "set", setting: settingName, restart: plan.restart === true, command: plan.command, timeout: 20000 })) {
+    if (!enqueue({ type: "config", kind: "set", setting: settingName, restart: plan.restart === true, command: plan.command, timeout: 20000, priority: true })) {
       pendingSetting = ""
       pendingValue = ""
       return false
     }
     return true
-  }
-
-  function connectRecent(index) {
-    var target = recentTargets[index]
-    if (!target) return false
-    return connectWith(target)
   }
 
   function reportError(errorMessage) {
