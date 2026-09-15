@@ -10,16 +10,20 @@ fail() {
 }
 
 echo "==> Node tests"
-node --test tests/model.test.js tests/scheduler.test.js tests/qml-contract.test.js
+node --test tests/*.test.js
+
+echo "==> Python tests"
+python3 -m unittest discover -s tests -p 'test_*.py' -v
 
 echo "==> Manifest validation"
-if ! command -v omarchy >/dev/null 2>&1; then
-  fail "omarchy is not on PATH"
+if command -v omarchy >/dev/null 2>&1; then
+  omarchy plugin validate .
+else
+  echo "omarchy is not on PATH; manifest covered by portable tests"
 fi
-omarchy plugin validate .
 
 echo "==> QML files present"
-for file in Panel.qml Service.qml ProtonVpnIcon.qml Model.js Scheduler.js; do
+for file in Panel.qml Service.qml ProtonVpnIcon.qml Model.js Scheduler.js scripts/run_bounded.py; do
   [[ -s "$file" ]] || fail "missing $file"
 done
 
@@ -58,7 +62,8 @@ fi
 
 echo "==> Shell-load smoke"
 node -e "require('./Model.js'); require('./Scheduler.js'); if (!require('./Model.js').canWrite || !require('./Scheduler.js').enqueueJob) process.exit(1)"
-python - "$root" <<'PY'
+python3 -m py_compile scripts/run_bounded.py
+python3 - "$root" <<'PY'
 import pathlib, sys
 root = pathlib.Path(sys.argv[1])
 for name in ("Panel.qml", "Service.qml", "ProtonVpnIcon.qml"):
