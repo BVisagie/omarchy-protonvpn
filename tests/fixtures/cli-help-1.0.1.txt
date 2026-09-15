@@ -1,0 +1,14 @@
+Usage: protonvpn [OPTIONS] COMMAND [ARGS]...
+
+  Proton VPN command-line interface for Linux. 1.0.1
+
+Commands:
+  signin      Sign in to Proton VPN.
+  signout     Sign out from Proton VPN.
+  info        Display account information.
+  connect     Connect to a Proton VPN server.
+  disconnect  Disconnect from Proton VPN.
+  status      Show current VPN connection status.
+  countries   Discover countries.
+  cities      Discover cities.
+  config      Configure Proton VPN settings.

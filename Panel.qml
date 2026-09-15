@@ -13,6 +13,12 @@ Panel {
   ipcTarget: "io.github.BVisagie.protonvpn"
   manageIpc: false
 
+  readonly property var sharedVpn: root.bar && root.bar.shell && typeof root.bar.shell.serviceFor === "function"
+    ? root.bar.shell.serviceFor(root.moduleName) : null
+  // Replacement bars get a service-less shell facade, and the shared service
+  // may not exist yet, so never let the panel bind against null.
+  readonly property var vpn: root.sharedVpn || localVpn
+
   property string focusSection: "header"
   property bool cursorActive: false
   property string selectedMode: "fastest"
@@ -137,6 +143,7 @@ Panel {
     if (view.state === Model.STATES.connected || (view.stale && status.protocol !== "")) {
       list.push({ label: "Load", value: Model.displayLoad(status.load) })
     }
+    if (status.exitIp !== "") list.push({ label: "Exit IP", value: status.exitIp })
     var updated = Model.lastUpdatedText(view, Date.now() + nowTick)
     if (updated !== "") list.push({ label: view.stale ? "Stale" : "Updated", value: updated })
     return list
@@ -155,6 +162,11 @@ Panel {
       if (needsCity) connect.push("city")
       if (needsServer) connect.push("server")
       rows.push(connect)
+      if (vpn.recentTargets.length > 0) {
+        var recent = []
+        for (var r = 0; r < vpn.recentTargets.length; r++) recent.push("recent:" + r)
+        rows.push(recent)
+      }
       if (vpn.configLoaded) {
         rows.push(["config:netshield", "config:kill-switch"])
         rows.push(["config:port-forwarding", "config:vpn-accelerator"])
@@ -233,6 +245,7 @@ Panel {
     else if (focusSection === "country") countryDropdown.toggle()
     else if (focusSection === "city" && selectedCountry !== "") cityDropdown.toggle()
     else if (focusSection === "server") Qt.callLater(function() { if (serverField) serverField.forceActiveFocus() })
+    else if (focusSection.indexOf("recent:") === 0) vpn.connectRecent(parseInt(focusSection.substring(7), 10))
     else if (focusSection === "dns") applyDns()
     else if (focusSection.indexOf("config:") === 0) activateConfig(focusSection.substring(7))
   }
@@ -360,6 +373,7 @@ Panel {
     else if (focusSection === "country") scrollItemIntoView(countryDropdown)
     else if (focusSection === "city") scrollItemIntoView(cityDropdown)
     else if (focusSection === "server") scrollItemIntoView(serverField)
+    else if (focusSection.indexOf("recent:") === 0) scrollItemIntoView(recentGrid)
     else if (focusSection === "dns") scrollItemIntoView(dnsField)
     else if (focusSection === "config:netshield") scrollItemIntoView(netshieldDropdown)
     else if (focusSection === "config:kill-switch") scrollItemIntoView(killSwitchDropdown)
@@ -406,6 +420,9 @@ Panel {
     refreshAll()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
+  onVpnChanged: if (vpn) vpn.setSettings(root.settings)
+  onSettingsChanged: if (vpn) vpn.setSettings(root.settings)
+  Component.onCompleted: if (vpn) vpn.setSettings(root.settings)
   onSelectedModeChanged: {
     var draft = Model.connectDraftForModeChange(lastMode, selectedMode, {
       country: selectedCountry,
@@ -432,8 +449,8 @@ Panel {
   }
 
   Service {
-    id: vpn
-    settings: root.settings
+    id: localVpn
+    active: !root.sharedVpn
   }
 
   Connections {
@@ -594,6 +611,7 @@ Panel {
           }
 
           Text {
+            textFormat: Text.PlainText
             visible: vpn.actionStatus !== "" || vpn.lastError !== "" || vpn.restartNotice !== ""
             width: parent.width
             text: vpn.actionStatus !== "" ? vpn.actionStatus : (vpn.lastError !== "" ? vpn.lastError : vpn.restartNotice)
@@ -609,6 +627,7 @@ Panel {
             spacing: Style.spacing.xl
 
             Text {
+              textFormat: Text.PlainText
               width: parent.width
               text: Model.degradedExplanation(root.view.state)
               color: root.foreground
@@ -618,6 +637,7 @@ Panel {
             }
 
             Text {
+              textFormat: Text.PlainText
               width: parent.width
               text: Model.degradedRemediation(root.view)
               color: root.dim
@@ -627,6 +647,7 @@ Panel {
             }
 
             Text {
+              textFormat: Text.PlainText
               visible: Model.diagnosticDetail(root.view) !== ""
               width: parent.width
               text: Model.diagnosticDetail(root.view)
@@ -694,6 +715,17 @@ Panel {
               onClicked: root.refreshAll()
               onHovered: function(on) { if (on) root.setFocusSection("refresh") }
             }
+          }
+
+          Text {
+            textFormat: Text.PlainText
+            visible: vpn.compatibilityWarning !== ""
+            width: parent.width
+            text: vpn.compatibilityWarning
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            wrapMode: Text.WordWrap
           }
 
           ActionRow {
@@ -839,6 +871,41 @@ Panel {
                 }
               }
             }
+
+
+            PanelSectionHeader {
+              visible: vpn.recentTargets.length > 0
+              text: "RECENT"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+            }
+
+            GridLayout {
+              id: recentGrid
+              visible: vpn.recentTargets.length > 0
+              width: parent.width
+              columns: Math.max(1, Math.min(3, vpn.recentTargets.length))
+              columnSpacing: Style.spacing.rowGap
+              rowSpacing: Style.spacing.labelGap
+
+              Repeater {
+                model: vpn.recentTargets
+
+                Button {
+                  required property var modelData
+                  required property int index
+                  Layout.fillWidth: true
+                  Layout.preferredWidth: 1
+                  text: modelData.label
+                  tooltipText: "Reconnect using " + modelData.label + (modelData.detail ? " · last used " + modelData.detail : "")
+                  hasCursor: root.cursorActive && root.focusSection === "recent:" + index
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                  onClicked: vpn.connectRecent(index)
+                  onHovered: function(on) { if (on) root.setFocusSection("recent:" + index) }
+                }
+              }
+            }
           }
 
           Column {
@@ -865,6 +932,7 @@ Panel {
             }
 
             Text {
+              textFormat: Text.PlainText
               visible: vpn.configError !== ""
               width: parent.width
               text: vpn.configError
@@ -910,6 +978,7 @@ Panel {
                 }
 
                 Text {
+                  textFormat: Text.PlainText
                   visible: vpn.configUpgrade.netshield === true
                   Layout.fillWidth: true
                   text: "Upgrade to enable. Changing it still sends the CLI command so Proton can report the restriction."
@@ -948,6 +1017,7 @@ Panel {
                 }
 
                 Text {
+                  textFormat: Text.PlainText
                   visible: Model.isVpnActive(root.view)
                   Layout.fillWidth: true
                   text: "Disconnect before changing Kill Switch."
@@ -1102,6 +1172,7 @@ Panel {
       spacing: Style.space(1)
 
       Text {
+        textFormat: Text.PlainText
         width: parent.width
         text: actionRow.title
         color: root.foreground
@@ -1111,6 +1182,7 @@ Panel {
       }
 
       Text {
+        textFormat: Text.PlainText
         width: parent.width
         visible: actionRow.subtitle !== ""
         text: actionRow.subtitle
@@ -1129,12 +1201,14 @@ Panel {
     spacing: Style.spacing.controlGap
 
     Text {
+      textFormat: Text.PlainText
       text: label
       color: root.dim
       font.family: root.fontFamily
       font.pixelSize: Style.font.bodySmall
     }
     Text {
+      textFormat: Text.PlainText
       text: value
       color: root.foreground
       font.family: root.fontFamily
