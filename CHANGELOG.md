@@ -8,6 +8,8 @@
 - Cache city lists per country for the shell session and show "Loading cities…" on the City field.
 - Stop forcing country and city reloads every time the panel opens.
 - Re-check status after a failed switch instead of showing the old connection as still active.
+- Leave the current connection out of RECENT, so it lists only places you can switch to.
+- Center the protocol pill with the power toggle and keep status details on one line beside Refresh.
 
 ## 1.1.0 — 2026-09-15
 

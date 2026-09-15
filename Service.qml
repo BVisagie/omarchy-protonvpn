@@ -654,12 +654,6 @@ Item {
     return true
   }
 
-  function connectRecent(index) {
-    var target = recentTargets[index]
-    if (!target) return false
-    return connectWith(target)
-  }
-
   function reportError(errorMessage) {
     lastError = String(errorMessage || "Proton VPN command failed")
     actionStatus = lastError

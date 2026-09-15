@@ -76,7 +76,10 @@ describe("QML scheduler contract", () => {
     assert.match(panel, /status\.exitIp/)
     assert.match(panel, /vpn\.compatibilityWarning/)
     assert.match(panel, /id: recentGrid/)
-    assert.match(panel, /vpn\.connectRecent\(index\)/)
+    assert.match(panel, /onClicked: root\.connectRecent\(index\)/)
+    assert.match(panel, /readonly property var recentChoices: Model\.recentChoices\(vpn\.recentTargets, vpn\.activeTarget\)/)
+    assert.match(panel, /model: root\.recentChoices/)
+    assert.match(panel, /function onActiveTargetChanged\(\) \{ root\.connectDraftDirty = false \}/)
   })
 
   it("accepts an action before changing visual connecting state", () => {
@@ -156,6 +159,13 @@ describe("QML scheduler contract", () => {
     assert.doesNotMatch(panel, /function applyConnectDraft\(draft\) \{[^}]*connectDraftDirty/)
     assert.match(service, /activeTarget = target/)
     assert.match(service, /if \(state === Model\.STATES\.disconnected\) activeTarget = null/)
+  })
+
+  it("centers the protocol pill with the power toggle and keeps status on one line", () => {
+    assert.match(panel, /detail: ""/)
+    assert.match(panel, /id: detailPill\s*visible: Model\.heroDetail\(root\.view\) !== ""\s*anchors\.verticalCenter: parent\.verticalCenter/)
+    assert.match(panel, /id: powerSwitch\s*anchors\.verticalCenter: parent\.verticalCenter/)
+    assert.match(panel, /Flow \{\s*id: statusGrid/)
   })
 
   it("gets city lists to the user ahead of background refreshes", () => {

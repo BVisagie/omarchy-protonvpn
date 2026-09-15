@@ -1005,12 +1005,26 @@ function connectTargetKey(options) {
 
 function shouldOfferSwitch(ctx) {
   if (!ctx || ctx.state !== STATES.connected || ctx.busy === true) return false
+  // Only after the user edits CONNECT: a recreated panel or a RECENT reconnect
+  // leaves an untouched draft that differs from the connection.
+  if (ctx.draftDirty !== true) return false
   var draftKey = connectTargetKey(ctx.draft)
   if (draftKey === "") return false
-  // Without a known current target (connected before the shell started),
-  // offer a switch only once the user has changed the CONNECT fields.
-  if (!ctx.activeTarget) return ctx.draftDirty === true
+  // Connected before the shell started: the current target is unknown.
+  if (!ctx.activeTarget) return true
   return connectTargetKey(ctx.activeTarget) !== draftKey
+}
+
+// Reconnecting to where you already are is pointless, so RECENT hides it.
+function recentChoices(list, activeTarget) {
+  var source = list || []
+  var activeKey = activeTarget ? connectTargetKey(activeTarget) : ""
+  var result = []
+  for (var i = 0; i < source.length; i++) {
+    if (activeKey !== "" && connectTargetKey(source[i]) === activeKey) continue
+    result.push(source[i])
+  }
+  return result
 }
 
 function switchLabel(options) {
@@ -1365,6 +1379,7 @@ if (typeof module !== "undefined") {
     connectFieldTriggerLabel: connectFieldTriggerLabel,
     connectTargetKey: connectTargetKey,
     shouldOfferSwitch: shouldOfferSwitch,
+    recentChoices: recentChoices,
     switchLabel: switchLabel,
     buildConnectCommand: buildConnectCommand,
     buildConfigSetCommand: buildConfigSetCommand,
