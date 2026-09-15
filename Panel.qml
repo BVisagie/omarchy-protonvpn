@@ -54,6 +54,11 @@ Panel {
     if (Model.iconDim(view.state)) return dim
     return foreground
   }
+  // Header controls derive visibility from state, never from a child's
+  // `visible`: that reads false while the parent is hidden, so a parent bound
+  // to it could never show again.
+  readonly property string heroDetailText: Model.heroDetail(view)
+  readonly property bool powerSwitchShown: vpn.installed && (Model.canWrite(view.state) || view.state === Model.STATES.connecting || view.state === Model.STATES.disconnecting)
   readonly property string toggleHint: {
     if (view.state === Model.STATES.connecting) return "Connecting…"
     if (view.state === Model.STATES.disconnecting) return "Disconnecting…"
@@ -628,12 +633,12 @@ Panel {
               }
               trailingControl: Component {
                 Row {
-                  visible: detailPill.visible || powerSwitch.visible
+                  visible: root.heroDetailText !== "" || root.powerSwitchShown
                   spacing: Style.space(12)
 
                 BorderSurface {
                   id: detailPill
-                  visible: Model.heroDetail(root.view) !== ""
+                  visible: root.heroDetailText !== ""
                   anchors.verticalCenter: parent.verticalCenter
                   implicitWidth: detailText.implicitWidth + Style.space(10)
                   implicitHeight: detailText.implicitHeight + Style.space(4)
@@ -645,7 +650,7 @@ Panel {
                     id: detailText
                     textFormat: Text.PlainText
                     anchors.centerIn: parent
-                    text: Model.heroDetail(root.view)
+                    text: root.heroDetailText
                     color: hero.dim
                     font.family: hero.fontFamily
                     font.pixelSize: Style.font.body
@@ -656,7 +661,7 @@ Panel {
                 ToggleSwitch {
                   id: powerSwitch
                   anchors.verticalCenter: parent.verticalCenter
-                  visible: vpn.installed && (Model.canWrite(root.view.state) || root.view.state === Model.STATES.connecting || root.view.state === Model.STATES.disconnecting)
+                  visible: root.powerSwitchShown
                   checked: root.view.state === Model.STATES.connected || root.view.state === Model.STATES.connecting
                   busy: vpn.actionBusy
                   hasCursor: header.ringVisible

@@ -163,7 +163,11 @@ describe("QML scheduler contract", () => {
 
   it("centers the protocol pill with the power toggle and keeps status on one line", () => {
     assert.match(panel, /detail: ""/)
-    assert.match(panel, /id: detailPill\s*visible: Model\.heroDetail\(root\.view\) !== ""\s*anchors\.verticalCenter: parent\.verticalCenter/)
+    assert.match(panel, /id: detailPill\s*visible: root\.heroDetailText !== ""\s*anchors\.verticalCenter: parent\.verticalCenter/)
+    // A parent bound to a child's `visible` can hide itself permanently.
+    assert.match(panel, /visible: root\.heroDetailText !== "" \|\| root\.powerSwitchShown/)
+    assert.match(panel, /id: powerSwitch\s*anchors\.verticalCenter: parent\.verticalCenter\s*visible: root\.powerSwitchShown/)
+    assert.doesNotMatch(panel, /visible:[^\n]*\b(?:detailPill|powerSwitch)\.visible/)
     assert.match(panel, /id: powerSwitch\s*anchors\.verticalCenter: parent\.verticalCenter/)
     assert.match(panel, /Flow \{\s*id: statusGrid/)
   })
