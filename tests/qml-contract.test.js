@@ -76,7 +76,10 @@ describe("QML scheduler contract", () => {
     assert.match(panel, /status\.exitIp/)
     assert.match(panel, /vpn\.compatibilityWarning/)
     assert.match(panel, /id: recentGrid/)
-    assert.match(panel, /vpn\.connectRecent\(index\)/)
+    assert.match(panel, /onClicked: root\.connectRecent\(index\)/)
+    assert.match(panel, /readonly property var recentChoices: Model\.recentChoices\(vpn\.recentTargets, vpn\.activeTarget\)/)
+    assert.match(panel, /model: root\.recentChoices/)
+    assert.match(panel, /function onActiveTargetChanged\(\) \{ root\.connectDraftDirty = false \}/)
   })
 
   it("accepts an action before changing visual connecting state", () => {
@@ -143,6 +146,40 @@ describe("QML scheduler contract", () => {
     assert.match(fieldLabel[0], /font\.bold: true/)
     assert.doesNotMatch(fieldLabel[0], /Style\.font\.caption/)
     assert.doesNotMatch(fieldLabel[0], /color: root\.dim/)
+  })
+
+  it("offers an in-place switch for changed CONNECT choices while connected", () => {
+    assert.match(panel, /readonly property bool offerSwitch: Model\.shouldOfferSwitch\(/)
+    assert.match(panel, /id: switchButton\s*visible: root\.offerSwitch/)
+    assert.match(panel, /text: Model\.switchLabel\(root\.connectOptions\(\)\)/)
+    assert.match(panel, /onClicked: root\.switchNow\(\)/)
+    assert.match(panel, /if \(offerSwitch\) rows\.push\(\["switch"\]\)/)
+    assert.match(panel, /focusSection === "switch"\) switchNow\(\)/)
+    assert.match(panel, /onAccepted: root\.offerSwitch \? root\.switchNow\(\) : root\.tryToggle\(\)/)
+    assert.doesNotMatch(panel, /function applyConnectDraft\(draft\) \{[^}]*connectDraftDirty/)
+    assert.match(service, /activeTarget = target/)
+    assert.match(service, /if \(state === Model\.STATES\.disconnected\) activeTarget = null/)
+  })
+
+  it("centers the protocol pill with the power toggle and keeps status on one line", () => {
+    assert.match(panel, /detail: ""/)
+    assert.match(panel, /id: detailPill\s*visible: root\.heroDetailText !== ""\s*anchors\.verticalCenter: parent\.verticalCenter/)
+    // A parent bound to a child's `visible` can hide itself permanently.
+    assert.match(panel, /visible: root\.heroDetailText !== "" \|\| root\.powerSwitchShown/)
+    assert.match(panel, /id: powerSwitch\s*anchors\.verticalCenter: parent\.verticalCenter\s*visible: root\.powerSwitchShown/)
+    assert.doesNotMatch(panel, /visible:[^\n]*\b(?:detailPill|powerSwitch)\.visible/)
+    assert.match(panel, /id: powerSwitch\s*anchors\.verticalCenter: parent\.verticalCenter/)
+    assert.match(panel, /Flow \{\s*id: statusGrid/)
+  })
+
+  it("gets city lists to the user ahead of background refreshes", () => {
+    assert.match(service, /"cities", "list", code\], timeout: 30000, priority: true/)
+    assert.match(service, /timeout: 60000,\s*priority: true,\s*snapshot: snapshot\(\)/)
+    assert.match(service, /kind: "set"[^\n]*priority: true/)
+    assert.doesNotMatch(service, /"status"\][^\n]*priority: true/)
+    assert.match(service, /force !== true && _citiesCache\[code\]/)
+    assert.match(panel, /panelFlick\.contentY = 0\s*refreshOnOpen\(\)/)
+    assert.match(panel, /loading: vpn\.citiesLoading && vpn\.citiesCountry === root\.selectedCountry/)
   })
 
   it("scrolls the Custom DNS row itself into view with bottom breathing room", () => {

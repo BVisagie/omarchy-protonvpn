@@ -92,6 +92,8 @@ Inside the panel:
 - `Tab` / `Shift+Tab` switches to the next bar panel
 - `Esc` closes
 
+While connected, changing the CONNECT choices shows a **Switch to …** button (for example **Switch to Zurich**). It reconnects in place with the new choices, and `Enter` in the Server ID field does the same. The header toggle and `t` still disconnect. City lists are cached for the shell session, so picking a country again shows its cities immediately; **Refresh** reloads them.
+
 Up to three successful connection targets appear under **RECENT** for the current shell session. They are never written to disk. When the CLI supplies a new exit IP after connecting, the panel shows it until the tunnel disconnects or changes.
 
 Connection modes match the current CLI: fastest, country, city, specific server ID, Secure Core, P2P, Tor, and random. Country and city lists come from `protonvpn countries list` and `protonvpn cities list`. Server IDs are entered as text because the CLI does not expose a machine-readable server list; Proton publishes IDs at [the account WireGuard server list](https://account.proton.me/vpn/WireGuard).
