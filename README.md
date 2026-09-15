@@ -1,8 +1,8 @@
 # Proton VPN for Omarchy
 
 <p align="center">
-  <img src="docs/images/panel-fastest.png" alt="Proton VPN panel connected to NL#660 in Amsterdam using the fastest server mode, with NetShield, Kill Switch, and toggle settings below" width="49%">
-  <img src="docs/images/panel-city.png" alt="Proton VPN panel in a green Omarchy theme choosing a Zurich, Switzerland city connection" width="49%">
+  <img src="docs/images/panel-fastest.png" alt="Proton VPN panel in a green Omarchy theme connected to NL#819 in Amsterdam on the fastest server, with recent BH and Moroni targets and settings below" width="49%">
+  <img src="docs/images/panel-city.png" alt="Proton VPN panel in a monochrome Omarchy theme connected to Amsterdam with City mode set to Tallinn, Estonia and a Switch to Tallinn button" width="49%">
 </p>
 
 Native Omarchy Quattro bar widget and keyboard-friendly panel for the official Proton VPN Linux CLI (`protonvpn`). NetworkManager is observed read-only so the bar reacts to tunnel changes without repeatedly starting the heavier CLI.
