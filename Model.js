@@ -1,4 +1,6 @@
-var CLI_PACKAGE = "proton-vpn-cli 1.0.1-1"
+var CLI_PACKAGE = "proton-vpn-cli"
+var MIN_TESTED_CLI_VERSION = "1.0.1"
+var MAX_TESTED_CLI_VERSION = "1.0.3"
 var OUTPUT_CAP = 400
 var MESSAGE_CAP = 160
 var SIGNIN_COMMAND = "protonvpn signin USERNAME"
@@ -214,7 +216,7 @@ var CONFIG_SETTINGS = [
 ]
 
 function emptyStatus() {
-  return { server: "", location: "", load: null, protocol: "" }
+  return { server: "", location: "", load: null, protocol: "", exitIp: "" }
 }
 
 function defaultView() {
@@ -231,7 +233,129 @@ function defaultView() {
 }
 
 function normalizeOutput(text) {
-  return String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+  return String(text || "")
+    .replace(/\u001b\[[0-?]*[ -\/]*[@-~]/g, "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+}
+
+function compareVersions(left, right) {
+  var a = String(left || "").split(".")
+  var b = String(right || "").split(".")
+  for (var i = 0; i < 3; i++) {
+    var av = parseInt(a[i] || "0", 10)
+    var bv = parseInt(b[i] || "0", 10)
+    if (av < bv) return -1
+    if (av > bv) return 1
+  }
+  return 0
+}
+
+function parseCliHelp(raw) {
+  var text = normalizeOutput(raw)
+  var match = text.match(/\b(\d+\.\d+\.\d+)(?:[-+][^\s]+)?\s*$/m)
+  var version = match ? match[1] : ""
+  var commands = []
+  var known = ["signin", "signout", "info", "connect", "disconnect", "status", "servers", "countries", "cities", "config"]
+  for (var i = 0; i < known.length; i++) {
+    if (new RegExp("^[ \\t]*" + known[i] + "[ \\t]+", "m").test(text)) commands.push(known[i])
+  }
+  var support = "unknown"
+  if (version !== "") {
+    support = compareVersions(version, MIN_TESTED_CLI_VERSION) >= 0
+      && compareVersions(version, MAX_TESTED_CLI_VERSION) <= 0 ? "tested" : "untested"
+  }
+  return { version: version, commands: commands, support: support }
+}
+
+function compatibilityWarning(cli) {
+  var info = cli || {}
+  if (info.support === "tested") return ""
+  if (String(info.version || "") === "") return "Could not identify the Proton VPN CLI version. Core controls remain available."
+  return "Proton VPN CLI " + info.version + " is outside the tested " + MIN_TESTED_CLI_VERSION + "–" + MAX_TESTED_CLI_VERSION + " range."
+}
+
+var TUNNEL_DEVICE = /^proton\d*$/i
+var TUNNEL_TYPES = { wireguard: true, vpn: true, tun: true }
+
+function parseActiveVpn(raw) {
+  var lines = normalizeOutput(raw).split("\n")
+  for (var i = 0; i < lines.length; i++) {
+    var line = String(lines[i] || "").trim()
+    if (line === "") continue
+    var parts = line.split(":")
+    if (parts.length < 4) continue
+    var state = parts[parts.length - 1]
+    var device = parts[parts.length - 2]
+    var type = parts[parts.length - 3]
+    var name = parts.slice(0, parts.length - 3).join(":").replace(/\\:/g, ":")
+    if (!/^activated$/i.test(state)) continue
+    if (!TUNNEL_DEVICE.test(device)) continue
+    if (!TUNNEL_TYPES[String(type).toLowerCase()]) continue
+    return {
+      active: true,
+      name: name,
+      server: name.replace(/^ProtonVPN[\s:]+/i, "").trim(),
+      device: device,
+      type: type
+    }
+  }
+  return { active: false, name: "", server: "", device: "", type: "" }
+}
+
+function parseConnectOutcome(raw) {
+  var lines = normalizeOutput(raw).split("\n")
+  var result = { server: "", location: "", exitIp: "" }
+  for (var i = 0; i < lines.length; i++) {
+    var line = String(lines[i] || "").trim()
+    var connected = line.match(/^Connected to\s+(.+?)\s+in\s+(.+?)\.?\s*$/i)
+    if (connected) {
+      result.server = String(connected[1] || "").trim()
+      result.location = String(connected[2] || "").trim().replace(/\.$/, "")
+    }
+    var ip = line.match(/^Your new IP address is\s+(.+?)\.?\s*$/i)
+    if (ip) {
+      var candidate = String(ip[1] || "").trim().replace(/\.$/, "")
+      if (isIPv4(candidate) || isIPv6(candidate)) result.exitIp = candidate
+    }
+  }
+  return result
+}
+
+function recentTarget(options, outcome) {
+  var source = options || {}
+  var connected = outcome || {}
+  var mode = String(source.mode || "fastest")
+  var target = {
+    mode: mode,
+    country: String(source.country || ""),
+    city: String(source.city || ""),
+    serverId: String(source.serverId || ""),
+    label: "",
+    detail: connected.server ? String(connected.server) + (connected.location ? " · " + connected.location : "") : ""
+  }
+  if (mode === "city") target.label = target.city
+  else if (mode === "country") target.label = target.country
+  else if (mode === "server") target.label = target.serverId
+  else {
+    var def = modeDef(mode)
+    target.label = def ? def.label : "Fastest server"
+    if (target.country !== "") target.label += " · " + target.country
+  }
+  return target
+}
+
+function recordRecentTarget(list, target, max) {
+  if (!target || String(target.label || "") === "") return (list || []).slice()
+  var key = [target.mode, target.country, target.city, target.serverId].join("\n")
+  var result = [target]
+  var source = list || []
+  for (var i = 0; i < source.length; i++) {
+    var item = source[i]
+    var itemKey = [item.mode, item.country, item.city, item.serverId].join("\n")
+    if (itemKey !== key) result.push(item)
+  }
+  return result.slice(0, typeof max === "number" && max > 0 ? max : 3)
 }
 
 function capOutput(text, max) {
@@ -365,7 +489,8 @@ function retainStatus(prior) {
     server: String(prior.status.server || ""),
     location: String(prior.status.location || ""),
     load: prior.status.load === null || prior.status.load === undefined ? null : Number(prior.status.load),
-    protocol: String(prior.status.protocol || "")
+    protocol: String(prior.status.protocol || ""),
+    exitIp: String(prior.status.exitIp || "")
   }
 }
 
@@ -1103,6 +1228,14 @@ function clampRefreshIntervalSec(value) {
   return n
 }
 
+function clampLinkWatchIntervalSec(value) {
+  var n = parseInt(String(value), 10)
+  if (!isFinite(n)) n = 4
+  if (n < 2) n = 2
+  if (n > 60) n = 60
+  return n
+}
+
 function configValueLabel(key, value) {
   var def = settingDef(key)
   var raw = String(value || "")
@@ -1127,6 +1260,8 @@ function restartNotice(setting) {
 if (typeof module !== "undefined") {
   module.exports = {
     CLI_PACKAGE: CLI_PACKAGE,
+    MIN_TESTED_CLI_VERSION: MIN_TESTED_CLI_VERSION,
+    MAX_TESTED_CLI_VERSION: MAX_TESTED_CLI_VERSION,
     OUTPUT_CAP: OUTPUT_CAP,
     SIGNIN_COMMAND: SIGNIN_COMMAND,
     INSTALL_COMMAND: INSTALL_COMMAND,
@@ -1141,6 +1276,13 @@ if (typeof module !== "undefined") {
     emptyStatus: emptyStatus,
     defaultView: defaultView,
     normalizeOutput: normalizeOutput,
+    compareVersions: compareVersions,
+    parseCliHelp: parseCliHelp,
+    compatibilityWarning: compatibilityWarning,
+    parseActiveVpn: parseActiveVpn,
+    parseConnectOutcome: parseConnectOutcome,
+    recentTarget: recentTarget,
+    recordRecentTarget: recordRecentTarget,
     capOutput: capOutput,
     combineOutput: combineOutput,
     hasGuiConflict: hasGuiConflict,
@@ -1200,6 +1342,7 @@ if (typeof module !== "undefined") {
     iconUrgent: iconUrgent,
     iconDim: iconDim,
     clampRefreshIntervalSec: clampRefreshIntervalSec,
+    clampLinkWatchIntervalSec: clampLinkWatchIntervalSec,
     configValueLabel: configValueLabel,
     restartNotice: restartNotice
   }

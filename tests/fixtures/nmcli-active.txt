@@ -1,0 +1,3 @@
+Home WiFi:802-11-wireless:wlan0:activated
+ProtonVPN NL#742:wireguard:proton0:activated
+pvpn-killswitch-ipv6:dummy:ipv6leakintrf0:activated

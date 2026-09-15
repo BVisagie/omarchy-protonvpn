@@ -1,16 +1,18 @@
 # Proton VPN for Omarchy
 
-Native Omarchy Quattro bar widget and keyboard-friendly panel for the official Proton VPN Linux CLI (`protonvpn`).
+Native Omarchy Quattro bar widget and keyboard-friendly panel for the official Proton VPN Linux CLI (`protonvpn`). NetworkManager is observed read-only so the bar reacts to tunnel changes without repeatedly starting the heavier CLI.
 
-This plugin talks only to the installed CLI. It does not reimplement Proton protocols, call Proton's private APIs, collect credentials, or run unofficial VPN wrappers.
+Every VPN action and setting change goes through the installed official CLI. The plugin does not reimplement Proton protocols, call Proton's private APIs, collect credentials, edit Proton files, or run unofficial VPN clients.
 
 ## Privacy
 
-- The plugin executes only fixed official CLI commands as argument arrays. It never interpolates values into a shell.
+- The plugin executes fixed official CLI commands as argument arrays through a bundled safety runner. It never interpolates values into a shell.
+- The runner caps stdout and stderr while commands execute, enforces deadlines, and reaps the complete child process group after a timeout or overflow.
+- A read-only `nmcli connection show --active` probe observes `proton0`-style tunnel devices. It never creates, changes, or removes NetworkManager connections.
 - It never collects, logs, stores, or passes Proton credentials.
 - It never invokes `sudo` or `pkexec`.
-- It never makes extra network requests such as “what is my IP” lookups or telemetry.
-- Connection details stay in memory. Captured test fixtures are redacted.
+- It never makes extra network requests such as “what is my IP” lookups, map tiles, or telemetry.
+- The exit IP is shown only when the Proton CLI itself returns it after connecting. Exit IP and recent targets stay in memory and disappear when `omarchy-shell` exits. Captured test fixtures are synthetic or redacted.
 - Raw CLI diagnostics are capped before they are shown.
 
 Omarchy plugins run unsandboxed inside the long-lived `omarchy-shell` process with your user privileges. This plugin invokes `protonvpn` only after discovering it on `PATH`. Review the code before enabling it.
@@ -41,7 +43,7 @@ Omit `--section` to be asked **left**, **center**, or **right**. To move it late
 omarchy bar move io.github.BVisagie.protonvpn --section right
 ```
 
-Requires the official Proton VPN CLI on `PATH`:
+Requires NetworkManager (already used by Omarchy) and the official Proton VPN CLI on `PATH`:
 
 ```sh
 sudo pacman -S proton-vpn-cli
@@ -72,9 +74,11 @@ Inside the panel:
 - `Tab` / `Shift+Tab` switches to the next bar panel
 - `Esc` closes
 
+Up to three successful connection targets appear under **RECENT** for the current shell session. They are never written to disk. When the CLI supplies a new exit IP after connecting, the panel shows it until the tunnel disconnects or changes.
+
 Connection modes match the current CLI: fastest, country, city, specific server ID, Secure Core, P2P, Tor, and random. Country and city lists come from `protonvpn countries list` and `protonvpn cities list`. Server IDs are entered as text because the CLI does not expose a machine-readable server list; Proton publishes IDs at [the account WireGuard server list](https://account.proton.me/vpn/WireGuard).
 
-Settings cover every value exposed by `protonvpn config` on CLI 1.0.1: NetShield, kill switch, port forwarding, custom DNS, VPN Accelerator, moderate NAT, IPv6, and anonymous crash reports. Kill switch changes require disconnecting first. IPv6 and custom DNS need a new VPN connection to apply. Custom DNS is validated locally and passed as one `--dns` argument.
+Settings cover every value exposed by `protonvpn config` on the tested CLI 1.0.1–1.0.3 range: NetShield, kill switch, port forwarding, custom DNS, VPN Accelerator, moderate NAT, IPv6, and anonymous crash reports. Kill switch changes require disconnecting first. IPv6 and custom DNS need a new VPN connection to apply. Custom DNS is validated locally and passed as one `--dns` argument.
 
 Some rows show a short caption. Hover a CONNECT or SETTINGS control, or move onto it with `j` / `k`, for a Proton-sourced tooltip. That copy is paraphrased from Proton’s official support articles and the Linux CLI guide. It is not a substitute for those pages, and the widget does not fetch Proton’s website.
 
@@ -83,21 +87,23 @@ Some rows show a short caption. Hover a CONNECT or SETTINGS control, or move ont
 - The official CLI cannot run at the same time as the Proton VPN desktop app. Close the GUI to use this widget.
 - Headless setups and split tunneling are not supported by the CLI, so they are out of scope here.
 - Location, feature, and some configuration choices can require a paid plan. The panel shows the CLI's error instead of guessing the account tier.
-- `protonvpn status` does not provide the current exit IP; the widget does not add another lookup to display one.
-- One widget instance is created per monitor. Commands are serialized per instance, so a single panel will not run two Proton commands at once.
+- `protonvpn status` does not provide the current exit IP. The widget never performs an external lookup, so the value is available only after a successful connect command that returned it.
+- Omarchy creates a widget on each monitor, but every panel uses one shared service. Proton CLI commands are serialized across all monitors.
 - Status polling defaults to 30 seconds because `protonvpn status` initializes Proton components and may refresh server data while connected.
+- The live link probe defaults to four seconds and can be changed in widget settings. If `nmcli` is unavailable, normal CLI polling continues.
 
 ## Troubleshooting
 
 Confirm the Proton CLI itself before assuming a widget bug. These failures belong to Proton, Arch packaging, or the local session:
 
 ```sh
-protonvpn --version
+pacman -Q proton-vpn-cli
+protonvpn --help
 protonvpn status
 protonvpn countries list
 ```
 
-The recorded parser fixtures target `proton-vpn-cli` 1.0.1-1. If `protonvpn --version` differs, CLI output may have changed.
+The recorded parser fixtures target CLI versions 1.0.1 through 1.0.3. Versions outside that range receive a non-blocking compatibility warning; malformed status output still activates the existing stale-state safety gate.
 
 **CLI not installed.** Install `proton-vpn-cli` from Arch extra, then refresh. The bar tooltip reads “Proton VPN CLI not installed.”
 
@@ -123,7 +129,14 @@ The recorded parser fixtures target `proton-vpn-cli` 1.0.1-1. If `protonvpn --ve
 ./scripts/check.sh
 ```
 
-That script runs Node tests, `omarchy plugin validate .`, a QML contract check, and a shell-load smoke test. Do not treat an unresolved-import `qmllint` warning flood as a pass; those imports only resolve inside `omarchy-shell`.
+That script runs Node and Python tests, `omarchy plugin validate .` when Omarchy is installed, a QML contract check, bounded-runner tests, and shell-load smoke tests. The same portable checks run in GitHub Actions. Do not treat an unresolved-import `qmllint` warning flood as a pass; those imports only resolve inside `omarchy-shell`.
+
+## Architecture
+
+- `Service.qml` is a single Omarchy service shared by every monitor. Its scheduler serializes all Proton CLI work.
+- `Panel.qml` contains the compact bar control and reads state from that service.
+- `Model.js` contains parsers, validation, compatibility detection, and display rules covered by captured fixtures.
+- `scripts/run_bounded.py` is a local process supervisor; it does not implement VPN behavior or make network requests.
 
 ## Uninstall
 
@@ -136,3 +149,5 @@ This removes the plugin from Omarchy. It does not uninstall `proton-vpn-cli` or 
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+Release history is recorded in [CHANGELOG.md](CHANGELOG.md).

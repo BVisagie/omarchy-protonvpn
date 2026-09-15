@@ -11,6 +11,45 @@ describe("QML scheduler contract", () => {
   const service = read("Service.qml")
   const panel = read("Panel.qml")
 
+  it("uses one Omarchy service instead of constructing a service per monitor", () => {
+    assert.match(panel, /root\.bar\.shell\.serviceFor\(root\.moduleName\)/)
+    assert.match(panel, /onVpnChanged: if \(vpn\) vpn\.setSettings\(root\.settings\)/)
+    assert.doesNotMatch(panel, /Service\s*\{\s*id:\s*vpn/)
+    assert.match(service, /property var recentTargets: \[\]/)
+    assert.match(service, /id: commandProcess/)
+    assert.doesNotMatch(service, /id: statusProcess/)
+    assert.doesNotMatch(service, /id: actionProcess/)
+  })
+
+  it("bounds every collected command and keeps NetworkManager read-only", () => {
+    assert.match(service, /scripts\/run_bounded\.py/)
+    assert.match(service, /\/usr\/bin\/python3/)
+    assert.match(service, /--max-bytes", "262144"/)
+    assert.match(service, /\/usr\/bin\/nmcli/)
+    assert.match(service, /connection", "show", "--active"/)
+    assert.doesNotMatch(service, /nmcli[\s\S]{0,100}(connection", "down"|connection", "up")/)
+  })
+
+  it("keeps the declared trust boundary in the runtime service", () => {
+    assert.doesNotMatch(service, /\b(?:curl|wget)\b|FileView|settings\.json|keyring|pkill|sudo|pkexec/)
+    assert.doesNotMatch(service, /"connection", "(?:up|down|delete|modify)"/)
+  })
+
+  it("does not let an old NetworkManager signal replace an action in flight", () => {
+    const updateFacts = service.indexOf("linkDevice = link.device")
+    const actionGuard = service.indexOf("if (actionRunning) return", updateFacts)
+    const updateView = service.indexOf("if (link.active)", updateFacts)
+    assert.ok(updateFacts !== -1 && actionGuard !== -1 && updateView !== -1)
+    assert.ok(updateFacts < actionGuard && actionGuard < updateView)
+  })
+
+  it("shows compatibility warnings, CLI exit IP, and session recents", () => {
+    assert.match(panel, /status\.exitIp/)
+    assert.match(panel, /vpn\.compatibilityWarning/)
+    assert.match(panel, /id: recentGrid/)
+    assert.match(panel, /vpn\.connectRecent\(index\)/)
+  })
+
   it("accepts an action before changing visual connecting state", () => {
     const enqueue = service.indexOf("if (!enqueue(job)) return false")
     const visual = service.indexOf("state = action === \"disconnect\" ? Model.STATES.disconnecting : Model.STATES.connecting")

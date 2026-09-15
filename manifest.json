@@ -2,22 +2,26 @@
   "schemaVersion": 1,
   "id": "io.github.BVisagie.protonvpn",
   "name": "Proton VPN",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "BVisagie",
   "license": "MIT",
+  "homepage": "https://github.com/BVisagie/omarchy-protonvpn",
   "description": "Native Omarchy bar controls for the official Proton VPN Linux CLI.",
-  "kinds": ["bar-widget"],
+  "kinds": ["service", "bar-widget"],
   "entryPoints": {
+    "service": "Service.qml",
     "barWidget": "Panel.qml"
   },
   "barWidget": {
     "displayName": "Proton VPN",
     "description": "View Proton VPN status and connect or disconnect from the Omarchy bar.",
     "category": "Network",
+    "aliases": ["proton", "vpn", "protonvpn"],
     "allowMultiple": false,
     "defaultSection": "right",
     "defaults": {
-      "refreshIntervalSec": 30
+      "refreshIntervalSec": 30,
+      "linkWatchIntervalSec": 4
     },
     "schema": [
       {
@@ -28,6 +32,15 @@
         "max": 3600,
         "step": 5,
         "defaultValue": 30
+      },
+      {
+        "key": "linkWatchIntervalSec",
+        "type": "integer",
+        "label": "Live link check interval (seconds)",
+        "min": 2,
+        "max": 60,
+        "step": 1,
+        "defaultValue": 4
       }
     ]
   }
