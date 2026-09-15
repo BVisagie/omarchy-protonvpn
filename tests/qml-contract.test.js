@@ -15,6 +15,35 @@ describe("QML scheduler contract", () => {
     assert.match(panel, /root\.bar\.shell\.serviceFor\(root\.moduleName\)/)
     assert.match(panel, /onVpnChanged: if \(vpn\) vpn\.setSettings\(root\.settings\)/)
     assert.doesNotMatch(panel, /Service\s*\{\s*id:\s*vpn/)
+    assert.match(service, /running: root\.active\n/)
+    assert.match(service, /running: root\.active && root\.installed/)
+  })
+
+  it("falls back to an idle-until-needed local service when the shared one is missing", () => {
+    assert.match(panel, /readonly property var vpn: root\.sharedVpn \|\| localVpn/)
+    assert.match(panel, /Service \{\s*id: localVpn\s*active: !root\.sharedVpn\s*\}/)
+    assert.match(service, /property bool active: true/)
+    assert.match(service, /if \(!active \|\| !installed \|\| linkProcess\.running\) return/)
+  })
+
+  it("keeps CLI verdicts the live tunnel cannot explain", () => {
+    const actionGuard = service.indexOf("if (actionRunning) return", service.indexOf("linkDevice = link.device"))
+    const claimGuard = service.indexOf("if (!Model.linkMayClaimConnected(state))", actionGuard)
+    const updateView = service.indexOf("if (link.active) {", actionGuard)
+    assert.ok(actionGuard !== -1 && claimGuard !== -1 && updateView !== -1)
+    assert.ok(actionGuard < claimGuard && claimGuard < updateView)
+    assert.match(service, /next\.state === Model\.STATES\.disconnected && linkConfirmed\(\)/)
+    assert.doesNotMatch(service, /disconnected && linkActive\b/)
+  })
+
+  it("discards nmcli polls that straddle an action result", () => {
+    assert.match(service, /function handleAction\(result, job\) \{\n[^\n]*\n    _linkEpoch\+\+/)
+    assert.match(service, /_linkStartedEpoch = _linkEpoch/)
+    assert.match(service, /if \(_linkStartedEpoch !== _linkEpoch\) \{/)
+  })
+
+  it("resumes the queue when a watchdog-killed process finally exits", () => {
+    assert.match(service, /runId: root\._commandRunId\n\s*\}\)\n[\s\S]{0,300}if \(!root\._currentJob\) Qt\.callLater\(root\.pump\)/)
     assert.match(service, /property var recentTargets: \[\]/)
     assert.match(service, /id: commandProcess/)
     assert.doesNotMatch(service, /id: statusProcess/)

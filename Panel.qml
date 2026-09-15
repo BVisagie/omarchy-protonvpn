@@ -13,8 +13,11 @@ Panel {
   ipcTarget: "io.github.BVisagie.protonvpn"
   manageIpc: false
 
-  readonly property var vpn: root.bar && root.bar.shell && typeof root.bar.shell.serviceFor === "function"
+  readonly property var sharedVpn: root.bar && root.bar.shell && typeof root.bar.shell.serviceFor === "function"
     ? root.bar.shell.serviceFor(root.moduleName) : null
+  // Replacement bars get a service-less shell facade, and the shared service
+  // may not exist yet, so never let the panel bind against null.
+  readonly property var vpn: root.sharedVpn || localVpn
 
   property string focusSection: "header"
   property bool cursorActive: false
@@ -443,6 +446,11 @@ Panel {
     if (needsCity && selectedCountry !== "") vpn.refreshCities(selectedCountry)
     else vpn.clearCities()
     ensureCursor()
+  }
+
+  Service {
+    id: localVpn
+    active: !root.sharedVpn
   }
 
   Connections {

@@ -99,6 +99,23 @@ describe("live NetworkManager status", () => {
     assert.equal(Model.parseActiveVpn("ProtonVPN real:vpn:proton1:deactivated").active, false)
   })
 
+  it("lets a live tunnel claim connected only from states it can explain", () => {
+    for (const state of ["checking", "disconnected", "connected", "stale"]) {
+      assert.equal(Model.linkMayClaimConnected(state), true, state)
+    }
+    for (const state of ["guiConflict", "signedOut", "error", "cliMissing", "connecting", "disconnecting", ""]) {
+      assert.equal(Model.linkMayClaimConnected(state), false, state)
+    }
+  })
+
+  it("trusts a tunnel over CLI Disconnected only after a successful nmcli read", () => {
+    assert.equal(Model.linkConfirmsTunnel({ known: true, available: true, active: true }), true)
+    assert.equal(Model.linkConfirmsTunnel({ known: true, available: false, active: true }), false)
+    assert.equal(Model.linkConfirmsTunnel({ known: false, available: true, active: true }), false)
+    assert.equal(Model.linkConfirmsTunnel({ known: true, available: true, active: false }), false)
+    assert.equal(Model.linkConfirmsTunnel(null), false)
+  })
+
   it("takes fields from the right when a connection name contains a colon", () => {
     const link = Model.parseActiveVpn("ProtonVPN NL\\: special:wireguard:proton2:activated")
     assert.equal(link.active, true)

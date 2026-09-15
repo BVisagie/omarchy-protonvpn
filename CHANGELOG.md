@@ -9,6 +9,10 @@
 - Show CLI-supplied exit IPs and three in-memory recent connection targets.
 - Add portable manifest, parser, runner, and QML contract checks in CI.
 - Document the expanded local command surface and unchanged privacy boundary.
+- Fall back to a panel-local service on bars that cannot provide the shared one.
+- Keep desktop-app conflict, sign-in, and error states visible while a tunnel is up.
+- Stop trusting a remembered tunnel over CLI "Disconnected" when nmcli fails.
+- Resume queued commands after a timed-out command finally exits.
 
 ## 1.0.0 — 2026-08-23
 
