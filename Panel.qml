@@ -82,6 +82,7 @@ Panel {
     activeTarget: vpn.activeTarget,
     draftDirty: connectDraftDirty
   })
+  readonly property var recentChoices: Model.recentChoices(vpn.recentTargets, vpn.activeTarget)
   readonly property var focusRows: visibleFocusRows()
   readonly property var focusOrder: visibleFocusOrder()
 
@@ -172,9 +173,9 @@ Panel {
       if (needsServer) connect.push("server")
       rows.push(connect)
       if (offerSwitch) rows.push(["switch"])
-      if (vpn.recentTargets.length > 0) {
+      if (recentChoices.length > 0) {
         var recent = []
-        for (var r = 0; r < vpn.recentTargets.length; r++) recent.push("recent:" + r)
+        for (var r = 0; r < recentChoices.length; r++) recent.push("recent:" + r)
         rows.push(recent)
       }
       if (vpn.configLoaded) {
@@ -256,7 +257,7 @@ Panel {
     else if (focusSection === "city" && selectedCountry !== "") cityDropdown.toggle()
     else if (focusSection === "server") Qt.callLater(function() { if (serverField) serverField.forceActiveFocus() })
     else if (focusSection === "switch") switchNow()
-    else if (focusSection.indexOf("recent:") === 0) vpn.connectRecent(parseInt(focusSection.substring(7), 10))
+    else if (focusSection.indexOf("recent:") === 0) connectRecent(parseInt(focusSection.substring(7), 10))
     else if (focusSection === "dns") applyDns()
     else if (focusSection.indexOf("config:") === 0) activateConfig(focusSection.substring(7))
   }
@@ -294,6 +295,11 @@ Panel {
       return
     }
     vpn.connectWith(connectOptions())
+  }
+
+  function connectRecent(index) {
+    var target = recentChoices[index]
+    if (target) vpn.connectWith(target)
   }
 
   function switchNow() {
@@ -483,6 +489,8 @@ Panel {
   Connections {
     target: vpn
     function onStateChanged() { root.ensureCursor() }
+    // Any new connection (Switch, RECENT, toggle, IPC) settles the draft.
+    function onActiveTargetChanged() { root.connectDraftDirty = false }
     function onConfigLoadedChanged() {
       if (vpn.configLoaded) {
         var dns = Model.parseCustomDnsValue(vpn.configDisplayValue("custom-dns"))
@@ -603,7 +611,9 @@ Panel {
               width: parent.width
               title: Model.heroTitle(root.view)
               meta: Model.heroMeta(root.view)
-              detail: Model.heroDetail(root.view)
+              // The protocol pill lives beside the toggle (trailingControl) so both
+              // share one vertical center; PanelHero would pin it to the title line.
+              detail: ""
               foreground: root.foreground
               fontFamily: root.fontFamily
               iconOpacity: Model.iconDim(root.view.state) ? 0.55 : 1.0
@@ -617,8 +627,35 @@ Panel {
                 }
               }
               trailingControl: Component {
+                Row {
+                  visible: detailPill.visible || powerSwitch.visible
+                  spacing: Style.space(12)
+
+                BorderSurface {
+                  id: detailPill
+                  visible: Model.heroDetail(root.view) !== ""
+                  anchors.verticalCenter: parent.verticalCenter
+                  implicitWidth: detailText.implicitWidth + Style.space(10)
+                  implicitHeight: detailText.implicitHeight + Style.space(4)
+                  color: "transparent"
+                  borderSpec: Border.controlSpec("normal", hero.foreground, Color.accent)
+                  radius: Style.cornerRadius
+
+                  Text {
+                    id: detailText
+                    textFormat: Text.PlainText
+                    anchors.centerIn: parent
+                    text: Model.heroDetail(root.view)
+                    color: hero.dim
+                    font.family: hero.fontFamily
+                    font.pixelSize: Style.font.body
+                    font.bold: true
+                  }
+                }
+
                 ToggleSwitch {
                   id: powerSwitch
+                  anchors.verticalCenter: parent.verticalCenter
                   visible: vpn.installed && (Model.canWrite(root.view.state) || root.view.state === Model.STATES.connecting || root.view.state === Model.STATES.disconnecting)
                   checked: root.view.state === Model.STATES.connected || root.view.state === Model.STATES.connecting
                   busy: vpn.actionBusy
@@ -632,6 +669,7 @@ Panel {
                     text: root.toggleHint
                     fontFamily: hero.fontFamily
                   }
+                }
                 }
               }
             }
@@ -710,26 +748,36 @@ Panel {
             width: parent.width
             spacing: Style.spacing.rowGap
 
-            GridLayout {
+            // Flow keeps Load, Exit IP, and Updated on one line beside Refresh and
+            // wraps only when the values (e.g. an IPv6 exit IP) do not fit.
+            Flow {
               id: statusGrid
               visible: vpn.installed && (root.showHealthy || root.view.state === Model.STATES.stale) && root.statusPairs.length > 0
-              Layout.fillWidth: false
+              Layout.fillWidth: true
+              Layout.preferredWidth: 0
               Layout.alignment: Qt.AlignVCenter | Qt.AlignLeft
-              columns: 2
-              columnSpacing: Style.spacing.xxl
-              rowSpacing: Style.spacing.labelGap
+              spacing: Style.spacing.labelGap
 
               Repeater {
                 model: root.statusPairs
-                InfoPair {
+                Item {
                   required property var modelData
-                  label: modelData.label
-                  value: modelData.value
+                  required property int index
+                  implicitWidth: pair.implicitWidth + (index < root.statusPairs.length - 1 ? Style.spacing.xxl : 0)
+                  implicitHeight: pair.implicitHeight
+                  width: implicitWidth
+                  height: implicitHeight
+
+                  InfoPair {
+                    id: pair
+                    label: modelData.label
+                    value: modelData.value
+                  }
                 }
               }
             }
 
-            Item { Layout.fillWidth: true }
+            Item { Layout.fillWidth: true; visible: !statusGrid.visible }
 
             Button {
               id: refreshRow
@@ -931,7 +979,7 @@ Panel {
             }
 
             PanelSectionHeader {
-              visible: vpn.recentTargets.length > 0
+              visible: root.recentChoices.length > 0
               text: "RECENT"
               foreground: root.foreground
               fontFamily: root.fontFamily
@@ -939,14 +987,14 @@ Panel {
 
             GridLayout {
               id: recentGrid
-              visible: vpn.recentTargets.length > 0
+              visible: root.recentChoices.length > 0
               width: parent.width
-              columns: Math.max(1, Math.min(3, vpn.recentTargets.length))
+              columns: Math.max(1, Math.min(3, root.recentChoices.length))
               columnSpacing: Style.spacing.rowGap
               rowSpacing: Style.spacing.labelGap
 
               Repeater {
-                model: vpn.recentTargets
+                model: root.recentChoices
 
                 Button {
                   required property var modelData
@@ -958,7 +1006,7 @@ Panel {
                   hasCursor: root.cursorActive && root.focusSection === "recent:" + index
                   foreground: root.foreground
                   fontFamily: root.fontFamily
-                  onClicked: vpn.connectRecent(index)
+                  onClicked: root.connectRecent(index)
                   onHovered: function(on) { if (on) root.setFocusSection("recent:" + index) }
                 }
               }
