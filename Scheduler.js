@@ -33,6 +33,19 @@ function filterJobs(jobs, keep) {
   return next
 }
 
+// Jobs the user is waiting on (priority: true) run before queued background
+// work, in arrival order. Nothing preempts the running job.
+function insertJob(jobs, job) {
+  var copy = cloneJob(job)
+  if (copy.priority !== true) {
+    jobs.push(copy)
+    return
+  }
+  var at = 0
+  while (at < jobs.length && jobs[at].priority === true) at++
+  jobs.splice(at, 0, copy)
+}
+
 function enqueueJob(queue, job) {
   var source = queue || emptyQueue()
   var jobs = source.jobs.slice()
@@ -46,7 +59,7 @@ function enqueueJob(queue, job) {
     if (hasType(jobs, current, "action")) {
       return { accepted: false, reason: "action-busy", queue: source }
     }
-    jobs.push(cloneJob(job))
+    insertJob(jobs, job)
     return { accepted: true, reason: "", queue: { jobs: jobs, current: current, nextRunId: source.nextRunId } }
   }
 
@@ -55,7 +68,7 @@ function enqueueJob(queue, job) {
       return { accepted: false, reason: "status-running", queue: source }
     }
     jobs = filterJobs(jobs, function(item) { return item.type !== "status" })
-    jobs.push(cloneJob(job))
+    insertJob(jobs, job)
     return { accepted: true, reason: "", queue: { jobs: jobs, current: current, nextRunId: source.nextRunId } }
   }
 
@@ -64,7 +77,7 @@ function enqueueJob(queue, job) {
       return { accepted: false, reason: "config-running", queue: source }
     }
     jobs = filterJobs(jobs, function(item) { return !(item.type === "config" && item.kind === "list") })
-    jobs.push(cloneJob(job))
+    insertJob(jobs, job)
     return { accepted: true, reason: "", queue: { jobs: jobs, current: current, nextRunId: source.nextRunId } }
   }
 
@@ -72,7 +85,7 @@ function enqueueJob(queue, job) {
     jobs = filterJobs(jobs, function(item) {
       return !(item.type === "config" && item.kind === "set" && item.setting === job.setting)
     })
-    jobs.push(cloneJob(job))
+    insertJob(jobs, job)
     return { accepted: true, reason: "", queue: { jobs: jobs, current: current, nextRunId: source.nextRunId } }
   }
 
@@ -81,13 +94,13 @@ function enqueueJob(queue, job) {
       return { accepted: false, reason: "countries-running", queue: source }
     }
     jobs = filterJobs(jobs, function(item) { return !(item.type === "discovery" && item.kind === "countries") })
-    jobs.push(cloneJob(job))
+    insertJob(jobs, job)
     return { accepted: true, reason: "", queue: { jobs: jobs, current: current, nextRunId: source.nextRunId } }
   }
 
   if (job.type === "discovery" && job.kind === "cities") {
     jobs = filterJobs(jobs, function(item) { return !(item.type === "discovery" && item.kind === "cities") })
-    jobs.push(cloneJob(job))
+    insertJob(jobs, job)
     return {
       accepted: true,
       reason: "",
@@ -96,7 +109,7 @@ function enqueueJob(queue, job) {
     }
   }
 
-  jobs.push(cloneJob(job))
+  insertJob(jobs, job)
   return { accepted: true, reason: "", queue: { jobs: jobs, current: current, nextRunId: source.nextRunId } }
 }
 

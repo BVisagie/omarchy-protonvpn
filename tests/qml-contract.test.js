@@ -145,6 +145,29 @@ describe("QML scheduler contract", () => {
     assert.doesNotMatch(fieldLabel[0], /color: root\.dim/)
   })
 
+  it("offers an in-place switch for changed CONNECT choices while connected", () => {
+    assert.match(panel, /readonly property bool offerSwitch: Model\.shouldOfferSwitch\(/)
+    assert.match(panel, /id: switchButton\s*visible: root\.offerSwitch/)
+    assert.match(panel, /text: Model\.switchLabel\(root\.connectOptions\(\)\)/)
+    assert.match(panel, /onClicked: root\.switchNow\(\)/)
+    assert.match(panel, /if \(offerSwitch\) rows\.push\(\["switch"\]\)/)
+    assert.match(panel, /focusSection === "switch"\) switchNow\(\)/)
+    assert.match(panel, /onAccepted: root\.offerSwitch \? root\.switchNow\(\) : root\.tryToggle\(\)/)
+    assert.doesNotMatch(panel, /function applyConnectDraft\(draft\) \{[^}]*connectDraftDirty/)
+    assert.match(service, /activeTarget = target/)
+    assert.match(service, /if \(state === Model\.STATES\.disconnected\) activeTarget = null/)
+  })
+
+  it("gets city lists to the user ahead of background refreshes", () => {
+    assert.match(service, /"cities", "list", code\], timeout: 30000, priority: true/)
+    assert.match(service, /timeout: 60000,\s*priority: true,\s*snapshot: snapshot\(\)/)
+    assert.match(service, /kind: "set"[^\n]*priority: true/)
+    assert.doesNotMatch(service, /"status"\][^\n]*priority: true/)
+    assert.match(service, /force !== true && _citiesCache\[code\]/)
+    assert.match(panel, /panelFlick\.contentY = 0\s*refreshOnOpen\(\)/)
+    assert.match(panel, /loading: vpn\.citiesLoading && vpn\.citiesCountry === root\.selectedCountry/)
+  })
+
   it("scrolls the Custom DNS row itself into view with bottom breathing room", () => {
     assert.match(panel, /focusSection === "config:custom-dns"\) scrollItemIntoView\(customDnsToggle\)/)
     assert.doesNotMatch(panel, /focusSection === "config:custom-dns"\) scrollItemIntoView\(dnsField\.visible \? dnsField : configColumn\)/)
