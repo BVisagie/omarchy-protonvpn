@@ -224,6 +224,15 @@ describe("probe classification", () => {
     assert.equal(Model.readSucceeded({ exitCode: 134 }), false)
   })
 
+  it("requires every known setting before trusting crashed config output", () => {
+    assert.equal(Model.configListComplete(Model.parseConfigList(fixture("config-list.txt"))), true)
+    assert.equal(Model.configListComplete(Model.parseConfigList(fixture("config-list-free.txt"))), true)
+    const truncated = fixture("config-list.txt").split("\n").slice(0, 6).join("\n")
+    const parsed = Model.parseConfigList(truncated)
+    assert.equal(parsed.ok, true)
+    assert.equal(Model.configListComplete(parsed), false)
+  })
+
   it("never treats a crashed write as successful", () => {
     const result = Model.classifyCommandResult({ exitCode: 139, stdout: fixture("connect-success.txt"), stderr: "" })
     assert.equal(result.ok, false)

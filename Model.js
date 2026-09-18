@@ -504,9 +504,7 @@ function hasValidStatus(prior) {
 var CRASH_AFTER_OUTPUT_EXIT = 139
 var RUNNER_MARKER = /omarchy-protonvpn: command (timed out|output exceeded)/
 
-// The Proton CLI can print complete output and then segfault while Python
-// shuts down (its Rust extension outlives the interpreter). Read-only commands
-// may trust that output when it parses; writes never do.
+// SIGSEGV after the CLI prints; trust only if the caller can parse.
 function crashedAfterOutput(result) {
   if (!result || result.timedOut === true || result.exitCode !== CRASH_AFTER_OUTPUT_EXIT) return false
   return !RUNNER_MARKER.test(String(result.stderr || ""))
@@ -818,6 +816,15 @@ function parseConfigList(raw) {
     return { ok: false, settings: {}, upgrade: {}, message: "Proton VPN configuration output is incompatible with this plugin." }
   }
   return { ok: true, settings: settings, upgrade: upgrade, message: "" }
+}
+
+// Every setting this plugin knows is listed; used when the CLI crashed on exit.
+function configListComplete(parsed) {
+  if (!parsed || parsed.ok !== true || !parsed.settings) return false
+  for (var i = 0; i < CONFIG_SETTINGS.length; i++) {
+    if (parsed.settings[CONFIG_SETTINGS[i].key] === undefined) return false
+  }
+  return true
 }
 
 function settingDef(key) {
@@ -1328,6 +1335,7 @@ function restartNotice(setting) {
 
 if (typeof module !== "undefined") {
   module.exports = {
+    configListComplete: configListComplete,
     crashedAfterOutput: crashedAfterOutput,
     readSucceeded: readSucceeded,
     CLI_PACKAGE: CLI_PACKAGE,
