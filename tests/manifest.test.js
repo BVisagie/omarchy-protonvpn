@@ -9,7 +9,7 @@ describe("plugin manifest", () => {
   it("declares one shared service and the existing bar widget", () => {
     assert.equal(manifest.schemaVersion, 1)
     assert.equal(manifest.id, "io.github.BVisagie.protonvpn")
-    assert.equal(manifest.version, "1.1.0")
+    assert.equal(manifest.version, "1.2.0")
     assert.deepEqual(manifest.kinds, ["service", "bar-widget"])
     assert.equal(manifest.entryPoints.service, "Service.qml")
     assert.equal(manifest.entryPoints.barWidget, "Panel.qml")
