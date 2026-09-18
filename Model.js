@@ -501,6 +501,22 @@ function hasValidStatus(prior) {
     || prior.state === STATES.stale
 }
 
+var CRASH_AFTER_OUTPUT_EXIT = 139
+var RUNNER_MARKER = /omarchy-protonvpn: command (timed out|output exceeded)/
+
+// The Proton CLI can print complete output and then segfault while Python
+// shuts down (its Rust extension outlives the interpreter). Read-only commands
+// may trust that output when it parses; writes never do.
+function crashedAfterOutput(result) {
+  if (!result || result.timedOut === true || result.exitCode !== CRASH_AFTER_OUTPUT_EXIT) return false
+  return !RUNNER_MARKER.test(String(result.stderr || ""))
+}
+
+function readSucceeded(result) {
+  if (!result || result.timedOut === true) return false
+  return result.exitCode === 0 || crashedAfterOutput(result)
+}
+
 function classifyProbe(result, prior) {
   var previous = prior || defaultView()
   var stdout = result && result.stdout !== undefined ? result.stdout : ""
@@ -522,6 +538,7 @@ function classifyProbe(result, prior) {
   }
 
   var parsed = parseStatus(stdout)
+  if (crashedAfterOutput(result) && parsed.ok) exitCode = 0
   if (!timedOut && exitCode === 0) {
     if (parsed.ok) {
       return {
@@ -1311,6 +1328,8 @@ function restartNotice(setting) {
 
 if (typeof module !== "undefined") {
   module.exports = {
+    crashedAfterOutput: crashedAfterOutput,
+    readSucceeded: readSucceeded,
     CLI_PACKAGE: CLI_PACKAGE,
     MIN_TESTED_CLI_VERSION: MIN_TESTED_CLI_VERSION,
     MAX_TESTED_CLI_VERSION: MAX_TESTED_CLI_VERSION,

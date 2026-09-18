@@ -39,6 +39,8 @@ Item {
   property string linkServer: ""
   property string linkDevice: ""
   property var recentTargets: []
+  // Panels on every monitor share this service; count the open ones.
+  property int openPanels: 0
   // Options behind the current connection, when this session made it.
   property var activeTarget: null
 
@@ -93,6 +95,14 @@ Item {
   property var _citiesCache: ({})
   property int _linkEpoch: 0
   property int _linkStartedEpoch: 0
+
+  function panelOpened() {
+    openPanels = openPanels + 1
+  }
+
+  function panelClosed() {
+    openPanels = Math.max(0, openPanels - 1)
+  }
 
   function setSettings(next) {
     settings = next || ({})
@@ -370,7 +380,7 @@ Item {
     }
     if (job.kind === "countries") {
       countriesLoading = false
-      if (result.timedOut === true || result.exitCode !== 0) {
+      if (!Model.readSucceeded(result)) {
         countriesError = classified.message || "Could not list countries."
         if (countries.length > 0) discoveryStale = true
         return
@@ -389,7 +399,7 @@ Item {
     if (job.kind === "cities") {
       if (String(job.country || "") !== citiesCountry) return
       citiesLoading = false
-      if (result.timedOut === true || result.exitCode !== 0) {
+      if (!Model.readSucceeded(result)) {
         citiesError = classified.message || "Could not list cities."
         if (cities.length > 0) discoveryStale = true
         return
@@ -420,7 +430,7 @@ Item {
       return
     }
     if (job.kind === "list") {
-      if (result.exitCode !== 0 || result.timedOut === true) {
+      if (!Model.readSucceeded(result)) {
         configError = classified.message || "Could not read Proton VPN settings."
         return
       }
@@ -677,14 +687,20 @@ Item {
     return String((configValues && configValues[key]) || "")
   }
 
+  // Each `protonvpn status` starts Python and opens a new Secret Service
+  // connection, so it only polls on a timer while a panel is open. With every
+  // panel closed, nmcli drives the bar and status runs only on events: start-up,
+  // link changes, actions, and opening a panel.
   Timer {
     id: refreshTimer
     interval: root.refreshIntervalSec * 1000
     repeat: true
-    running: root.active
-    triggeredOnStart: true
+    running: root.active && root.openPanels > 0
     onTriggered: root.refresh()
   }
+
+  onActiveChanged: if (active) refresh()
+  Component.onCompleted: if (active) refresh()
 
   Timer {
     id: linkTimer

@@ -27,7 +27,7 @@
       {
         "key": "refreshIntervalSec",
         "type": "integer",
-        "label": "Refresh interval (seconds)",
+        "label": "Status refresh while the panel is open (seconds)",
         "min": 10,
         "max": 3600,
         "step": 5,
