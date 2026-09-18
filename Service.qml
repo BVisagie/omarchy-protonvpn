@@ -41,6 +41,22 @@ Item {
   property var recentTargets: []
   // Panels on every monitor share this service; count the open ones.
   property int openPanels: 0
+  readonly property string notificationSetting: Model.normalizeNotificationSetting(setting("notifications", "drops"))
+  // Last tunnel state a notification decision was made for; null until the
+  // first link observation, so start-up never announces an existing tunnel.
+  property var _notifiedActive: null
+
+  // Kill Switch while connected: idle → disconnecting → setting → reconnecting.
+  property string ksStep: "idle"
+  property string _ksValue: ""
+  property var _ksTarget: null
+  property string _ksError: ""
+  property bool _ksInternal: false
+
+  property var traffic: Model.emptyTraffic()
+  property string _trafficDevice: ""
+  property string _trafficServer: ""
+  readonly property string trafficText: Model.trafficText(traffic)
   // Options behind the current connection, when this session made it.
   property var activeTarget: null
 
@@ -67,7 +83,7 @@ Item {
   readonly property bool processBusy: commandProcess.running
   readonly property bool actionRunning: (_currentJob && _currentJob.type === "action") || Scheduler.hasAction(_queueState)
   readonly property bool busy: processBusy || state === Model.STATES.connecting || state === Model.STATES.disconnecting
-  readonly property bool actionBusy: actionRunning
+  readonly property bool actionBusy: actionRunning || ksStep !== "idle"
   readonly property var view: ({
     state: root.state,
     kind: root.kind,
@@ -79,7 +95,9 @@ Item {
     lastUpdatedMs: root.lastUpdatedMs,
     connectedSnapshot: root.connectedSnapshot
   })
-  readonly property bool canToggle: Model.canWrite(state) && !actionRunning
+  // A Kill Switch cycle owns the connection until it finishes; only its own
+  // steps may write while it runs.
+  readonly property bool canToggle: Model.canWrite(state) && !actionRunning && (ksStep === "idle" || _ksInternal)
   readonly property bool canChangeSettings: canToggle
   readonly property string runnerPath: decodeURIComponent(Qt.resolvedUrl("scripts/run_bounded.py").toString().replace(/^file:\/\//, ""))
 
@@ -297,7 +315,7 @@ Item {
       if (previous.status && previous.status.server === next.status.server) next.status.exitIp = String(previous.status.exitIp || "")
       if (linkConfirmed() && linkServer !== "" && next.status.server === "") next.status.server = linkServer
       applyView(next)
-    } else if (next.state === Model.STATES.disconnected && linkConfirmed()) {
+    } else if (next.state === Model.STATES.disconnected && linkConfirmed() && ksStep === "idle") {
       var observed = statusCopy(previous.status)
       if (linkServer !== "") observed.server = linkServer
       applyView(connectedView(observed))
@@ -317,6 +335,7 @@ Item {
       applyView(Model.classifyProbe(result, job.snapshot || snapshot()))
       actionStatus = ""
       delayedRefresh.restart()
+      abortKillSwitch(classified.message)
       return
     }
     if (classified.ok) {
@@ -327,6 +346,7 @@ Item {
         linkServer = ""
         linkDevice = ""
         applyView(disconnectedView())
+        noteLink(false, true)
       } else {
         var outcome = Model.parseConnectOutcome(result.stdout)
         var nextStatus = statusCopy((job.snapshot || snapshot()).status)
@@ -343,6 +363,7 @@ Item {
         var target = Model.recentTarget(job.options || {}, outcome)
         activeTarget = target
         recentTargets = Model.recordRecentTarget(recentTargets, target, 3)
+        noteLink(true, true)
       }
     } else {
       lastError = classified.message
@@ -367,7 +388,11 @@ Item {
     }
     actionStatusTimer.restart()
     watchLink()
-    delayedRefresh.restart()
+    // Mid-cycle, the next write matters more than a status refresh.
+    if (!(ksStep === "disconnecting" && job.action === "disconnect" && classified.ok)) delayedRefresh.restart()
+    if (ksStep !== "idle") advanceKillSwitch(job.action === "disconnect"
+      ? (classified.ok ? "disconnected" : "disconnectFailed")
+      : (classified.ok ? "connected" : "connectFailed"), classified.message)
   }
 
   function handleDiscovery(result, job) {
@@ -436,6 +461,7 @@ Item {
       pendingSetting = ""
       pendingValue = ""
       applyView(Model.classifyProbe(result, snapshot()))
+      if (job.kind === "set") abortKillSwitch(classified.message)
       return
     }
     if (job.kind === "list") {
@@ -470,6 +496,8 @@ Item {
       pendingSetting = ""
       pendingValue = ""
       actionStatusTimer.restart()
+      // Reconnect first: the tunnel is down until it runs.
+      if (ksStep === "setting" && job.setting === "kill-switch") advanceKillSwitch(classified.ok ? "set" : "setFailed", classified.message)
       refreshConfig()
     }
   }
@@ -522,10 +550,13 @@ Item {
     linkActive = link.active
     linkServer = link.server
     linkDevice = link.device
+    // The Kill Switch cycle owns the tunnel between its actions too.
+    var owned = actionRunning || ksStep !== "idle"
+    noteLink(link.active, owned)
     // NetworkManager can briefly continue reporting the old tunnel while a
     // connect, server change, or disconnect is in flight. Keep the live facts,
     // but let the action result own the transitional UI state.
-    if (actionRunning) return
+    if (owned) return
     if (!Model.linkMayClaimConnected(state)) {
       // Keep GUI-conflict, signed-out, and error verdicts in both directions;
       // only a status check may clear them.
@@ -674,6 +705,136 @@ Item {
     return true
   }
 
+  // Kill Switch changes need the tunnel down. When connected, drop it, change
+  // the setting, and reconnect to the same target. A failed change still
+  // reconnects, and its error is carried across the reconnect.
+  function setKillSwitch(value) {
+    if (!Model.isVpnActive(snapshot())) return setConfig("kill-switch", value)
+    if (!canChangeSettings) {
+      reportError(Model.writeBlockedReason(state) || "Proton VPN is not ready for settings changes.")
+      return false
+    }
+    var check = Model.buildConfigSetCommand("kill-switch", value, { connected: false })
+    if (!check.ok) {
+      reportError(check.message)
+      return false
+    }
+    _ksValue = String(value)
+    _ksTarget = Model.killSwitchReturnTarget(activeTarget, status)
+    _ksError = ""
+    ksStep = "disconnecting"
+    _ksInternal = true
+    var started = disconnect()
+    _ksInternal = false
+    if (!started) {
+      ksStep = "idle"
+      return false
+    }
+    pendingSetting = "kill-switch"
+    pendingValue = _ksValue
+    actionStatus = "Changing Kill Switch…"
+    return true
+  }
+
+  function advanceKillSwitch(event, message) {
+    var step = ksStep
+    var next = Model.nextKillSwitchCycleStep(step, event)
+    ksStep = next
+    if (step === "disconnecting" && next === "idle") {
+      pendingSetting = ""
+      pendingValue = ""
+      reportError("Kill Switch unchanged: " + String(message || "the VPN did not disconnect."))
+      return
+    }
+    if (next === "setting") {
+      _ksInternal = true
+      var started = setConfig("kill-switch", _ksValue)
+      _ksInternal = false
+      if (!started) advanceKillSwitch("setFailed", lastError)
+      else actionStatus = "Changing Kill Switch…"
+      return
+    }
+    if (next === "reconnecting") {
+      if (event === "setFailed") _ksError = "Kill Switch unchanged: " + String(message || "Proton VPN rejected the change.")
+      _ksInternal = true
+      var reconnecting = connectWith(_ksTarget)
+      _ksInternal = false
+      if (!reconnecting) {
+        ksStep = "idle"
+        reportError(_ksError !== "" ? _ksError : "Kill Switch changed, but reconnecting failed. Connect again.")
+      } else {
+        actionStatus = "Reconnecting to " + Model.killSwitchTargetLabel(_ksTarget) + "…"
+      }
+      return
+    }
+    if (step === "reconnecting" && next === "idle") {
+      var carried = _ksError
+      _ksError = ""
+      _ksTarget = null
+      if (event === "connectFailed") reportError(carried !== "" ? carried + " Reconnecting also failed. Connect again." : "Kill Switch changed, but reconnecting failed. Connect again.")
+      else if (carried !== "") reportError(carried)
+      else {
+        actionStatus = "Kill Switch changed and reconnected."
+        actionStatusTimer.restart()
+      }
+    }
+  }
+
+  // Proton stopped answering as a signed-in CLI (desktop app or sign-out);
+  // the cycle cannot finish, so say what state it was left in.
+  function abortKillSwitch(message) {
+    if (ksStep === "idle") return
+    var step = ksStep
+    ksStep = "idle"
+    _ksTarget = null
+    _ksError = ""
+    pendingSetting = ""
+    pendingValue = ""
+    var where = step === "disconnecting" ? "Kill Switch unchanged" : "Kill Switch change interrupted and the VPN is disconnected"
+    reportError(where + ": " + String(message || "Proton VPN stopped responding."))
+  }
+
+  // Decide whether a tunnel change deserves a desktop notification. Our own
+  // actions never report a drop; an open panel already shows every change.
+  function noteLink(active, selfInitiated) {
+    var now = active === true
+    if (_notifiedActive === null) {
+      _notifiedActive = now
+      return
+    }
+    if (_notifiedActive === now) return
+    var previous = _notifiedActive
+    _notifiedActive = now
+    var note = Model.linkNotification(previous, now, {
+      setting: notificationSetting,
+      openPanels: openPanels,
+      selfInitiated: selfInitiated === true,
+      cycleActive: ksStep !== "idle",
+      server: status.server || linkServer,
+      location: status.location
+    })
+    if (!note) return
+    Quickshell.execDetached(["notify-send", "--app-name=Proton VPN", "--urgency=" + note.urgency, "--icon=network-vpn-symbolic", "--", note.summary, note.body])
+  }
+
+  function sampleTraffic() {
+    if (!active || openPanels === 0 || !linkActive || trafficProcess.running) return
+    if (!Model.isTunnelDevice(linkDevice)) return
+    if (linkDevice !== _trafficDevice || linkServer !== _trafficServer) {
+      traffic = Model.emptyTraffic()
+      _trafficDevice = linkDevice
+      _trafficServer = linkServer
+    }
+    var base = "/sys/class/net/" + linkDevice + "/statistics/"
+    trafficProcess.command = boundedCommand(["/usr/bin/cat", base + "rx_bytes", base + "tx_bytes"], 2000)
+    trafficProcess.running = true
+  }
+
+  function applyTraffic(result) {
+    if (result.exitCode !== 0 || result.timedOut === true) return
+    traffic = Model.trafficSample(traffic, Model.parseInterfaceCounters(result.stdout), Date.now())
+  }
+
   function reportError(errorMessage) {
     lastError = String(errorMessage || "Proton VPN command failed")
     actionStatus = lastError
@@ -705,6 +866,16 @@ Item {
     repeat: true
     running: root.active && (root.openPanels > 0 || !root.linkAvailable)
     onTriggered: root.refresh()
+  }
+
+  Timer {
+    id: trafficTimer
+    interval: 2000
+    repeat: true
+    running: root.active && root.openPanels > 0 && root.linkActive
+    triggeredOnStart: true
+    onTriggered: root.sampleTraffic()
+    onRunningChanged: if (!running) root.traffic = Model.emptyTraffic()
   }
 
   onActiveChanged: if (active) refresh()
@@ -743,7 +914,7 @@ Item {
     id: actionStatusTimer
     interval: 3200
     repeat: false
-    onTriggered: root.actionStatus = ""
+    onTriggered: if (root.ksStep === "idle") root.actionStatus = ""
   }
 
   Process {
@@ -773,6 +944,19 @@ Item {
       // true (and defers any restart) until the process really exits. Nothing
       // else wakes the queue after that late exit, so resume it here.
       if (!root._currentJob) Qt.callLater(root.pump)
+    }
+  }
+
+  Process {
+    id: trafficProcess
+    running: false
+    command: []
+    stdout: StdioCollector {
+      id: trafficStdout
+      waitForEnd: true
+    }
+    onExited: function(exitCode) {
+      root.applyTraffic({ exitCode: exitCode, stdout: String(trafficStdout.text || ""), timedOut: exitCode === 124 })
     }
   }
 

@@ -17,7 +17,8 @@ Every VPN action and setting change goes through the installed official CLI. The
 - It never collects, logs, stores, or passes Proton credentials.
 - It never invokes `sudo` or `pkexec`.
 - It never makes extra network requests such as “what is my IP” lookups, map tiles, or telemetry.
-- The exit IP is shown only when the Proton CLI itself returns it after connecting. Exit IP and recent targets stay in memory and disappear when `omarchy-shell` exits. Captured test fixtures are synthetic or redacted.
+- The exit IP is shown only when the Proton CLI itself returns it after connecting. Exit IP, recent targets, and traffic totals stay in memory and disappear when `omarchy-shell` exits.
+- Traffic rates come from the tunnel's own kernel counters under `/sys/class/net/`. They are read every two seconds only while the panel is open and the tunnel is up. Captured test fixtures are synthetic or redacted.
 - Raw CLI diagnostics are capped before they are shown.
 
 Omarchy plugins run unsandboxed inside the long-lived `omarchy-shell` process with your user privileges. This plugin invokes `protonvpn` only after discovering it on `PATH`. Review the code before enabling it.
@@ -29,11 +30,13 @@ Supervised by `scripts/run_bounded.py`, which caps output, enforces a deadline, 
 - `/usr/bin/which protonvpn` to find the CLI
 - `protonvpn` subcommands: `--help`, `status`, `connect`, `disconnect`, `countries list`, `cities list`, `config list`, and `config set`
 - `/usr/bin/nmcli -t -e no -f NAME,TYPE,DEVICE,STATE connection show --active`
+- `/usr/bin/cat /sys/class/net/<device>/statistics/rx_bytes /sys/class/net/<device>/statistics/tx_bytes`, only for a `proton0`-style device and only while the panel is open
 
 Started directly, only when you press the matching panel control:
 
 - `wl-copy` copies the suggested install or sign-in command
 - `omarchy-launch-terminal` opens a terminal for signing in
+- `notify-send` sends a fixed desktop notification when the tunnel drops (or connects, if enabled) while the panel is closed
 
 ## Install
 
@@ -98,7 +101,7 @@ Up to three successful connection targets appear under **RECENT** for the curren
 
 Connection modes match the current CLI: fastest, country, city, specific server ID, Secure Core, P2P, Tor, and random. Country and city lists come from `protonvpn countries list` and `protonvpn cities list`. Server IDs are entered as text because the CLI does not expose a machine-readable server list; Proton publishes IDs at [the account WireGuard server list](https://account.proton.me/vpn/WireGuard).
 
-Settings cover every value exposed by `protonvpn config` on the tested CLI 1.0.1–1.0.3 range: NetShield, Kill Switch, port forwarding, custom DNS, VPN Accelerator, moderate NAT, IPv6, and anonymous crash reports. Kill Switch changes require disconnecting first. IPv6 and custom DNS need a new VPN connection to apply. Custom DNS is validated locally and passed as one `--dns` argument.
+Settings cover every value exposed by `protonvpn config` on the tested CLI 1.0.1–1.0.3 range: NetShield, Kill Switch, port forwarding, custom DNS, VPN Accelerator, moderate NAT, IPv6, and anonymous crash reports. Changing Kill Switch while connected asks first, with Cancel selected. Confirming disconnects, changes the setting, and reconnects to the same target. If Proton rejects the change, the panel still reconnects and shows the error. IPv6 and custom DNS need a new VPN connection to apply. Custom DNS is validated locally and passed as one `--dns` argument.
 
 Some rows show a short caption. Hover a CONNECT or SETTINGS control, or move onto it with `j` / `k`, for a Proton-sourced tooltip. That copy is paraphrased from Proton’s official support articles and the Linux CLI guide. It is not a substitute for those pages, and the widget does not fetch Proton’s website.
 
@@ -112,6 +115,8 @@ Some rows show a short caption. Hover a CONNECT or SETTINGS control, or move ont
 - `protonvpn status` runs on a timer only while a panel is open. It defaults to every 30 seconds and can be changed in widget settings (10–3600 seconds). Each run starts Python and opens a new keyring connection, so with every panel closed it runs only at start-up, when the NetworkManager link changes, and after an action. If `nmcli` is unavailable, it keeps polling on the timer. The bar icon keeps following the tunnel through the read-only link probe, but a sign-out or a newly opened desktop app is noticed only when you open the panel or the link changes.
 - The Proton CLI sometimes crashes while exiting, after printing its full output. Read-only commands (`status`, `countries list`, `cities list`, `config list`) accept that output when it parses. Settings must list every known key, and country or city lists from a crashed run are fetched again next time. Connect, disconnect, and setting changes never do.
 - The live link probe defaults to four seconds and can be changed in widget settings.
+- Desktop notifications default to **When the VPN drops**. A drop is any tunnel loss the widget did not start itself, including one from another terminal. Nothing is sent while the panel is open. Set **Desktop notifications** to **Drops and connections** or **Off** in widget settings.
+- Changing Kill Switch while connected leaves you unprotected for a few seconds during the reconnect. That is why the panel asks first.
 
 ## Troubleshooting
 

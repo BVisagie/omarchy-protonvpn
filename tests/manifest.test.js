@@ -25,4 +25,12 @@ describe("plugin manifest", () => {
       { min: 2, max: 60, step: 1, defaultValue: 4 }
     )
   })
+
+  it("publishes a notification setting that defaults to drops", () => {
+    assert.equal(manifest.barWidget.defaults.notifications, "drops")
+    const entry = manifest.barWidget.schema.find((item) => item.key === "notifications")
+    assert.equal(entry.type, "enum")
+    assert.deepEqual(entry.options.map((o) => o.value), ["off", "drops", "all"])
+    assert.equal(entry.defaultValue, "drops")
+  })
 })

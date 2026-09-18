@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Send a desktop notification when the tunnel drops unexpectedly while the panel is closed. A new **Desktop notifications** setting offers Off, drops only (default), or drops and connections.
+- Change Kill Switch while connected: the panel asks first, then disconnects, applies the change, and reconnects to the same target, still reconnecting if Proton rejects the change.
+- Show live download and upload rates and session totals from the tunnel's kernel counters, sampled only while the panel is open.
 - Run `protonvpn status` on a timer only while a panel is open. With every panel closed, status runs only on start-up, link changes, and actions, so Proton no longer opens a keyring connection every 30 seconds around the clock.
 - Accept complete `status`, country, city, and settings output when the Proton CLI crashes while exiting, instead of marking the status stale. Writes still require a clean exit.
 - Report signal-killed commands as 128 + signal from the bounded runner.
