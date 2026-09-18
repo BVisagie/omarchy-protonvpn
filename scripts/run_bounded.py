@@ -168,7 +168,11 @@ def run(argv: list[str]) -> int:
         return 125
     if interrupted:
         return 130
-    return process.returncode if process.returncode is not None else 1
+    if process.returncode is None:
+        return 1
+    # A signal-killed child reports -signum; use the shell's 128 + signum so
+    # callers can tell a crash (139 for SIGSEGV) from an ordinary failure.
+    return 128 - process.returncode if process.returncode < 0 else process.returncode
 
 
 if __name__ == "__main__":

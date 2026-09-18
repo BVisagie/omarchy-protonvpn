@@ -501,6 +501,20 @@ function hasValidStatus(prior) {
     || prior.state === STATES.stale
 }
 
+var CRASH_AFTER_OUTPUT_EXIT = 139
+var RUNNER_MARKER = /omarchy-protonvpn: command (timed out|output exceeded)/
+
+// SIGSEGV after the CLI prints; trust only if the caller can parse.
+function crashedAfterOutput(result) {
+  if (!result || result.timedOut === true || result.exitCode !== CRASH_AFTER_OUTPUT_EXIT) return false
+  return !RUNNER_MARKER.test(String(result.stderr || ""))
+}
+
+function readSucceeded(result) {
+  if (!result || result.timedOut === true) return false
+  return result.exitCode === 0 || crashedAfterOutput(result)
+}
+
 function classifyProbe(result, prior) {
   var previous = prior || defaultView()
   var stdout = result && result.stdout !== undefined ? result.stdout : ""
@@ -522,6 +536,7 @@ function classifyProbe(result, prior) {
   }
 
   var parsed = parseStatus(stdout)
+  if (crashedAfterOutput(result) && parsed.ok) exitCode = 0
   if (!timedOut && exitCode === 0) {
     if (parsed.ok) {
       return {
@@ -801,6 +816,15 @@ function parseConfigList(raw) {
     return { ok: false, settings: {}, upgrade: {}, message: "Proton VPN configuration output is incompatible with this plugin." }
   }
   return { ok: true, settings: settings, upgrade: upgrade, message: "" }
+}
+
+// Every setting this plugin knows is listed; used when the CLI crashed on exit.
+function configListComplete(parsed) {
+  if (!parsed || parsed.ok !== true || !parsed.settings) return false
+  for (var i = 0; i < CONFIG_SETTINGS.length; i++) {
+    if (parsed.settings[CONFIG_SETTINGS[i].key] === undefined) return false
+  }
+  return true
 }
 
 function settingDef(key) {
@@ -1311,6 +1335,9 @@ function restartNotice(setting) {
 
 if (typeof module !== "undefined") {
   module.exports = {
+    configListComplete: configListComplete,
+    crashedAfterOutput: crashedAfterOutput,
+    readSucceeded: readSucceeded,
     CLI_PACKAGE: CLI_PACKAGE,
     MIN_TESTED_CLI_VERSION: MIN_TESTED_CLI_VERSION,
     MAX_TESTED_CLI_VERSION: MAX_TESTED_CLI_VERSION,

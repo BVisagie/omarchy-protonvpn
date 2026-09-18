@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Run `protonvpn status` on a timer only while a panel is open. With every panel closed, status runs only on start-up, link changes, and actions, so Proton no longer opens a keyring connection every 30 seconds around the clock.
+- Accept complete `status`, country, city, and settings output when the Proton CLI crashes while exiting, instead of marking the status stale. Writes still require a clean exit.
+- Report signal-killed commands as 128 + signal from the bounded runner.
 - Add a **Switch to …** button that reconnects in place when CONNECT choices change while connected.
 - Enter in the Server ID field switches servers while connected instead of disconnecting.
 - Run city lists, connection actions, and setting changes ahead of background refreshes.
