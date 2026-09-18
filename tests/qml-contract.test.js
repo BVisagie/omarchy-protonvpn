@@ -13,10 +13,18 @@ describe("QML scheduler contract", () => {
 
   it("uses one Omarchy service instead of constructing a service per monitor", () => {
     assert.match(panel, /root\.bar\.shell\.serviceFor\(root\.moduleName\)/)
-    assert.match(panel, /onVpnChanged: if \(vpn\) vpn\.setSettings\(root\.settings\)/)
+    assert.match(panel, /onVpnChanged: \{[\s\S]{0,200}if \(vpn\) vpn\.setSettings\(root\.settings\)/)
     assert.doesNotMatch(panel, /Service\s*\{\s*id:\s*vpn/)
-    assert.match(service, /running: root\.active\n/)
     assert.match(service, /running: root\.active && root\.installed/)
+  })
+
+  it("polls protonvpn status on a timer only while a panel is open", () => {
+    assert.match(service, /id: refreshTimer[\s\S]{0,120}running: root\.active && root\.openPanels > 0\n/)
+    assert.doesNotMatch(service, /id: refreshTimer[\s\S]{0,200}triggeredOnStart/)
+    assert.match(service, /Component\.onCompleted: if \(active\) refresh\(\)/)
+    assert.match(service, /openPanels = Math\.max\(0, openPanels - 1\)/)
+    assert.match(panel, /onOpenedChanged: \{\n\s*trackOpen\(opened\)/)
+    assert.match(panel, /Component\.onDestruction: trackOpen\(false\)/)
   })
 
   it("falls back to an idle-until-needed local service when the shared one is missing", () => {

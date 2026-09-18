@@ -197,6 +197,38 @@ describe("probe classification", () => {
     assert.notEqual(view.state, "disconnected")
   })
 
+  it("trusts complete status output when the CLI segfaults on exit", () => {
+    const view = Model.classifyProbe(probe({ exitCode: 139, stdout: fixture("status-connected.txt") }))
+    assert.equal(view.state, "connected")
+    assert.equal(view.stale, false)
+    assert.equal(view.status.server, "CH#42")
+  })
+
+  it("keeps a crash with unparseable output stale", () => {
+    const view = Model.classifyProbe(probe({ exitCode: 139, stdout: fixture("status-partial.txt") }), connected)
+    assert.equal(view.state, "stale")
+    assert.equal(view.status.server, "CH#42")
+  })
+
+  it("does not trust a crash that still reports sign-in or GUI errors", () => {
+    const view = Model.classifyProbe(probe({ exitCode: 139, stdout: fixture("status-connected.txt"), stderr: fixture("gui-conflict.txt") }))
+    assert.equal(view.state, "guiConflict")
+  })
+
+  it("only treats SIGSEGV after output as a readable crash", () => {
+    assert.equal(Model.readSucceeded({ exitCode: 0 }), true)
+    assert.equal(Model.readSucceeded({ exitCode: 139 }), true)
+    assert.equal(Model.readSucceeded({ exitCode: 139, timedOut: true }), false)
+    assert.equal(Model.readSucceeded({ exitCode: 139, stderr: "omarchy-protonvpn: command timed out\n" }), false)
+    assert.equal(Model.readSucceeded({ exitCode: 1 }), false)
+    assert.equal(Model.readSucceeded({ exitCode: 134 }), false)
+  })
+
+  it("never treats a crashed write as successful", () => {
+    const result = Model.classifyCommandResult({ exitCode: 139, stdout: fixture("connect-success.txt"), stderr: "" })
+    assert.equal(result.ok, false)
+  })
+
   it("uses empty successful output as a compatibility error", () => {
     const view = Model.classifyProbe(probe({ exitCode: 0, stdout: "" }))
     assert.equal(view.state, "error")
