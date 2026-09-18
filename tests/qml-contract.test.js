@@ -27,6 +27,19 @@ describe("QML scheduler contract", () => {
     assert.match(panel, /Component\.onDestruction: trackOpen\(false\)/)
   })
 
+  it("samples traffic and notifies only through fixed, bounded commands", () => {
+    assert.match(service, /id: trafficTimer[\s\S]{0,120}running: root\.active && root\.openPanels > 0 && root\.linkActive/)
+    assert.match(service, /if \(!Model\.isTunnelDevice\(linkDevice\)\) return/)
+    assert.match(service, /boundedCommand\(\["\/usr\/bin\/cat", base \+ "rx_bytes", base \+ "tx_bytes"\], 2000\)/)
+    assert.match(service, /execDetached\(\["notify-send", "--app-name=Proton VPN", "--urgency=" \+ note\.urgency, "--icon=network-vpn-symbolic", "--", note\.summary, note\.body\]\)/)
+  })
+
+  it("asks before a Kill Switch change drops a live tunnel", () => {
+    assert.match(panel, /onChanged: function\(value\) \{ root\.chooseKillSwitch\(value\) \}/)
+    assert.match(panel, /ksConfirmValue = value\n\s*cursorActive = true\n\s*focusSection = "ks-cancel"/)
+    assert.match(service, /ksStep === "idle" \|\| _ksInternal/)
+  })
+
   it("falls back to an idle-until-needed local service when the shared one is missing", () => {
     assert.match(panel, /readonly property var vpn: root\.sharedVpn \|\| localVpn/)
     assert.match(panel, /Service \{\s*id: localVpn\s*active: !root\.sharedVpn\s*\}/)

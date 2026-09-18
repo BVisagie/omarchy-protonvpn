@@ -278,6 +278,10 @@ function compatibilityWarning(cli) {
 var TUNNEL_DEVICE = /^proton\d*$/i
 var TUNNEL_TYPES = { wireguard: true, vpn: true, tun: true }
 
+function isTunnelDevice(name) {
+  return /^[A-Za-z0-9_.-]{1,15}$/.test(String(name || "")) && TUNNEL_DEVICE.test(String(name || ""))
+}
+
 function parseActiveVpn(raw) {
   var lines = normalizeOutput(raw).split("\n")
   for (var i = 0; i < lines.length; i++) {
@@ -1333,9 +1337,155 @@ function restartNotice(setting) {
   return ""
 }
 
+// Desktop notifications. "drops" reports only a tunnel that goes down on its
+// own; "all" also reports every tunnel that comes up. An open panel already
+// shows the change, so nothing is sent while one is open.
+var NOTIFICATION_MODES = ["off", "drops", "all"]
+
+function normalizeNotificationSetting(value) {
+  var v = String(value === undefined || value === null ? "" : value)
+  return NOTIFICATION_MODES.indexOf(v) !== -1 ? v : "drops"
+}
+
+function linkNotification(previousActive, nextActive, ctx) {
+  var c = ctx || {}
+  var mode = normalizeNotificationSetting(c.setting)
+  if (mode === "off" || c.openPanels > 0 || c.cycleActive === true) return null
+  if (previousActive === true && nextActive !== true) {
+    if (c.selfInitiated === true) return null
+    return { summary: "Proton VPN disconnected", body: "You're no longer protected.", urgency: "critical" }
+  }
+  if (mode === "all" && previousActive !== true && nextActive === true) {
+    var server = capOutput(String(c.server || ""), 64)
+    var location = capOutput(String(c.location || ""), 64)
+    var body = server !== "" ? server + (location !== "" ? " · " + location : "") : "The tunnel is up."
+    return { summary: "Proton VPN connected", body: body, urgency: "normal" }
+  }
+  return null
+}
+
+// Kill Switch while connected: the CLI refuses the change with a tunnel up,
+// so the service drops the tunnel, changes the setting, and reconnects.
+function killSwitchReturnTarget(activeTarget, status) {
+  if (activeTarget && buildConnectCommand(activeTarget).ok) return activeTarget
+  var server = String((status && status.server) || "").trim()
+  if (server !== "") {
+    var byServer = { mode: "server", serverId: server }
+    if (buildConnectCommand(byServer).ok) return byServer
+  }
+  return { mode: "fastest" }
+}
+
+function killSwitchTargetLabel(target) {
+  var t = target || {}
+  if (t.mode === "server") return String(t.serverId || "the same server")
+  if (t.label) return String(t.label)
+  if (t.mode === "city" && t.city) return String(t.city)
+  if (t.mode === "country" && t.country) return String(t.country)
+  return "the fastest server"
+}
+
+function killSwitchConfirmText(value, target) {
+  var label = configValueLabel("kill-switch", value)
+  return "This briefly drops the VPN, sets Kill Switch to " + label + ", then reconnects to " + killSwitchTargetLabel(target) + "."
+}
+
+// Step after `event` in the idle → disconnecting → setting → reconnecting
+// cycle. A failed disconnect ends it untouched; a failed setting still
+// reconnects, because leaving someone offline is the worse outcome.
+function nextKillSwitchCycleStep(step, event) {
+  if (step === "disconnecting") return event === "disconnected" ? "setting" : "idle"
+  if (step === "setting") return event === "set" || event === "setFailed" ? "reconnecting" : step
+  if (step === "reconnecting") return event === "connected" || event === "connectFailed" ? "idle" : step
+  return "idle"
+}
+
+// Tunnel traffic from /sys/class/net/<dev>/statistics, sampled only while a
+// panel is open. Counters are local and never stored.
+function parseInterfaceCounters(raw) {
+  var parts = String(raw || "").trim().split(/\s+/)
+  if (parts.length !== 2) return null
+  var rx = Number(parts[0])
+  var tx = Number(parts[1])
+  if (!/^\d+$/.test(parts[0]) || !/^\d+$/.test(parts[1]) || !isFinite(rx) || !isFinite(tx)) return null
+  return { rx: rx, tx: tx }
+}
+
+function emptyTraffic() {
+  return { known: false, rx: -1, tx: -1, atMs: 0, rxRate: 0, txRate: 0, sessionRx: 0, sessionTx: 0 }
+}
+
+function trafficSample(previous, counters, nowMs) {
+  var prev = previous || emptyTraffic()
+  if (!counters) return prev
+  var next = {
+    known: prev.known,
+    rx: counters.rx,
+    tx: counters.tx,
+    atMs: nowMs,
+    rxRate: prev.rxRate,
+    txRate: prev.txRate,
+    sessionRx: prev.sessionRx,
+    sessionTx: prev.sessionTx
+  }
+  if (prev.rx < 0 || prev.atMs <= 0 || counters.rx < prev.rx || counters.tx < prev.tx) {
+    // First sample, or the interface was recreated and its counters reset.
+    next.rxRate = 0
+    next.txRate = 0
+    return next
+  }
+  var seconds = Math.max(0.25, (nowMs - prev.atMs) / 1000)
+  var drx = counters.rx - prev.rx
+  var dtx = counters.tx - prev.tx
+  next.known = true
+  next.rxRate = drx / seconds
+  next.txRate = dtx / seconds
+  next.sessionRx = prev.sessionRx + drx
+  next.sessionTx = prev.sessionTx + dtx
+  return next
+}
+
+function formatBytes(value) {
+  var n = Number(value)
+  if (!isFinite(n) || n < 0) n = 0
+  var units = ["B", "KB", "MB", "GB", "TB"]
+  var i = 0
+  while (n >= 1000 && i < units.length - 1) {
+    n /= 1000
+    i++
+  }
+  var digits = i === 0 || n >= 100 ? 0 : (n >= 10 ? 1 : 2)
+  return n.toFixed(digits).replace(/\.0+$|(\.\d*[1-9])0+$/, "$1") + " " + units[i]
+}
+
+function formatRate(value) {
+  return formatBytes(value) + "/s"
+}
+
+function trafficText(traffic) {
+  if (!traffic || traffic.known !== true) return ""
+  return "↓ " + formatRate(traffic.rxRate) + "  ↑ " + formatRate(traffic.txRate)
+    + " · " + formatBytes(traffic.sessionRx + traffic.sessionTx) + " this session"
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     configListComplete: configListComplete,
+    isTunnelDevice: isTunnelDevice,
+    NOTIFICATION_MODES: NOTIFICATION_MODES,
+    normalizeNotificationSetting: normalizeNotificationSetting,
+    linkNotification: linkNotification,
+    killSwitchReturnTarget: killSwitchReturnTarget,
+    killSwitchTargetLabel: killSwitchTargetLabel,
+    killSwitchConfirmText: killSwitchConfirmText,
+    nextKillSwitchCycleStep: nextKillSwitchCycleStep,
+    parseInterfaceCounters: parseInterfaceCounters,
+    emptyTraffic: emptyTraffic,
+    trafficSample: trafficSample,
+    formatBytes: formatBytes,
+    formatRate: formatRate,
+    trafficText: trafficText,
+
     crashedAfterOutput: crashedAfterOutput,
     readSucceeded: readSucceeded,
     CLI_PACKAGE: CLI_PACKAGE,

@@ -21,7 +21,8 @@
     "defaultSection": "right",
     "defaults": {
       "refreshIntervalSec": 30,
-      "linkWatchIntervalSec": 4
+      "linkWatchIntervalSec": 4,
+      "notifications": "drops"
     },
     "schema": [
       {
@@ -41,6 +42,17 @@
         "max": 60,
         "step": 1,
         "defaultValue": 4
+      },
+      {
+        "key": "notifications",
+        "type": "enum",
+        "label": "Desktop notifications (only while the panel is closed)",
+        "options": [
+          { "value": "off", "label": "Off" },
+          { "value": "drops", "label": "When the VPN drops" },
+          { "value": "all", "label": "Drops and connections" }
+        ],
+        "defaultValue": "drops"
       }
     ]
   }

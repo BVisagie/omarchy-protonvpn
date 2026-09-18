@@ -34,6 +34,8 @@ Panel {
   property bool connectDraftDirty: false
   // The service this panel told it was open, so it can say when it closes.
   property var countedVpn: null
+  // Kill Switch value awaiting confirmation while connected; "" when none.
+  property string ksConfirmValue: ""
 
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color urgent: bar ? bar.urgent : Color.urgent
@@ -187,6 +189,7 @@ Panel {
       }
       if (vpn.configLoaded) {
         rows.push(["config:netshield", "config:kill-switch"])
+        if (ksConfirmValue !== "") rows.push(["ks-cancel", "ks-confirm"])
         rows.push(["config:port-forwarding", "config:vpn-accelerator"])
         rows.push(["config:moderate-nat", "config:ipv6"])
         rows.push(["config:anonymous-crash-reports", "config:custom-dns"])
@@ -266,6 +269,8 @@ Panel {
     else if (focusSection === "switch") switchNow()
     else if (focusSection.indexOf("recent:") === 0) connectRecent(parseInt(focusSection.substring(7), 10))
     else if (focusSection === "dns") applyDns()
+    else if (focusSection === "ks-cancel") cancelKillSwitch()
+    else if (focusSection === "ks-confirm") confirmKillSwitch()
     else if (focusSection.indexOf("config:") === 0) activateConfig(focusSection.substring(7))
   }
 
@@ -284,6 +289,32 @@ Panel {
     if (key === "netshield") netshieldDropdown.toggle()
     else if (key === "kill-switch") killSwitchDropdown.toggle()
     else if (key === "custom-dns") toggleCustomDns()
+  }
+
+  // While connected, a Kill Switch change drops and restores the tunnel, so
+  // ask first with Cancel preselected; an accidental Enter changes nothing.
+  function chooseKillSwitch(value) {
+    if (value === vpn.configDisplayValue("kill-switch")) return
+    if (!Model.isVpnActive(view)) {
+      vpn.setKillSwitch(value)
+      return
+    }
+    ksConfirmValue = value
+    cursorActive = true
+    focusSection = "ks-cancel"
+    scrollItemIntoView(ksConfirm)
+  }
+
+  function cancelKillSwitch() {
+    ksConfirmValue = ""
+    focusSection = "config:kill-switch"
+  }
+
+  function confirmKillSwitch() {
+    var value = ksConfirmValue
+    ksConfirmValue = ""
+    focusSection = "config:kill-switch"
+    if (value !== "") vpn.setKillSwitch(value)
   }
 
   function tryToggle() {
@@ -418,6 +449,7 @@ Panel {
     else if (focusSection === "config:netshield") scrollItemIntoView(netshieldDropdown)
     else if (focusSection === "config:kill-switch") scrollItemIntoView(killSwitchDropdown)
     else if (focusSection === "config:custom-dns") scrollItemIntoView(customDnsToggle)
+    else if (focusSection === "ks-cancel" || focusSection === "ks-confirm") scrollItemIntoView(ksConfirm)
     else {
       var grids = [choiceGrid, toggleGrid]
       for (var g = 0; g < grids.length; g++) {
@@ -456,6 +488,7 @@ Panel {
   onOpenedChanged: {
     trackOpen(opened)
     if (opened) openPanel()
+    else ksConfirmValue = ""
   }
   onVpnChanged: {
     if (countedVpn && countedVpn !== vpn) {
@@ -594,7 +627,7 @@ Panel {
         root.moveCursor(dx, dy)
       }
       onActivateRequested: if (root.cursorActive) root.activateCursor()
-      onCloseRequested: root.close()
+      onCloseRequested: root.ksConfirmValue !== "" ? root.cancelKillSwitch() : root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
       onTextKey: function(t) {
         if (t === "r" || t === "R") root.refreshAll()
@@ -821,6 +854,18 @@ Panel {
               onClicked: root.refreshAll()
               onHovered: function(on) { if (on) root.setFocusSection("refresh") }
             }
+          }
+
+          // Tunnel traffic, read locally from sysfs only while a panel is open.
+          Text {
+            textFormat: Text.PlainText
+            visible: vpn.trafficText !== "" && root.view.state === Model.STATES.connected
+            width: parent.width
+            text: vpn.trafficText
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            elide: Text.ElideRight
           }
 
           Text {
@@ -1142,7 +1187,7 @@ Panel {
                     killSwitchTip.tipHovered = on
                     if (on) root.setFocusSection("config:kill-switch")
                   }
-                  onChanged: function(value) { if (value !== vpn.configDisplayValue("kill-switch")) vpn.setConfig("kill-switch", value) }
+                  onChanged: function(value) { root.chooseKillSwitch(value) }
 
                   SettingTip {
                     id: killSwitchTip
@@ -1154,13 +1199,54 @@ Panel {
 
                 Text {
                   textFormat: Text.PlainText
-                  visible: Model.isVpnActive(root.view)
+                  visible: Model.isVpnActive(root.view) && root.ksConfirmValue === ""
                   Layout.fillWidth: true
-                  text: "Disconnect before changing Kill Switch."
+                  text: vpn.ksStep !== "idle" ? "Changing: the VPN reconnects when done." : "Changing it briefly reconnects the VPN."
                   color: root.dim
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
                   wrapMode: Text.WordWrap
+                }
+              }
+            }
+
+            Column {
+              id: ksConfirm
+              visible: root.ksConfirmValue !== ""
+              width: parent.width
+              spacing: Style.spacing.rowGap
+
+              Text {
+                textFormat: Text.PlainText
+                width: parent.width
+                text: Model.killSwitchConfirmText(root.ksConfirmValue, Model.killSwitchReturnTarget(vpn.activeTarget, root.view.status))
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                wrapMode: Text.WordWrap
+              }
+
+              Row {
+                spacing: Style.spacing.rowGap
+
+                Button {
+                  text: "Cancel"
+                  bordered: true
+                  hasCursor: root.cursorActive && root.focusSection === "ks-cancel"
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                  onClicked: root.cancelKillSwitch()
+                  onHovered: function(on) { if (on) root.setFocusSection("ks-cancel") }
+                }
+
+                Button {
+                  text: "Reconnect and change"
+                  bordered: true
+                  hasCursor: root.cursorActive && root.focusSection === "ks-confirm"
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                  onClicked: root.confirmKillSwitch()
+                  onHovered: function(on) { if (on) root.setFocusSection("ks-confirm") }
                 }
               }
             }
