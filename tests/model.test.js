@@ -627,3 +627,104 @@ describe("switching while connected", () => {
     assert.equal(Model.connectFieldTriggerLabel("city", { mode: "city", country: "", loading: true }), "Choose a country first")
   })
 })
+
+describe("desktop notifications", () => {
+  const base = { setting: "drops", openPanels: 0, selfInitiated: false, cycleActive: false, server: "CH#42", location: "Zurich, Switzerland" }
+
+  it("reports an unexpected drop while every panel is closed", () => {
+    const note = Model.linkNotification(true, false, base)
+    assert.equal(note.summary, "Proton VPN disconnected")
+    assert.equal(note.urgency, "critical")
+  })
+
+  it("stays quiet for our own disconnects, open panels, the Kill Switch cycle, and off", () => {
+    assert.equal(Model.linkNotification(true, false, Object.assign({}, base, { selfInitiated: true })), null)
+    assert.equal(Model.linkNotification(true, false, Object.assign({}, base, { openPanels: 1 })), null)
+    assert.equal(Model.linkNotification(true, false, Object.assign({}, base, { cycleActive: true })), null)
+    assert.equal(Model.linkNotification(true, false, Object.assign({}, base, { setting: "off" })), null)
+  })
+
+  it("reports connections only in all mode", () => {
+    assert.equal(Model.linkNotification(false, true, base), null)
+    const note = Model.linkNotification(false, true, Object.assign({}, base, { setting: "all", selfInitiated: true }))
+    assert.equal(note.summary, "Proton VPN connected")
+    assert.equal(note.body, "CH#42 · Zurich, Switzerland")
+  })
+
+  it("defaults unknown settings to drops", () => {
+    assert.equal(Model.normalizeNotificationSetting(undefined), "drops")
+    assert.equal(Model.normalizeNotificationSetting("loud"), "drops")
+    assert.equal(Model.normalizeNotificationSetting("all"), "all")
+  })
+})
+
+describe("Kill Switch while connected", () => {
+  it("returns to the active target, then the current server, then fastest", () => {
+    const target = { mode: "city", country: "CH", city: "Zurich", serverId: "", label: "Zurich" }
+    assert.deepEqual(Model.killSwitchReturnTarget(target, { server: "CH#42" }), target)
+    assert.deepEqual(Model.killSwitchReturnTarget(null, { server: "CH#42" }), { mode: "server", serverId: "CH#42" })
+    assert.deepEqual(Model.killSwitchReturnTarget(null, { server: "" }), { mode: "fastest" })
+    assert.deepEqual(Model.killSwitchReturnTarget(null, { server: "bad server; rm" }), { mode: "fastest" })
+  })
+
+  it("walks disconnect, set, reconnect and ends idle", () => {
+    assert.equal(Model.nextKillSwitchCycleStep("disconnecting", "disconnected"), "setting")
+    assert.equal(Model.nextKillSwitchCycleStep("setting", "set"), "reconnecting")
+    assert.equal(Model.nextKillSwitchCycleStep("reconnecting", "connected"), "idle")
+  })
+
+  it("aborts on a failed disconnect but reconnects after a failed setting", () => {
+    assert.equal(Model.nextKillSwitchCycleStep("disconnecting", "disconnectFailed"), "idle")
+    assert.equal(Model.nextKillSwitchCycleStep("setting", "setFailed"), "reconnecting")
+    assert.equal(Model.nextKillSwitchCycleStep("reconnecting", "connectFailed"), "idle")
+  })
+
+  it("names the setting and the return target in the confirmation", () => {
+    const text = Model.killSwitchConfirmText("off", { mode: "server", serverId: "CH#42" })
+    assert.match(text, /Kill Switch to Off/)
+    assert.match(text, /CH#42/)
+    assert.match(Model.killSwitchConfirmText("standard", { mode: "fastest" }), /fastest server/)
+  })
+
+  it("still refuses a one-shot Kill Switch write while connected", () => {
+    const blocked = Model.buildConfigSetCommand("kill-switch", "standard", { connected: true })
+    assert.equal(blocked.ok, false)
+  })
+})
+
+describe("live traffic", () => {
+  it("parses sysfs counters and rejects anything else", () => {
+    assert.deepEqual(Model.parseInterfaceCounters("1200\n3400\n"), { rx: 1200, tx: 3400 })
+    assert.equal(Model.parseInterfaceCounters("1200"), null)
+    assert.equal(Model.parseInterfaceCounters("-1 5"), null)
+    assert.equal(Model.parseInterfaceCounters("cat: no such file"), null)
+  })
+
+  it("computes rates and session totals, and restarts after a counter reset", () => {
+    let t = Model.trafficSample(Model.emptyTraffic(), { rx: 1000, tx: 500 }, 10_000)
+    assert.equal(t.known, false)
+    assert.equal(Model.trafficText(t), "")
+    t = Model.trafficSample(t, { rx: 3000, tx: 1500 }, 12_000)
+    assert.equal(t.rxRate, 1000)
+    assert.equal(t.txRate, 500)
+    assert.equal(t.sessionRx + t.sessionTx, 3000)
+    assert.equal(Model.trafficText(t), "↓ 1 KB/s  ↑ 500 B/s · 3 KB this session")
+    const reset = Model.trafficSample(t, { rx: 10, tx: 10 }, 14_000)
+    assert.equal(reset.rxRate, 0)
+    assert.equal(reset.sessionRx, t.sessionRx)
+  })
+
+  it("formats byte counts compactly", () => {
+    assert.equal(Model.formatBytes(0), "0 B")
+    assert.equal(Model.formatBytes(1234), "1.23 KB")
+    assert.equal(Model.formatBytes(312e6), "312 MB")
+    assert.equal(Model.formatRate(1.5e9), "1.5 GB/s")
+  })
+
+  it("only builds sysfs paths for Proton tunnel devices", () => {
+    assert.equal(Model.isTunnelDevice("proton0"), true)
+    assert.equal(Model.isTunnelDevice("proton0/../../etc"), false)
+    assert.equal(Model.isTunnelDevice("wlan0"), false)
+    assert.equal(Model.isTunnelDevice(""), false)
+  })
+})
