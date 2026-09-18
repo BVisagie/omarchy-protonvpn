@@ -19,7 +19,7 @@ describe("QML scheduler contract", () => {
   })
 
   it("polls protonvpn status on a timer only while a panel is open", () => {
-    assert.match(service, /id: refreshTimer[\s\S]{0,120}running: root\.active && root\.openPanels > 0\n/)
+    assert.match(service, /id: refreshTimer[\s\S]{0,120}running: root\.active && \(root\.openPanels > 0 \|\| !root\.linkAvailable\)\n/)
     assert.doesNotMatch(service, /id: refreshTimer[\s\S]{0,200}triggeredOnStart/)
     assert.match(service, /Component\.onCompleted: if \(active\) refresh\(\)/)
     assert.match(service, /openPanels = Math\.max\(0, openPanels - 1\)/)

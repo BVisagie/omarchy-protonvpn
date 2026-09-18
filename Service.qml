@@ -385,13 +385,16 @@ Item {
         if (countries.length > 0) discoveryStale = true
         return
       }
+      var countriesCrashed = Model.crashedAfterOutput(result)
       var parsedCountries = Model.parseCountries(result.stdout)
-      if (!parsedCountries.ok) {
-        countriesError = parsedCountries.message
+      if (!parsedCountries.ok || (countriesCrashed && parsedCountries.countries.length === 0)) {
+        countriesError = countriesCrashed ? (classified.message || "Could not list countries.") : parsedCountries.message
+        if (countriesCrashed && countries.length > 0) discoveryStale = true
         return
       }
       countries = parsedCountries.countries
-      countriesLoaded = true
+      // A table has no end marker, so crashed output is shown but fetched again.
+      countriesLoaded = !countriesCrashed
       countriesError = parsedCountries.countries.length === 0 ? "No countries returned." : ""
       discoveryStale = false
       return
@@ -404,14 +407,20 @@ Item {
         if (cities.length > 0) discoveryStale = true
         return
       }
+      var citiesCrashed = Model.crashedAfterOutput(result)
       var parsedCities = Model.parseCities(result.stdout)
-      if (!parsedCities.ok) {
+      if (!parsedCities.ok || (citiesCrashed && parsedCities.cities.length === 0)) {
+        if (citiesCrashed) {
+          citiesError = classified.message || "Could not list cities."
+          if (cities.length > 0) discoveryStale = true
+          return
+        }
         citiesError = parsedCities.message
         cities = []
         return
       }
       cities = parsedCities.cities
-      if (parsedCities.cities.length > 0) {
+      if (parsedCities.cities.length > 0 && !citiesCrashed) {
         var cache = Object.assign({}, _citiesCache)
         cache[citiesCountry] = parsedCities.cities
         _citiesCache = cache
@@ -434,9 +443,10 @@ Item {
         configError = classified.message || "Could not read Proton VPN settings."
         return
       }
+      var configCrashed = Model.crashedAfterOutput(result)
       var parsed = Model.parseConfigList(result.stdout)
-      if (!parsed.ok) {
-        configError = parsed.message
+      if (!parsed.ok || (configCrashed && !Model.configListComplete(parsed))) {
+        configError = configCrashed ? (classified.message || "Could not read Proton VPN settings.") : parsed.message
         return
       }
       configValues = parsed.settings
@@ -687,15 +697,13 @@ Item {
     return String((configValues && configValues[key]) || "")
   }
 
-  // Each `protonvpn status` starts Python and opens a new Secret Service
-  // connection, so it only polls on a timer while a panel is open. With every
-  // panel closed, nmcli drives the bar and status runs only on events: start-up,
-  // link changes, actions, and opening a panel.
+  // Each `protonvpn status` opens a new Secret Service connection; poll only
+  // when a panel shows the result or nmcli cannot follow the tunnel.
   Timer {
     id: refreshTimer
     interval: root.refreshIntervalSec * 1000
     repeat: true
-    running: root.active && root.openPanels > 0
+    running: root.active && (root.openPanels > 0 || !root.linkAvailable)
     onTriggered: root.refresh()
   }
 
