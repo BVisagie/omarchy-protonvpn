@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Refresh the README and marketplace preview for 1.2.0: new screenshots in three themes, a feature and requirements summary up front, menu install and removal steps, an Update section, and a widget settings table. Correct the install steps: adding the plugin asks whether to enable it, and enabling without `--section` uses the right section.
+
 ## 1.2.0 — 2026-09-18
 
 - Send a desktop notification when the tunnel drops unexpectedly while the panel is closed. A new **Desktop notifications** setting offers Off, drops only (default), or drops and connections.
