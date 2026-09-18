@@ -1201,7 +1201,7 @@ Panel {
                   textFormat: Text.PlainText
                   visible: Model.isVpnActive(root.view) && root.ksConfirmValue === ""
                   Layout.fillWidth: true
-                  text: vpn.ksStep !== "idle" ? "Changing: the VPN reconnects when done." : "Changing it briefly reconnects the VPN."
+                  text: "Changing it briefly reconnects the VPN."
                   color: root.dim
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption

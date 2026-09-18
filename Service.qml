@@ -83,7 +83,7 @@ Item {
   readonly property bool processBusy: commandProcess.running
   readonly property bool actionRunning: (_currentJob && _currentJob.type === "action") || Scheduler.hasAction(_queueState)
   readonly property bool busy: processBusy || state === Model.STATES.connecting || state === Model.STATES.disconnecting
-  readonly property bool actionBusy: actionRunning
+  readonly property bool actionBusy: actionRunning || ksStep !== "idle"
   readonly property var view: ({
     state: root.state,
     kind: root.kind,
@@ -315,7 +315,7 @@ Item {
       if (previous.status && previous.status.server === next.status.server) next.status.exitIp = String(previous.status.exitIp || "")
       if (linkConfirmed() && linkServer !== "" && next.status.server === "") next.status.server = linkServer
       applyView(next)
-    } else if (next.state === Model.STATES.disconnected && linkConfirmed()) {
+    } else if (next.state === Model.STATES.disconnected && linkConfirmed() && ksStep === "idle") {
       var observed = statusCopy(previous.status)
       if (linkServer !== "") observed.server = linkServer
       applyView(connectedView(observed))
@@ -388,7 +388,8 @@ Item {
     }
     actionStatusTimer.restart()
     watchLink()
-    delayedRefresh.restart()
+    // Mid-cycle, the next write matters more than a status refresh.
+    if (!(ksStep === "disconnecting" && job.action === "disconnect" && classified.ok)) delayedRefresh.restart()
     if (ksStep !== "idle") advanceKillSwitch(job.action === "disconnect"
       ? (classified.ok ? "disconnected" : "disconnectFailed")
       : (classified.ok ? "connected" : "connectFailed"), classified.message)
@@ -495,8 +496,9 @@ Item {
       pendingSetting = ""
       pendingValue = ""
       actionStatusTimer.restart()
-      refreshConfig()
+      // Reconnect first: the tunnel is down until it runs.
       if (ksStep === "setting" && job.setting === "kill-switch") advanceKillSwitch(classified.ok ? "set" : "setFailed", classified.message)
+      refreshConfig()
     }
   }
 
@@ -548,11 +550,13 @@ Item {
     linkActive = link.active
     linkServer = link.server
     linkDevice = link.device
-    noteLink(link.active, actionRunning)
+    // The Kill Switch cycle owns the tunnel between its actions too.
+    var owned = actionRunning || ksStep !== "idle"
+    noteLink(link.active, owned)
     // NetworkManager can briefly continue reporting the old tunnel while a
     // connect, server change, or disconnect is in flight. Keep the live facts,
     // but let the action result own the transitional UI state.
-    if (actionRunning) return
+    if (owned) return
     if (!Model.linkMayClaimConnected(state)) {
       // Keep GUI-conflict, signed-out, and error verdicts in both directions;
       // only a status check may clear them.
@@ -767,8 +771,9 @@ Item {
       var carried = _ksError
       _ksError = ""
       _ksTarget = null
-      if (carried !== "") reportError(carried)
-      else if (event === "connected") {
+      if (event === "connectFailed") reportError(carried !== "" ? carried + " Reconnecting also failed. Connect again." : "Kill Switch changed, but reconnecting failed. Connect again.")
+      else if (carried !== "") reportError(carried)
+      else {
         actionStatus = "Kill Switch changed and reconnected."
         actionStatusTimer.restart()
       }
@@ -909,7 +914,7 @@ Item {
     id: actionStatusTimer
     interval: 3200
     repeat: false
-    onTriggered: root.actionStatus = ""
+    onTriggered: if (root.ksStep === "idle") root.actionStatus = ""
   }
 
   Process {

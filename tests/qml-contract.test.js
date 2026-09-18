@@ -40,6 +40,17 @@ describe("QML scheduler contract", () => {
     assert.match(service, /ksStep === "idle" \|\| _ksInternal/)
   })
 
+  it("keeps the Kill Switch cycle's unprotected gap short and owned", () => {
+    const reconnect = service.indexOf('if (ksStep === "setting" && job.setting === "kill-switch") advanceKillSwitch(')
+    const listAfter = service.indexOf("refreshConfig()", reconnect)
+    assert.ok(reconnect !== -1 && listAfter !== -1 && listAfter - reconnect < 200)
+    assert.match(service, /var owned = actionRunning \|\| ksStep !== "idle"\n\s*noteLink\(link\.active, owned\)/)
+    assert.match(service, /if \(owned\) return\n\s*if \(!Model\.linkMayClaimConnected\(state\)\)/)
+    assert.match(service, /disconnected && linkConfirmed\(\) && ksStep === "idle"/)
+    assert.match(service, /readonly property bool actionBusy: actionRunning \|\| ksStep !== "idle"/)
+    assert.match(service, /if \(event === "connectFailed"\) reportError\(/)
+  })
+
   it("falls back to an idle-until-needed local service when the shared one is missing", () => {
     assert.match(panel, /readonly property var vpn: root\.sharedVpn \|\| localVpn/)
     assert.match(panel, /Service \{\s*id: localVpn\s*active: !root\.sharedVpn\s*\}/)
@@ -48,7 +59,7 @@ describe("QML scheduler contract", () => {
   })
 
   it("keeps CLI verdicts the live tunnel cannot explain", () => {
-    const actionGuard = service.indexOf("if (actionRunning) return", service.indexOf("linkDevice = link.device"))
+    const actionGuard = service.indexOf("if (owned) return", service.indexOf("linkDevice = link.device"))
     const claimGuard = service.indexOf("if (!Model.linkMayClaimConnected(state))", actionGuard)
     const updateView = service.indexOf("if (link.active) {", actionGuard)
     assert.ok(actionGuard !== -1 && claimGuard !== -1 && updateView !== -1)
@@ -87,7 +98,7 @@ describe("QML scheduler contract", () => {
 
   it("does not let an old NetworkManager signal replace an action in flight", () => {
     const updateFacts = service.indexOf("linkDevice = link.device")
-    const actionGuard = service.indexOf("if (actionRunning) return", updateFacts)
+    const actionGuard = service.indexOf("if (owned) return", updateFacts)
     const updateView = service.indexOf("if (link.active)", updateFacts)
     assert.ok(updateFacts !== -1 && actionGuard !== -1 && updateView !== -1)
     assert.ok(updateFacts < actionGuard && actionGuard < updateView)
