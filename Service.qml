@@ -39,6 +39,8 @@ Item {
   property string linkServer: ""
   property string linkDevice: ""
   property var recentTargets: []
+  // Panels on every monitor share this service; count the open ones.
+  property int openPanels: 0
   // Options behind the current connection, when this session made it.
   property var activeTarget: null
 
@@ -93,6 +95,14 @@ Item {
   property var _citiesCache: ({})
   property int _linkEpoch: 0
   property int _linkStartedEpoch: 0
+
+  function panelOpened() {
+    openPanels = openPanels + 1
+  }
+
+  function panelClosed() {
+    openPanels = Math.max(0, openPanels - 1)
+  }
 
   function setSettings(next) {
     settings = next || ({})
@@ -370,18 +380,21 @@ Item {
     }
     if (job.kind === "countries") {
       countriesLoading = false
-      if (result.timedOut === true || result.exitCode !== 0) {
+      if (!Model.readSucceeded(result)) {
         countriesError = classified.message || "Could not list countries."
         if (countries.length > 0) discoveryStale = true
         return
       }
+      var countriesCrashed = Model.crashedAfterOutput(result)
       var parsedCountries = Model.parseCountries(result.stdout)
-      if (!parsedCountries.ok) {
-        countriesError = parsedCountries.message
+      if (!parsedCountries.ok || (countriesCrashed && parsedCountries.countries.length === 0)) {
+        countriesError = countriesCrashed ? (classified.message || "Could not list countries.") : parsedCountries.message
+        if (countriesCrashed && countries.length > 0) discoveryStale = true
         return
       }
       countries = parsedCountries.countries
-      countriesLoaded = true
+      // A table has no end marker, so crashed output is shown but fetched again.
+      countriesLoaded = !countriesCrashed
       countriesError = parsedCountries.countries.length === 0 ? "No countries returned." : ""
       discoveryStale = false
       return
@@ -389,19 +402,25 @@ Item {
     if (job.kind === "cities") {
       if (String(job.country || "") !== citiesCountry) return
       citiesLoading = false
-      if (result.timedOut === true || result.exitCode !== 0) {
+      if (!Model.readSucceeded(result)) {
         citiesError = classified.message || "Could not list cities."
         if (cities.length > 0) discoveryStale = true
         return
       }
+      var citiesCrashed = Model.crashedAfterOutput(result)
       var parsedCities = Model.parseCities(result.stdout)
-      if (!parsedCities.ok) {
+      if (!parsedCities.ok || (citiesCrashed && parsedCities.cities.length === 0)) {
+        if (citiesCrashed) {
+          citiesError = classified.message || "Could not list cities."
+          if (cities.length > 0) discoveryStale = true
+          return
+        }
         citiesError = parsedCities.message
         cities = []
         return
       }
       cities = parsedCities.cities
-      if (parsedCities.cities.length > 0) {
+      if (parsedCities.cities.length > 0 && !citiesCrashed) {
         var cache = Object.assign({}, _citiesCache)
         cache[citiesCountry] = parsedCities.cities
         _citiesCache = cache
@@ -420,13 +439,14 @@ Item {
       return
     }
     if (job.kind === "list") {
-      if (result.exitCode !== 0 || result.timedOut === true) {
+      if (!Model.readSucceeded(result)) {
         configError = classified.message || "Could not read Proton VPN settings."
         return
       }
+      var configCrashed = Model.crashedAfterOutput(result)
       var parsed = Model.parseConfigList(result.stdout)
-      if (!parsed.ok) {
-        configError = parsed.message
+      if (!parsed.ok || (configCrashed && !Model.configListComplete(parsed))) {
+        configError = configCrashed ? (classified.message || "Could not read Proton VPN settings.") : parsed.message
         return
       }
       configValues = parsed.settings
@@ -677,14 +697,18 @@ Item {
     return String((configValues && configValues[key]) || "")
   }
 
+  // Each `protonvpn status` opens a new Secret Service connection; poll only
+  // when a panel shows the result or nmcli cannot follow the tunnel.
   Timer {
     id: refreshTimer
     interval: root.refreshIntervalSec * 1000
     repeat: true
-    running: root.active
-    triggeredOnStart: true
+    running: root.active && (root.openPanels > 0 || !root.linkAvailable)
     onTriggered: root.refresh()
   }
+
+  onActiveChanged: if (active) refresh()
+  Component.onCompleted: if (active) refresh()
 
   Timer {
     id: linkTimer

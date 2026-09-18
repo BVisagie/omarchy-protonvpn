@@ -37,6 +37,15 @@ class BoundedRunnerTests(unittest.TestCase):
         self.assertEqual(result.stdout, b"ok\n")
         self.assertEqual(result.stderr, b"bad\n")
 
+    def test_reports_a_crash_after_output_as_128_plus_signal(self) -> None:
+        result = bounded(
+            sys.executable,
+            "-c",
+            "import os,signal,sys; print('Status: Connected'); sys.stdout.flush(); os.kill(os.getpid(), signal.SIGSEGV)",
+        )
+        self.assertEqual(result.returncode, 139)
+        self.assertEqual(result.stdout, b"Status: Connected\n")
+
     def test_forces_stable_non_colored_output(self) -> None:
         result = bounded(
             sys.executable,

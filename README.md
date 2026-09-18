@@ -109,8 +109,9 @@ Some rows show a short caption. Hover a CONNECT or SETTINGS control, or move ont
 - Location, feature, and some configuration choices can require a paid plan. The panel shows the CLI's error instead of guessing the account tier.
 - `protonvpn status` does not provide the current exit IP. The widget never performs an external lookup, so the value is available only after a successful connect command that returned it.
 - Omarchy creates a widget on each monitor. On Omarchy's built-in bar every panel uses one shared service, so Proton CLI commands are serialized across all monitors. Replacement bars cannot provide that service, so each panel there runs its own copy and polls separately.
-- Status polling defaults to 30 seconds because `protonvpn status` initializes Proton components and may refresh server data while connected. It can be changed in widget settings (10–3600 seconds).
-- The live link probe defaults to four seconds and can be changed in widget settings. If `nmcli` is unavailable, normal CLI polling continues.
+- `protonvpn status` runs on a timer only while a panel is open. It defaults to every 30 seconds and can be changed in widget settings (10–3600 seconds). Each run starts Python and opens a new keyring connection, so with every panel closed it runs only at start-up, when the NetworkManager link changes, and after an action. If `nmcli` is unavailable, it keeps polling on the timer. The bar icon keeps following the tunnel through the read-only link probe, but a sign-out or a newly opened desktop app is noticed only when you open the panel or the link changes.
+- The Proton CLI sometimes crashes while exiting, after printing its full output. Read-only commands (`status`, `countries list`, `cities list`, `config list`) accept that output when it parses. Settings must list every known key, and country or city lists from a crashed run are fetched again next time. Connect, disconnect, and setting changes never do.
+- The live link probe defaults to four seconds and can be changed in widget settings.
 
 ## Troubleshooting
 

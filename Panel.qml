@@ -32,6 +32,8 @@ Panel {
   property bool keyboardNavigation: false
   // Set only by user edits to CONNECT, never by programmatic draft resets.
   property bool connectDraftDirty: false
+  // The service this panel told it was open, so it can say when it closes.
+  property var countedVpn: null
 
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color urgent: bar ? bar.urgent : Color.urgent
@@ -451,14 +453,38 @@ Panel {
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
-  onOpenedChanged: if (opened) {
+  onOpenedChanged: {
+    trackOpen(opened)
+    if (opened) openPanel()
+  }
+  onVpnChanged: {
+    if (countedVpn && countedVpn !== vpn) {
+      countedVpn.panelClosed()
+      countedVpn = null
+      trackOpen(opened)
+    }
+    if (vpn) vpn.setSettings(root.settings)
+  }
+  Component.onDestruction: trackOpen(false)
+
+  // The service stops polling `protonvpn status` while every panel is closed.
+  function trackOpen(isOpen) {
+    if (isOpen && !countedVpn && vpn) {
+      countedVpn = vpn
+      vpn.panelOpened()
+    } else if (!isOpen && countedVpn) {
+      countedVpn.panelClosed()
+      countedVpn = null
+    }
+  }
+
+  function openPanel() {
     cursorActive = false
     keyboardNavigation = false
     if (panelFlick) panelFlick.contentY = 0
     refreshOnOpen()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
-  onVpnChanged: if (vpn) vpn.setSettings(root.settings)
   onSettingsChanged: if (vpn) vpn.setSettings(root.settings)
   Component.onCompleted: if (vpn) vpn.setSettings(root.settings)
   onSelectedModeChanged: {
