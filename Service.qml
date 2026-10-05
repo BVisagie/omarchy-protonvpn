@@ -38,6 +38,8 @@ Item {
   property bool linkActive: false
   property string linkServer: ""
   property string linkDevice: ""
+  property bool linkKillSwitch: false
+  readonly property bool killSwitchBlocking: Model.killSwitchBlocking({ known: linkKnown, available: linkAvailable, active: linkActive, killSwitch: linkKillSwitch }, state)
   property var recentTargets: []
   // Panels on every monitor share this service; count the open ones.
   property int openPanels: 0
@@ -52,6 +54,19 @@ Item {
   property var _ksTarget: null
   property string _ksError: ""
   property bool _ksInternal: false
+
+  // Reconnect on drop: the target, the attempt in the backoff schedule, and
+  // the last connection the tunnel had before a status check cleared it.
+  readonly property bool reconnectOnDrop: Model.normalizeBooleanSetting(setting("reconnectOnDrop", false))
+  property var _reconnectTarget: null
+  property int _reconnectAttempt: 0
+  property bool _reconnectFallback: false
+  property bool _autoInternal: false
+  property var _lastSession: null
+  readonly property bool reconnectPending: _reconnectTarget !== null
+
+  property int _setupChecks: 0
+  property string portForwardingNotice: ""
 
   property var traffic: Model.emptyTraffic()
   property string _trafficDevice: ""
@@ -72,6 +87,7 @@ Item {
 
   property var configValues: ({})
   property var configUpgrade: ({})
+  readonly property bool freePlan: Model.isFreePlan(configUpgrade)
   property bool configLoaded: false
   property string configError: ""
   property string pendingSetting: ""
@@ -93,7 +109,8 @@ Item {
     status: root.status,
     signedIn: root.signedIn,
     lastUpdatedMs: root.lastUpdatedMs,
-    connectedSnapshot: root.connectedSnapshot
+    connectedSnapshot: root.connectedSnapshot,
+    blocking: root.killSwitchBlocking
   })
   // A Kill Switch cycle owns the connection until it finishes; only its own
   // steps may write while it runs.
@@ -159,6 +176,8 @@ Item {
   function applyView(next) {
     if (!next) return
     var previousConnected = connectedSnapshot === true
+    var previousTarget = activeTarget
+    var previousServer = String(status.server || "")
     state = String(next.state || Model.STATES.error)
     kind = String(next.kind || "")
     message = String(next.message || "")
@@ -167,7 +186,13 @@ Item {
     status = statusCopy(next.status || Model.emptyStatus())
     signedIn = next.signedIn === true
     connectedSnapshot = next.connectedSnapshot === true
-    if (state === Model.STATES.disconnected) activeTarget = null
+    if (state === Model.STATES.disconnected) {
+      // A status check can notice a drop before nmcli does; keep where the
+      // tunnel was so a reconnect can return there.
+      if (previousConnected) _lastSession = { target: previousTarget, status: { server: previousServer } }
+      activeTarget = null
+      portForwardingNotice = ""
+    }
     if (state === Model.STATES.connected || state === Model.STATES.disconnected) {
       lastUpdatedMs = Date.now()
       lastError = ""
@@ -209,9 +234,13 @@ Item {
     return prepared
   }
 
+  // The queue serializes one service; the lock also covers a second shell,
+  // such as a reload whose old CLI run has not finished yet.
   function boundedCommand(command, timeoutMs) {
     var seconds = Math.max(1, Math.ceil(Number(timeoutMs || 20000) / 1000))
-    return ["/usr/bin/python3", runnerPath, "--max-bytes", "262144", "--max-seconds", String(seconds), "--"].concat(prepareCommand(command))
+    var runner = ["/usr/bin/python3", runnerPath, "--max-bytes", "262144", "--max-seconds", String(seconds)]
+    if (command && command[0] === "protonvpn") runner.push("--lock")
+    return runner.concat(["--"]).concat(prepareCommand(command))
   }
 
   function enqueue(job) {
@@ -336,6 +365,7 @@ Item {
       actionStatus = ""
       delayedRefresh.restart()
       abortKillSwitch(classified.message)
+      if (job.auto === true) cancelReconnect()
       return
     }
     if (classified.ok) {
@@ -346,6 +376,7 @@ Item {
         linkServer = ""
         linkDevice = ""
         applyView(disconnectedView())
+        _lastSession = null
         noteLink(false, true)
       } else {
         var outcome = Model.parseConnectOutcome(result.stdout)
@@ -363,7 +394,12 @@ Item {
         var target = Model.recentTarget(job.options || {}, outcome)
         activeTarget = target
         recentTargets = Model.recordRecentTarget(recentTargets, target, 3)
+        portForwardingNotice = Model.portForwardingNotice(outcome.portForwarding)
         noteLink(true, true)
+        if (job.auto === true) {
+          cancelReconnect()
+          actionStatus = "Reconnected after the drop."
+        }
       }
     } else {
       lastError = classified.message
@@ -385,6 +421,7 @@ Item {
         applyView(job.snapshot)
       }
       lastError = classified.message
+      if (job.auto === true) scheduleNextReconnect()
     }
     actionStatusTimer.restart()
     watchLink()
@@ -550,6 +587,7 @@ Item {
     linkActive = link.active
     linkServer = link.server
     linkDevice = link.device
+    linkKillSwitch = link.killSwitch === true
     // The Kill Switch cycle owns the tunnel between its actions too.
     var owned = actionRunning || ksStep !== "idle"
     noteLink(link.active, owned)
@@ -633,6 +671,11 @@ Item {
       reportError(Model.writeBlockedReason(state) || "Proton VPN is not ready to connect.")
       return false
     }
+    var blocked = Model.planBlockedReason((options || {}).mode, freePlan)
+    if (blocked !== "") {
+      reportError(blocked)
+      return false
+    }
     var plan = Model.buildConnectCommand(options)
     if (!plan.ok) {
       reportError(plan.message)
@@ -672,9 +715,11 @@ Item {
       timeout: 60000,
       priority: true,
       snapshot: snapshot(),
-      options: options || ({})
+      options: options || ({}),
+      auto: _autoInternal === true
     }
     if (!enqueue(job)) return false
+    if (job.auto !== true) cancelReconnect()
     lastError = ""
     actionStatus = label || ""
     state = action === "disconnect" ? Model.STATES.disconnecting : Model.STATES.connecting
@@ -720,7 +765,7 @@ Item {
       return false
     }
     _ksValue = String(value)
-    _ksTarget = Model.killSwitchReturnTarget(activeTarget, status)
+    _ksTarget = Model.returnTarget(activeTarget, status, freePlan)
     _ksError = ""
     ksStep = "disconnecting"
     _ksInternal = true
@@ -763,7 +808,7 @@ Item {
         ksStep = "idle"
         reportError(_ksError !== "" ? _ksError : "Kill Switch changed, but reconnecting failed. Connect again.")
       } else {
-        actionStatus = "Reconnecting to " + Model.killSwitchTargetLabel(_ksTarget) + "…"
+        actionStatus = "Reconnecting to " + Model.returnTargetLabel(_ksTarget) + "…"
       }
       return
     }
@@ -805,17 +850,89 @@ Item {
     if (_notifiedActive === now) return
     var previous = _notifiedActive
     _notifiedActive = now
-    var note = Model.linkNotification(previous, now, {
+    var dropped = previous === true && !now && selfInitiated !== true && ksStep === "idle"
+    if (now) cancelReconnect()
+    else if (dropped && reconnectOnDrop) armReconnect()
+    sendNotification(Model.linkNotification(previous, now, {
       setting: notificationSetting,
       openPanels: openPanels,
       selfInitiated: selfInitiated === true,
       cycleActive: ksStep !== "idle",
+      killSwitch: linkKillSwitch,
+      reconnecting: reconnectPending,
       server: status.server || linkServer,
       location: status.location
-    })
-    if (!note) return
-    Quickshell.execDetached(["notify-send", "--app-name=Proton VPN", "--urgency=" + note.urgency, "--icon=network-vpn-symbolic", "--", note.summary, note.body])
+    }))
   }
+
+  function sendNotification(note) {
+    var command = Model.notificationCommand(note)
+    if (command.length > 0) Quickshell.execDetached(command)
+  }
+
+  // A drop with reconnect enabled returns to the same target. The server-ID
+  // fallback only exists when the tunnel was started elsewhere, so later
+  // attempts use the fastest server in case that server is gone.
+  function armReconnect() {
+    var session = (activeTarget || status.server) ? { target: activeTarget, status: status } : (_lastSession || ({}))
+    var target = Model.returnTarget(session.target, session.status, freePlan)
+    _reconnectFallback = !session.target && target.mode === "server"
+    _reconnectTarget = target
+    _reconnectAttempt = 0
+    reconnectTimer.interval = Model.reconnectDelayMs(0)
+    reconnectTimer.restart()
+  }
+
+  function cancelReconnect() {
+    reconnectTimer.stop()
+    _reconnectTarget = null
+    _reconnectAttempt = 0
+    _reconnectFallback = false
+  }
+
+  function scheduleNextReconnect() {
+    if (_reconnectTarget === null) return
+    _reconnectAttempt++
+    var delay = Model.reconnectDelayMs(_reconnectAttempt)
+    if (delay < 0) {
+      giveUpReconnect()
+      return
+    }
+    if (_reconnectFallback) {
+      _reconnectTarget = { mode: "fastest" }
+      _reconnectFallback = false
+    }
+    reconnectTimer.interval = delay
+    reconnectTimer.restart()
+  }
+
+  function giveUpReconnect() {
+    cancelReconnect()
+    reportError("Could not reconnect after the VPN dropped. Connect again.")
+    sendNotification(Model.reconnectFailedNotification({ setting: notificationSetting, openPanels: openPanels, killSwitch: linkKillSwitch }))
+  }
+
+  function tryReconnect() {
+    if (_reconnectTarget === null) return
+    if (linkActive || state === Model.STATES.connected || !reconnectOnDrop || Model.reconnectAbandoned(state)) {
+      cancelReconnect()
+      return
+    }
+    if (actionRunning || ksStep !== "idle" || !canToggle) {
+      // Not ready yet, for example while a status check runs; a wait uses up
+      // an attempt so the schedule still ends.
+      requestStatusRefresh()
+      scheduleNextReconnect()
+      return
+    }
+    _autoInternal = true
+    var started = connectWith(_reconnectTarget)
+    _autoInternal = false
+    if (started) actionStatus = "Reconnecting to " + Model.returnTargetLabel(_reconnectTarget) + "…"
+    else scheduleNextReconnect()
+  }
+
+  onReconnectOnDropChanged: if (!reconnectOnDrop) cancelReconnect()
 
   function sampleTraffic() {
     if (!active || openPanels === 0 || !linkActive || trafficProcess.running) return
@@ -849,8 +966,31 @@ Item {
     actionStatusTimer.restart()
   }
 
-  function openTerminal() {
-    Quickshell.execDetached(["omarchy-launch-terminal"])
+  // Both open a terminal the panel cannot see into; poll until the CLI is
+  // installed and signed in, or give up after six minutes.
+  function installCli() {
+    Quickshell.execDetached(Model.INSTALL_LAUNCHER)
+    watchSetup("Installing in a terminal…")
+  }
+
+  function signIn() {
+    Quickshell.execDetached(Model.SIGNIN_LAUNCHER)
+    watchSetup("Signing in from a terminal…")
+  }
+
+  function watchSetup(label) {
+    actionStatus = label
+    actionStatusTimer.restart()
+    _setupChecks = 0
+    setupTimer.restart()
+  }
+
+  function checkSetup() {
+    if (Model.setupComplete(state, installed) || ++_setupChecks >= 72) {
+      setupTimer.stop()
+      return
+    }
+    if (!processBusy) refresh()
   }
 
   function configDisplayValue(key) {
@@ -888,6 +1028,19 @@ Item {
     running: root.active && root.installed
     triggeredOnStart: true
     onTriggered: root.watchLink()
+  }
+
+  Timer {
+    id: reconnectTimer
+    repeat: false
+    onTriggered: root.tryReconnect()
+  }
+
+  Timer {
+    id: setupTimer
+    interval: 5000
+    repeat: true
+    onTriggered: root.checkSetup()
   }
 
   Timer {

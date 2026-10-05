@@ -1,0 +1,5 @@
+Connected to CH#118 in Zurich, Switzerland.
+Your new IP address is 185.159.157.20.
+
+Port forwarding is active on this server.
+To get your forwarded port, run the natpmpc setup script.

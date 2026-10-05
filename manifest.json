@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.BVisagie.protonvpn",
   "name": "Proton VPN",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "author": "BVisagie",
   "license": "MIT",
   "homepage": "https://github.com/BVisagie/omarchy-protonvpn",
@@ -22,7 +22,8 @@
     "defaults": {
       "refreshIntervalSec": 30,
       "linkWatchIntervalSec": 4,
-      "notifications": "drops"
+      "notifications": "drops",
+      "reconnectOnDrop": false
     },
     "schema": [
       {
@@ -53,6 +54,12 @@
           { "value": "all", "label": "Drops and connections" }
         ],
         "defaultValue": "drops"
+      },
+      {
+        "key": "reconnectOnDrop",
+        "type": "boolean",
+        "label": "Reconnect when the VPN drops",
+        "defaultValue": false
       }
     ]
   }

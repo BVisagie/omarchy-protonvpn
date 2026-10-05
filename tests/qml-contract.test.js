@@ -31,7 +31,45 @@ describe("QML scheduler contract", () => {
     assert.match(service, /id: trafficTimer[\s\S]{0,120}running: root\.active && root\.openPanels > 0 && root\.linkActive/)
     assert.match(service, /if \(!Model\.isTunnelDevice\(linkDevice\)\) return/)
     assert.match(service, /boundedCommand\(\["\/usr\/bin\/cat", base \+ "rx_bytes", base \+ "tx_bytes"\], 2000\)/)
-    assert.match(service, /execDetached\(\["notify-send", "--app-name=Proton VPN", "--urgency=" \+ note\.urgency, "--icon=network-vpn-symbolic", "--", note\.summary, note\.body\]\)/)
+    assert.match(service, /var command = Model\.notificationCommand\(note\)\n\s*if \(command\.length > 0\) Quickshell\.execDetached\(command\)/)
+    assert.doesNotMatch(service, /notify-send/)
+  })
+
+  it("launches install and sign-in only through fixed Omarchy terminals", () => {
+    assert.match(service, /Quickshell\.execDetached\(Model\.INSTALL_LAUNCHER\)/)
+    assert.match(service, /Quickshell\.execDetached\(Model\.SIGNIN_LAUNCHER\)/)
+    assert.doesNotMatch(service, /omarchy-launch-terminal"/)
+    assert.match(service, /id: setupTimer[\s\S]{0,80}interval: 5000/)
+    assert.match(panel, /if \(view\.state === Model\.STATES\.cliMissing\) rows\.push\(\["install"\]\)/)
+    assert.match(panel, /focusSection === "signin"\) vpn\.signIn\(\)/)
+  })
+
+  it("locks only Proton CLI runs", () => {
+    assert.match(service, /if \(command && command\[0\] === "protonvpn"\) runner\.push\("--lock"\)/)
+  })
+
+  it("shows the Kill Switch block and colors the icon for it", () => {
+    assert.match(service, /blocking: root\.killSwitchBlocking/)
+    assert.match(service, /linkKillSwitch = link\.killSwitch === true/)
+    assert.match(panel, /visible: root\.view\.blocking === true[\s\S]{0,80}text: Model\.KILL_SWITCH_BLOCKING_TEXT/)
+    assert.doesNotMatch(panel, /Model\.icon(?:Urgent|Warning)\((?:root\.)?view\.state\)/)
+  })
+
+  it("reconnects only after an unowned drop and stops when the user acts", () => {
+    assert.match(service, /var dropped = previous === true && !now && selfInitiated !== true && ksStep === "idle"/)
+    assert.match(service, /else if \(dropped && reconnectOnDrop\) armReconnect\(\)/)
+    assert.match(service, /if \(job\.auto !== true\) cancelReconnect\(\)/)
+    assert.match(service, /if \(job\.auto === true\) scheduleNextReconnect\(\)/)
+    assert.match(service, /onReconnectOnDropChanged: if \(!reconnectOnDrop\) cancelReconnect\(\)/)
+  })
+
+  it("gates paid-only modes on the free plan before running the CLI", () => {
+    const connect = service.indexOf("function connectWith(options)")
+    const blocked = service.indexOf("Model.planBlockedReason(", connect)
+    const run = service.indexOf("return runAction(plan.command", connect)
+    assert.ok(connect !== -1 && blocked !== -1 && run !== -1 && blocked < run)
+    assert.match(service, /_ksTarget = Model\.returnTarget\(activeTarget, status, freePlan\)/)
+    assert.match(panel, /readonly property var modeOptions: Model\.modeOptions\(vpn\.freePlan\)/)
   })
 
   it("asks before a Kill Switch change drops a live tunnel", () => {
@@ -190,7 +228,7 @@ describe("QML scheduler contract", () => {
     assert.match(panel, /onAccepted: root\.offerSwitch \? root\.switchNow\(\) : root\.tryToggle\(\)/)
     assert.doesNotMatch(panel, /function applyConnectDraft\(draft\) \{[^}]*connectDraftDirty/)
     assert.match(service, /activeTarget = target/)
-    assert.match(service, /if \(state === Model\.STATES\.disconnected\) activeTarget = null/)
+    assert.match(service, /if \(state === Model\.STATES\.disconnected\) \{[\s\S]{0,300}activeTarget = null/)
   })
 
   it("centers the protocol pill with the power toggle and keeps status on one line", () => {

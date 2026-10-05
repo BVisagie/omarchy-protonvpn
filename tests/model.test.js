@@ -65,15 +65,18 @@ describe("status parsing", () => {
 })
 
 describe("CLI compatibility", () => {
-  it("recognizes the supported 1.0.1 and 1.0.3 help banners", () => {
+  it("recognizes the supported 1.0.1, 1.0.3, and 1.0.5 help banners", () => {
     const oldCli = Model.parseCliHelp(fixture("cli-help-1.0.1.txt"))
-    const currentCli = Model.parseCliHelp(fixture("cli-help-1.0.3.txt"))
+    const archCli = Model.parseCliHelp(fixture("cli-help-1.0.3.txt"))
+    const upstreamCli = Model.parseCliHelp(fixture("cli-help-1.0.5.txt"))
     assert.equal(oldCli.version, "1.0.1")
-    assert.equal(currentCli.version, "1.0.3")
-    assert.equal(oldCli.support, "tested")
-    assert.equal(currentCli.support, "tested")
-    assert.equal(currentCli.commands.includes("servers"), true)
-    assert.equal(Model.compatibilityWarning(currentCli), "")
+    assert.equal(archCli.version, "1.0.3")
+    assert.equal(upstreamCli.version, "1.0.5")
+    for (const cli of [oldCli, archCli, upstreamCli]) assert.equal(cli.support, "tested", cli.version)
+    assert.equal(upstreamCli.commands.includes("servers"), true)
+    assert.equal(Model.compatibilityWarning(archCli), "")
+    assert.equal(Model.compatibilityWarning(upstreamCli), "")
+    assert.equal(Model.parseCliHelp("Proton VPN command-line interface 1.0.6\n").support, "untested")
   })
 
   it("warns without blocking unknown or future versions", () => {
@@ -91,6 +94,38 @@ describe("live NetworkManager status", () => {
     assert.equal(link.server, "NL#742")
     assert.equal(link.device, "proton0")
     assert.equal(link.type, "wireguard")
+  })
+
+  it("notices an active Proton Kill Switch without mistaking it for a tunnel", () => {
+    const blocked = Model.parseActiveVpn(fixture("nmcli-killswitch-blocking.txt"))
+    assert.equal(blocked.active, false)
+    assert.equal(blocked.killSwitch, true)
+    assert.equal(Model.parseActiveVpn("pvpn-killswitch-perm:dummy:pvpnksintrf1:activated").killSwitch, true)
+    // IPv6 leak protection and the transient routed kill switch are not a block.
+    assert.equal(Model.parseActiveVpn(fixture("nmcli-inactive.txt")).killSwitch, false)
+    assert.equal(Model.parseActiveVpn("pvpn-routed-killswitch:dummy:pvpnrouteintrf0:activated").killSwitch, false)
+    assert.equal(Model.parseActiveVpn("pvpn-killswitch:dummy:pvpnksintrf0:activating").killSwitch, false)
+    const both = Model.parseActiveVpn(fixture("nmcli-active.txt") + "\npvpn-killswitch:dummy:pvpnksintrf0:activated\n")
+    assert.equal(both.active, true)
+    assert.equal(both.killSwitch, true)
+  })
+
+  it("calls traffic blocked only when the tunnel is down and nmcli was read", () => {
+    const link = { known: true, available: true, active: false, killSwitch: true }
+    for (const state of ["disconnected", "checking", "stale"]) assert.equal(Model.killSwitchBlocking(link, state), true, state)
+    for (const state of ["connected", "connecting", "disconnecting", "signedOut", "guiConflict", "error"]) {
+      assert.equal(Model.killSwitchBlocking(link, state), false, state)
+    }
+    assert.equal(Model.killSwitchBlocking(Object.assign({}, link, { active: true }), "disconnected"), false)
+    assert.equal(Model.killSwitchBlocking(Object.assign({}, link, { killSwitch: false }), "disconnected"), false)
+    assert.equal(Model.killSwitchBlocking(Object.assign({}, link, { available: false }), "disconnected"), false)
+    assert.equal(Model.killSwitchBlocking(Object.assign({}, link, { known: false }), "disconnected"), false)
+    const view = { state: "disconnected", blocking: true }
+    assert.match(Model.tooltipText(view), /Kill Switch is blocking/)
+    assert.match(Model.heroMeta(view), /Kill Switch/)
+    assert.equal(Model.iconUrgent("disconnected", true), true)
+    assert.equal(Model.iconUrgent("disconnected", false), false)
+    assert.equal(Model.iconWarning("disconnected", true), true)
   })
 
   it("does not trust a misleading connection name or kill-switch device", () => {
@@ -129,8 +164,20 @@ describe("successful connection details", () => {
     assert.deepEqual(outcome, {
       server: "NL#742",
       location: "Amsterdam, Netherlands",
-      exitIp: "185.246.211.74"
+      exitIp: "185.246.211.74",
+      portForwarding: ""
     })
+  })
+
+  it("reads the CLI's port-forwarding note without asking for the port", () => {
+    const outcome = Model.parseConnectOutcome(fixture("connect-port-forwarding.txt"))
+    assert.equal(outcome.server, "CH#118")
+    assert.equal(outcome.portForwarding, "active")
+    assert.match(Model.portForwardingNotice("active"), /natpmpc/)
+    const unsupported = Model.parseConnectOutcome("Connected to NL#1 in Amsterdam, Netherlands.\n\nNote: Port forwarding is enabled but this server does not support it.\n")
+    assert.equal(unsupported.portForwarding, "unsupported")
+    assert.match(Model.portForwardingNotice("unsupported"), /P2P/)
+    assert.equal(Model.portForwardingNotice(""), "")
   })
 
   it("keeps three deduplicated session-only recent targets", () => {
@@ -475,6 +522,7 @@ describe("display helpers", () => {
     assert.equal(Model.tooltipText({ state: "disconnected" }), "Proton VPN disconnected.")
     assert.match(Model.tooltipText({ state: "connected", status: { server: "CH#42", location: "Zurich, Switzerland", load: 23, protocol: "WireGuard" } }), /CH#42/)
     assert.equal(Model.copyCommandFor("signedOut"), Model.SIGNIN_COMMAND)
+    assert.equal(Model.copyCommandFor("cliMissing"), "")
     assert.equal(Model.clampRefreshIntervalSec(3), 10)
     assert.equal(Model.clampRefreshIntervalSec(9000), 3600)
     assert.equal(Model.clampLinkWatchIntervalSec(1), 2)
@@ -648,7 +696,36 @@ describe("desktop notifications", () => {
     assert.equal(Model.linkNotification(false, true, base), null)
     const note = Model.linkNotification(false, true, Object.assign({}, base, { setting: "all", selfInitiated: true }))
     assert.equal(note.summary, "Proton VPN connected")
-    assert.equal(note.body, "CH#42 · Zurich, Switzerland")
+    assert.equal(note.body, "Connected to CH#42 · Zurich, Switzerland.")
+    assert.equal(note.glyph, Model.NOTIFICATION_GLYPHS.connected)
+  })
+
+  it("says when Kill Switch is holding traffic and when a reconnect is coming", () => {
+    const plain = Model.linkNotification(true, false, base)
+    assert.equal(plain.body, "You're no longer protected.")
+    assert.equal(plain.glyph, Model.NOTIFICATION_GLYPHS.dropped)
+    const blocked = Model.linkNotification(true, false, Object.assign({}, base, { killSwitch: true, reconnecting: true }))
+    assert.match(blocked.body, /^Kill Switch is blocking internet traffic/)
+    assert.match(blocked.body, /Reconnecting automatically\.$/)
+    assert.equal(blocked.glyph, Model.NOTIFICATION_GLYPHS.blocked)
+    const failed = Model.reconnectFailedNotification({ setting: "drops", openPanels: 0, killSwitch: true })
+    assert.equal(failed.urgency, "critical")
+    assert.match(failed.body, /Kill Switch is still blocking/)
+    assert.equal(Model.reconnectFailedNotification({ setting: "off", openPanels: 0 }), null)
+    assert.equal(Model.reconnectFailedNotification({ setting: "drops", openPanels: 1 }), null)
+  })
+
+  it("sends through omarchy-notification-send and opens this panel on click", () => {
+    const note = Model.linkNotification(false, true, Object.assign({}, base, { setting: "all", server: "-u low", location: "--exec rm" }))
+    const command = Model.notificationCommand(note)
+    assert.deepEqual(command.slice(0, 7), ["omarchy-notification-send", "--app-name", "Proton VPN", "--urgency", "normal", "--glyph", note.glyph])
+    assert.deepEqual(command.slice(-4), ["--exec", "omarchy-shell", Model.PLUGIN_ID, "open"])
+    // The helper has no `--`; CLI-supplied names must never lead a positional.
+    assert.match(command[7], /^Proton VPN /)
+    assert.match(command[8], /^Connected to /)
+    assert.deepEqual(Model.notificationCommand(null), [])
+    const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "manifest.json"), "utf8"))
+    assert.equal(Model.PLUGIN_ID, manifest.id)
   })
 
   it("defaults unknown settings to drops", () => {
@@ -661,10 +738,15 @@ describe("desktop notifications", () => {
 describe("Kill Switch while connected", () => {
   it("returns to the active target, then the current server, then fastest", () => {
     const target = { mode: "city", country: "CH", city: "Zurich", serverId: "", label: "Zurich" }
-    assert.deepEqual(Model.killSwitchReturnTarget(target, { server: "CH#42" }), target)
-    assert.deepEqual(Model.killSwitchReturnTarget(null, { server: "CH#42" }), { mode: "server", serverId: "CH#42" })
-    assert.deepEqual(Model.killSwitchReturnTarget(null, { server: "" }), { mode: "fastest" })
-    assert.deepEqual(Model.killSwitchReturnTarget(null, { server: "bad server; rm" }), { mode: "fastest" })
+    assert.deepEqual(Model.returnTarget(target, { server: "CH#42" }), target)
+    assert.deepEqual(Model.returnTarget(null, { server: "CH#42" }), { mode: "server", serverId: "CH#42" })
+    assert.deepEqual(Model.returnTarget(null, { server: "" }), { mode: "fastest" })
+    assert.deepEqual(Model.returnTarget(null, { server: "bad server; rm" }), { mode: "fastest" })
+  })
+
+  it("returns to the fastest server on the free plan, which refuses server IDs", () => {
+    assert.deepEqual(Model.returnTarget(null, { server: "NL-FREE#12" }, true), { mode: "fastest" })
+    assert.deepEqual(Model.returnTarget({ mode: "fastest" }, { server: "NL-FREE#12" }, true), { mode: "fastest" })
   })
 
   it("walks disconnect, set, reconnect and ends idle", () => {
@@ -689,6 +771,76 @@ describe("Kill Switch while connected", () => {
   it("still refuses a one-shot Kill Switch write while connected", () => {
     const blocked = Model.buildConfigSetCommand("kill-switch", "standard", { connected: true })
     assert.equal(blocked.ok, false)
+  })
+})
+
+describe("free plan", () => {
+  it("reads the plan from settings marked Upgrade to enable", () => {
+    assert.equal(Model.isFreePlan(Model.parseConfigList(fixture("config-list-free.txt")).upgrade), true)
+    assert.equal(Model.isFreePlan(Model.parseConfigList(fixture("config-list.txt")).upgrade), false)
+    assert.equal(Model.isFreePlan(null), false)
+  })
+
+  it("marks paid-only modes and explains them before running the CLI", () => {
+    assert.equal(Model.modeAvailable("fastest", true), true)
+    for (const mode of Model.CONNECTION_MODES.map((def) => def.value).filter((value) => value !== "fastest")) {
+      assert.equal(Model.modeAvailable(mode, true), false, mode)
+      assert.equal(Model.modeAvailable(mode, false), true, mode)
+      assert.match(Model.planBlockedReason(mode, true), /paid Proton VPN plan/, mode)
+    }
+    assert.equal(Model.planBlockedReason("country", false), "")
+    assert.equal(Model.planBlockedReason(undefined, true), "")
+    const free = Model.modeOptions(true)
+    assert.equal(free.length, Model.CONNECTION_MODES.length)
+    assert.equal(free.find((option) => option.value === "country").description, "Needs a paid plan")
+    assert.equal(free.find((option) => option.value === "fastest").description, Model.modeDef("fastest").description)
+    assert.deepEqual(Model.modeOptions(false), Model.CONNECTION_MODES)
+  })
+})
+
+describe("reconnect on drop", () => {
+  it("backs off and then gives up", () => {
+    assert.deepEqual(Model.RECONNECT_DELAYS_MS.map((_, i) => Model.reconnectDelayMs(i)), [3000, 10000, 30000, 60000, 120000])
+    assert.equal(Model.reconnectDelayMs(Model.RECONNECT_DELAYS_MS.length), -1)
+    assert.equal(Model.reconnectDelayMs(-1), -1)
+    assert.equal(Model.reconnectDelayMs("x"), -1)
+  })
+
+  it("is off unless the setting is true", () => {
+    assert.equal(Model.normalizeBooleanSetting(true), true)
+    assert.equal(Model.normalizeBooleanSetting("true"), true)
+    for (const value of [false, "false", undefined, null, 1, "yes"]) assert.equal(Model.normalizeBooleanSetting(value), false, String(value))
+  })
+
+  it("stops where only the user can fix things", () => {
+    for (const state of ["signedOut", "guiConflict", "cliMissing"]) assert.equal(Model.reconnectAbandoned(state), true, state)
+    for (const state of ["disconnected", "error", "stale", "checking"]) assert.equal(Model.reconnectAbandoned(state), false, state)
+  })
+})
+
+describe("install and sign-in", () => {
+  it("hands both to fixed Omarchy terminals", () => {
+    assert.deepEqual(Model.INSTALL_LAUNCHER, ["omarchy-install-app", "Proton VPN CLI", Model.CLI_PACKAGE])
+    assert.equal(Model.SIGNIN_LAUNCHER[0], "omarchy-launch-floating-terminal-with-presentation")
+    assert.equal(Model.SIGNIN_LAUNCHER.length, 2)
+    assert.match(Model.SIGNIN_SCRIPT, /protonvpn signin -- "\$u"$/)
+    assert.doesNotMatch(Model.SIGNIN_SCRIPT, /password|--totp/i)
+  })
+
+  it("points degraded states at the panel actions", () => {
+    assert.match(Model.degradedRemediation({ state: "cliMissing" }), /Install Proton VPN CLI/)
+    assert.match(Model.degradedRemediation({ state: "cliMissing" }), /Arch extra/)
+    assert.match(Model.degradedRemediation({ state: "signedOut" }), /Choose Sign in/)
+    assert.match(Model.degradedRemediation({ state: "signedOut" }), new RegExp(Model.SIGNIN_COMMAND))
+  })
+
+  it("stops watching once the CLI is installed and answering as signed in", () => {
+    assert.equal(Model.setupComplete("cliMissing", false), false)
+    assert.equal(Model.setupComplete("checking", true), false)
+    assert.equal(Model.setupComplete("signedOut", true), false)
+    assert.equal(Model.setupComplete("disconnected", true), true)
+    assert.equal(Model.setupComplete("connected", true), true)
+    assert.equal(Model.setupComplete("guiConflict", true), true)
   })
 })
 
