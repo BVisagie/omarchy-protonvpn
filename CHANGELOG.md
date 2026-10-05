@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.3.0 — 2026-10-05
+
+- Show when Kill Switch is blocking internet traffic after a drop. The panel reads Proton's `pvpn-killswitch` connection from the existing `nmcli` probe, turns the bar icon urgent, and says how to restore access. Drop notifications say so too.
+- Repeat the CLI's port-forwarding note after connecting, and explain that the forwarded port comes from Proton's `natpmpc` guide. The plugin still makes no network requests of its own.
+- Test against Proton VPN CLI 1.0.5 and document its `--totp` sign-in option for accounts with a security key.
+- Fix the bounded runner returning 143 when a command closed its output before exiting, and hanging until the deadline when a background process it left behind held the output open.
+- Install the CLI and sign in from the panel. **Install Proton VPN CLI** opens Omarchy's installer, and **Sign in** opens a floating terminal that runs `protonvpn signin`. The panel checks back until either finishes.
+- Send notifications through `omarchy-notification-send` with a shield glyph; clicking one opens the panel. Document the IPC functions for keybindings.
+- Recognize the free plan from settings marked "Upgrade to enable", label paid-only modes, and explain them instead of running a command that fails. Kill Switch changes on the free plan now reconnect to the fastest server instead of a server ID the CLI refuses.
+- Add an opt-in **Reconnect when the VPN drops** setting that retries with backoff and gives up with a notification.
+- Take a per-user lock around Proton CLI runs, so two shells never run the CLI at the same time.
+
 ## 1.2.0 — 2026-09-18
 
 - Send a desktop notification when the tunnel drops unexpectedly while the panel is closed. A new **Desktop notifications** setting offers Off, drops only (default), or drops and connections.
