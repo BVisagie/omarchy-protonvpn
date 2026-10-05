@@ -61,6 +61,7 @@ Item {
   property var _reconnectTarget: null
   property int _reconnectAttempt: 0
   property bool _reconnectFallback: false
+  property bool _disconnectAfterReconnect: false
   property bool _autoInternal: false
   property var _lastSession: null
   readonly property bool reconnectPending: _reconnectTarget !== null
@@ -193,6 +194,9 @@ Item {
       activeTarget = null
       portForwardingNotice = ""
     }
+    // Settings, and the plan inferred from them, belong to the signed-out
+    // account; the next healthy status reloads them.
+    if (state === Model.STATES.signedOut) forgetAccountSettings()
     if (state === Model.STATES.connected || state === Model.STATES.disconnected) {
       lastUpdatedMs = Date.now()
       lastError = ""
@@ -200,6 +204,13 @@ Item {
     } else if (message !== "") {
       lastError = message
     }
+  }
+
+  function forgetAccountSettings() {
+    configValues = ({})
+    configUpgrade = ({})
+    configLoaded = false
+    _lastSession = null
   }
 
   function connectedView(nextStatus) {
@@ -253,6 +264,7 @@ Item {
 
   function pump() {
     if (processBusy || _queueState.current) return
+    if (_reconnectTarget === null || !reconnectOnDrop) dropQueuedReconnect()
     var started = Scheduler.beginJob(_queueState)
     _queueState = started.queue
     if (!started.started) {
@@ -359,6 +371,8 @@ Item {
   function handleAction(result, job) {
     // Any nmcli poll that started before this result may describe the old tunnel.
     _linkEpoch++
+    var disconnectAfter = job.auto === true && _disconnectAfterReconnect
+    if (job.auto === true) _disconnectAfterReconnect = false
     var classified = Model.classifyCommandResult(result, job.snapshot || snapshot())
     if (classified.stateHint === Model.STATES.guiConflict || classified.stateHint === Model.STATES.signedOut) {
       applyView(Model.classifyProbe(result, job.snapshot || snapshot()))
@@ -399,6 +413,7 @@ Item {
         if (job.auto === true) {
           cancelReconnect()
           actionStatus = "Reconnected after the drop."
+          if (disconnectAfter) Qt.callLater(disconnect)
         }
       }
     } else {
@@ -674,6 +689,9 @@ Item {
     var blocked = Model.planBlockedReason((options || {}).mode, freePlan)
     if (blocked !== "") {
       reportError(blocked)
+      // The plan is inferred from cached settings; re-read them in case the
+      // account changed where this service could not see it.
+      refreshConfig()
       return false
     }
     var plan = Model.buildConnectCommand(options)
@@ -685,15 +703,33 @@ Item {
   }
 
   function disconnect() {
+    // Asking to disconnect while a reconnect waits means staying disconnected,
+    // even though there is no tunnel to take down yet.
+    var stoppedReconnect = false
+    if (!_ksInternal && reconnectPending) {
+      if (_currentJob && _currentJob.auto === true) _disconnectAfterReconnect = true
+      cancelReconnect()
+      stoppedReconnect = true
+    }
     if (!canToggle) {
+      if (stoppedReconnect) return noteReconnectStopped()
       reportError(Model.writeBlockedReason(state) || "Proton VPN is not ready to disconnect.")
       return false
     }
     if (state !== Model.STATES.connected) {
+      if (stoppedReconnect) return noteReconnectStopped()
       reportError("Proton VPN is not connected.")
       return false
     }
     return runAction(["protonvpn", "disconnect"], "disconnect", "Disconnecting…", null)
+  }
+
+  function noteReconnectStopped() {
+    actionStatus = _disconnectAfterReconnect
+      ? "Disconnecting once the current reconnect attempt finishes…"
+      : "Automatic reconnect cancelled."
+    actionStatusTimer.restart()
+    return true
   }
 
   function toggleConnection(options) {
@@ -888,6 +924,21 @@ Item {
     _reconnectTarget = null
     _reconnectAttempt = 0
     _reconnectFallback = false
+    dropQueuedReconnect()
+  }
+
+  // An automatic connect can wait behind a status or settings read. Once the
+  // reconnect is cancelled it must not run, and the view it replaced returns.
+  function dropQueuedReconnect() {
+    var dropped = Scheduler.removeQueued(_queueState, function(job) { return job.auto === true })
+    if (dropped.removed.length === 0) return
+    _queueState = dropped.queue
+    var snapshotView = dropped.removed[0].snapshot
+    if (snapshotView && state === Model.STATES.connecting) applyView(snapshotView)
+    actionStatus = ""
+    // The tunnel may have changed while the connect waited; a timer keeps
+    // this out of pump(), which can be the caller.
+    delayedRefresh.restart()
   }
 
   function scheduleNextReconnect() {

@@ -63,6 +63,30 @@ describe("QML scheduler contract", () => {
     assert.match(service, /onReconnectOnDropChanged: if \(!reconnectOnDrop\) cancelReconnect\(\)/)
   })
 
+  it("never starts an automatic connect after the reconnect is cancelled", () => {
+    assert.match(service, /_reconnectFallback = false\n\s*dropQueuedReconnect\(\)\n\s*\}/)
+    assert.match(service, /Scheduler\.removeQueued\(_queueState, function\(job\) \{ return job\.auto === true \}\)/)
+    const pump = service.indexOf("function pump()")
+    const recheck = service.indexOf("if (_reconnectTarget === null || !reconnectOnDrop) dropQueuedReconnect()", pump)
+    const begin = service.indexOf("Scheduler.beginJob(_queueState)", pump)
+    assert.ok(pump !== -1 && recheck !== -1 && recheck < begin)
+  })
+
+  it("treats a disconnect request during reconnect backoff as cancellation", () => {
+    const disconnect = service.indexOf("function disconnect()")
+    const cancel = service.indexOf("cancelReconnect()", disconnect)
+    const notConnected = service.indexOf('reportError("Proton VPN is not connected.")', disconnect)
+    assert.ok(disconnect !== -1 && cancel !== -1 && cancel < notConnected)
+    assert.match(service, /if \(stoppedReconnect\) return noteReconnectStopped\(\)\n\s*reportError\("Proton VPN is not connected\."\)/)
+    assert.match(service, /if \(disconnectAfter\) Qt\.callLater\(disconnect\)/)
+  })
+
+  it("forgets account settings and the inferred plan on sign-out", () => {
+    assert.match(service, /if \(state === Model\.STATES\.signedOut\) forgetAccountSettings\(\)/)
+    assert.match(service, /function forgetAccountSettings\(\) \{\n\s*configValues = \(\{\}\)\n\s*configUpgrade = \(\{\}\)\n\s*configLoaded = false/)
+    assert.match(service, /reportError\(blocked\)\n(?:\s*\/\/[^\n]*\n)*\s*refreshConfig\(\)/)
+  })
+
   it("gates paid-only modes on the free plan before running the CLI", () => {
     const connect = service.indexOf("function connectWith(options)")
     const blocked = service.indexOf("Model.planBlockedReason(", connect)

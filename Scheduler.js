@@ -149,6 +149,22 @@ function finishJob(queue, runId) {
   }
 }
 
+// Drops matching jobs that have not started; the running job is left alone.
+// The removed jobs come back so the caller can undo what queuing them showed.
+function removeQueued(queue, match) {
+  var source = queue || emptyQueue()
+  var kept = []
+  var removed = []
+  for (var i = 0; i < source.jobs.length; i++) {
+    if (match(source.jobs[i])) removed.push(source.jobs[i])
+    else kept.push(source.jobs[i])
+  }
+  return {
+    removed: removed,
+    queue: { jobs: kept, current: source.current, nextRunId: source.nextRunId }
+  }
+}
+
 function shouldApplyResult(queue, runId) {
   return !!(queue && queue.current && queue.current.runId === runId)
 }
@@ -170,6 +186,7 @@ if (typeof module !== "undefined") {
     enqueueJob: enqueueJob,
     beginJob: beginJob,
     finishJob: finishJob,
+    removeQueued: removeQueued,
     shouldApplyResult: shouldApplyResult,
     timeoutFor: timeoutFor
   }
