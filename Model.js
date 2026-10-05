@@ -1,10 +1,17 @@
+var PLUGIN_ID = "io.github.BVisagie.protonvpn"
 var CLI_PACKAGE = "proton-vpn-cli"
 var MIN_TESTED_CLI_VERSION = "1.0.1"
-var MAX_TESTED_CLI_VERSION = "1.0.3"
+var MAX_TESTED_CLI_VERSION = "1.0.5"
 var OUTPUT_CAP = 400
 var MESSAGE_CAP = 160
 var SIGNIN_COMMAND = "protonvpn signin USERNAME"
-var INSTALL_COMMAND = "sudo pacman -S proton-vpn-cli"
+// Omarchy's installer opens its own terminal, where pacman asks for the password.
+var INSTALL_LAUNCHER = ["omarchy-install-app", "Proton VPN CLI", CLI_PACKAGE]
+// A fixed script: the username is read inside the terminal and never reaches
+// the shell process. `--` keeps a name that starts with a dash from parsing
+// as an option.
+var SIGNIN_SCRIPT = "read -rp 'Proton username: ' u && protonvpn signin -- \"$u\""
+var SIGNIN_LAUNCHER = ["omarchy-launch-floating-terminal-with-presentation", SIGNIN_SCRIPT]
 var SERVER_LIST_URL = "https://account.proton.me/vpn/WireGuard"
 
 var STATES = {
@@ -152,8 +159,8 @@ var CONFIG_SETTINGS = [
     label: "Port Forwarding",
     type: "toggle",
     values: ["off", "on"],
-    help: "Opens a path for incoming connections through Proton's firewall. You must be connected to a P2P server. It cannot be used with Moderate NAT. Proton notes that opening a port carries a small risk.",
-    tooltip: "Opens incoming connections. Proton notes a small risk.",
+    help: "Opens a path for incoming connections through Proton's firewall. You must be connected to a P2P server. It cannot be used with Moderate NAT. Proton notes that opening a port carries a small risk. The CLI does not show the forwarded port; Proton's Linux guide reads it with natpmpc.",
+    tooltip: "Opens incoming connections. Use natpmpc to get the port.",
     summary: "Requires a P2P server. Cannot be used with Moderate NAT.",
     free: false,
     restart: false
@@ -282,8 +289,15 @@ function isTunnelDevice(name) {
   return /^[A-Za-z0-9_.-]{1,15}$/.test(String(name || "")) && TUNNEL_DEVICE.test(String(name || ""))
 }
 
+// Proton's standard Kill Switch is a NetworkManager dummy connection. It stays
+// up after an unexpected drop and blocks traffic until the VPN reconnects.
+var KILL_SWITCH_CONNECTION = /^pvpn-killswitch(?:-perm)?$/
+var KILL_SWITCH_BLOCKING_STATES = [STATES.disconnected, STATES.checking, STATES.stale]
+
 function parseActiveVpn(raw) {
   var lines = normalizeOutput(raw).split("\n")
+  var tunnel = null
+  var killSwitch = false
   for (var i = 0; i < lines.length; i++) {
     var line = String(lines[i] || "").trim()
     if (line === "") continue
@@ -294,9 +308,14 @@ function parseActiveVpn(raw) {
     var type = parts[parts.length - 3]
     var name = parts.slice(0, parts.length - 3).join(":").replace(/\\:/g, ":")
     if (!/^activated$/i.test(state)) continue
+    if (KILL_SWITCH_CONNECTION.test(name)) {
+      killSwitch = true
+      continue
+    }
+    if (tunnel) continue
     if (!TUNNEL_DEVICE.test(device)) continue
     if (!TUNNEL_TYPES[String(type).toLowerCase()]) continue
-    return {
+    tunnel = {
       active: true,
       name: name,
       server: name.replace(/^ProtonVPN[\s:]+/i, "").trim(),
@@ -304,12 +323,22 @@ function parseActiveVpn(raw) {
       type: type
     }
   }
-  return { active: false, name: "", server: "", device: "", type: "" }
+  var result = tunnel || { active: false, name: "", server: "", device: "", type: "" }
+  result.killSwitch = killSwitch
+  return result
 }
+
+function killSwitchBlocking(link, state) {
+  if (!link || link.known !== true || link.available !== true) return false
+  if (link.active === true || link.killSwitch !== true) return false
+  return KILL_SWITCH_BLOCKING_STATES.indexOf(String(state || "")) !== -1
+}
+
+var KILL_SWITCH_BLOCKING_TEXT = "The VPN dropped and Kill Switch is blocking internet traffic, so nothing leaks. Connect again to restore access, or set Kill Switch to Off."
 
 function parseConnectOutcome(raw) {
   var lines = normalizeOutput(raw).split("\n")
-  var result = { server: "", location: "", exitIp: "" }
+  var result = { server: "", location: "", exitIp: "", portForwarding: "" }
   for (var i = 0; i < lines.length; i++) {
     var line = String(lines[i] || "").trim()
     var connected = line.match(/^Connected to\s+(.+?)\s+in\s+(.+?)\.?\s*$/i)
@@ -322,8 +351,16 @@ function parseConnectOutcome(raw) {
       var candidate = String(ip[1] || "").trim().replace(/\.$/, "")
       if (isIPv4(candidate) || isIPv6(candidate)) result.exitIp = candidate
     }
+    if (/^Port forwarding is active on this server/i.test(line)) result.portForwarding = "active"
+    else if (/Port forwarding is enabled but this server does not support it/i.test(line)) result.portForwarding = "unsupported"
   }
   return result
+}
+
+function portForwardingNotice(kind) {
+  if (kind === "active") return "Port forwarding is active on this server. The Proton CLI does not show the forwarded port; Proton's Linux guide reads it with natpmpc."
+  if (kind === "unsupported") return "Port forwarding is on, but this server does not support it. Connect in P2P mode to use it."
+  return ""
 }
 
 function recentTarget(options, outcome) {
@@ -846,6 +883,41 @@ function modeDef(value) {
   return null
 }
 
+// `protonvpn info` does not report the plan, but `config list` marks paid-only
+// settings "Upgrade to enable" only on the free plan.
+function isFreePlan(upgrade) {
+  if (!upgrade) return false
+  for (var key in upgrade) {
+    if (upgrade[key] === true) return true
+  }
+  return false
+}
+
+// The free plan accepts only `protonvpn connect`: the CLI refuses locations,
+// server IDs, feature servers, and random selection.
+var FREE_PLAN_MODES = ["fastest"]
+
+function modeAvailable(mode, freePlan) {
+  return freePlan !== true || FREE_PLAN_MODES.indexOf(String(mode || "fastest")) !== -1
+}
+
+function modeOptions(freePlan) {
+  var options = []
+  for (var i = 0; i < CONNECTION_MODES.length; i++) {
+    var def = CONNECTION_MODES[i]
+    if (modeAvailable(def.value, freePlan)) options.push(def)
+    else options.push(Object.assign({}, def, { description: "Needs a paid plan" }))
+  }
+  return options
+}
+
+function planBlockedReason(mode, freePlan) {
+  if (modeAvailable(mode, freePlan)) return ""
+  var def = modeDef(mode)
+  var label = def ? def.label : "This connection mode"
+  return label + " needs a paid Proton VPN plan. Fastest server works on the free plan."
+}
+
 function connectFieldDef(key) {
   var name = String(key || "")
   for (var i = 0; i < CONNECT_FIELDS.length; i++) {
@@ -1146,6 +1218,7 @@ function connectedSummary(status) {
 
 function tooltipText(view) {
   var state = view && view.state ? view.state : STATES.checking
+  if (view && view.blocking === true) return "Proton VPN disconnected. Kill Switch is blocking internet traffic."
   if (state === STATES.connected) {
     var summary = connectedSummary(view.status)
     return summary !== "" ? "Proton VPN · " + summary : "Proton VPN connected."
@@ -1173,6 +1246,7 @@ function heroTitle(view) {
 
 function heroMeta(view) {
   var state = view && view.state ? view.state : STATES.checking
+  if (view && view.blocking === true) return "Kill Switch is blocking traffic"
   if (state === STATES.connected) return view.status && view.status.location ? view.status.location : "Connected"
   if (state === STATES.disconnected) return "Disconnected"
   if (state === STATES.connecting) return "Connecting"
@@ -1257,10 +1331,10 @@ function degradedRemediation(viewOrState) {
   var fromKind = kindRemediation(view.kind)
   if (fromKind !== "") return fromKind
   if (state === STATES.cliMissing) {
-    return "Install with `" + INSTALL_COMMAND + "`. The package is in Arch extra; Proton's upstream Linux support list does not currently include Arch, so updates and support may be limited."
+    return "Choose Install Proton VPN CLI. Omarchy installs the " + CLI_PACKAGE + " package from Arch extra in a terminal, which asks for your password there. Proton's upstream Linux support list does not currently include Arch, so updates and support may be limited."
   }
   if (state === STATES.signedOut) {
-    return "Run `" + SIGNIN_COMMAND + "` in a terminal, then refresh. Replace USERNAME with your Proton account."
+    return "Choose Sign in to enter your username, password, and 2FA in a terminal, or run `" + SIGNIN_COMMAND + "` yourself. The panel refreshes once you are signed in."
   }
   if (state === STATES.guiConflict) {
     return "Quit the Proton VPN desktop application, then refresh this panel."
@@ -1279,21 +1353,26 @@ function diagnosticDetail(view) {
 }
 
 function copyCommandFor(state) {
-  if (state === STATES.cliMissing) return INSTALL_COMMAND
   if (state === STATES.signedOut) return SIGNIN_COMMAND
   return ""
+}
+
+// Install and sign-in hand off to a terminal; poll until that finishes.
+function setupComplete(state, installed) {
+  if (installed !== true) return false
+  return state !== STATES.cliMissing && state !== STATES.signedOut && state !== STATES.checking
 }
 
 function iconCrossed(state) {
   return state === STATES.disconnected || state === STATES.signedOut
 }
 
-function iconWarning(state) {
-  return state === STATES.cliMissing || state === STATES.guiConflict || state === STATES.error || state === STATES.stale
+function iconWarning(state, blocking) {
+  return blocking === true || state === STATES.cliMissing || state === STATES.guiConflict || state === STATES.error || state === STATES.stale
 }
 
-function iconUrgent(state) {
-  return state === STATES.cliMissing || state === STATES.guiConflict || state === STATES.error || state === STATES.stale
+function iconUrgent(state, blocking) {
+  return blocking === true || state === STATES.cliMissing || state === STATES.guiConflict || state === STATES.error || state === STATES.stale
 }
 
 function iconDim(state) {
@@ -1347,26 +1426,66 @@ function normalizeNotificationSetting(value) {
   return NOTIFICATION_MODES.indexOf(v) !== -1 ? v : "drops"
 }
 
+// Nerd Font glyphs for omarchy-notification-send: shield-lock, shield-off,
+// and shield-alert.
+var NOTIFICATION_GLYPHS = {
+  connected: "\uDB82\uDD9D",
+  dropped: "\uDB82\uDD9E",
+  blocked: "\uDB83\uDECC"
+}
+
+// Every body starts with fixed text, so CLI-supplied server names can never
+// sit where omarchy-notification-send looks for an option.
 function linkNotification(previousActive, nextActive, ctx) {
   var c = ctx || {}
   var mode = normalizeNotificationSetting(c.setting)
   if (mode === "off" || c.openPanels > 0 || c.cycleActive === true) return null
   if (previousActive === true && nextActive !== true) {
     if (c.selfInitiated === true) return null
-    return { summary: "Proton VPN disconnected", body: "You're no longer protected.", urgency: "critical" }
+    var body = c.killSwitch === true
+      ? "Kill Switch is blocking internet traffic until the VPN reconnects."
+      : "You're no longer protected."
+    if (c.reconnecting === true) body += " Reconnecting automatically."
+    return {
+      summary: "Proton VPN disconnected",
+      body: body,
+      urgency: "critical",
+      glyph: c.killSwitch === true ? NOTIFICATION_GLYPHS.blocked : NOTIFICATION_GLYPHS.dropped
+    }
   }
   if (mode === "all" && previousActive !== true && nextActive === true) {
     var server = capOutput(String(c.server || ""), 64)
     var location = capOutput(String(c.location || ""), 64)
-    var body = server !== "" ? server + (location !== "" ? " · " + location : "") : "The tunnel is up."
-    return { summary: "Proton VPN connected", body: body, urgency: "normal" }
+    var connected = server !== "" ? "Connected to " + server + (location !== "" ? " · " + location : "") + "." : "The tunnel is up."
+    return { summary: "Proton VPN connected", body: connected, urgency: "normal", glyph: NOTIFICATION_GLYPHS.connected }
   }
   return null
 }
 
-// Kill Switch while connected: the CLI refuses the change with a tunnel up,
-// so the service drops the tunnel, changes the setting, and reconnects.
-function killSwitchReturnTarget(activeTarget, status) {
+function reconnectFailedNotification(ctx) {
+  var c = ctx || {}
+  if (normalizeNotificationSetting(c.setting) === "off" || c.openPanels > 0) return null
+  return {
+    summary: "Proton VPN could not reconnect",
+    body: c.killSwitch === true
+      ? "Kill Switch is still blocking internet traffic. Open the panel to connect again."
+      : "You're no longer protected. Open the panel to connect again.",
+    urgency: "critical",
+    glyph: c.killSwitch === true ? NOTIFICATION_GLYPHS.blocked : NOTIFICATION_GLYPHS.dropped
+  }
+}
+
+// Clicking a notification opens the panel through the plugin's IPC target.
+function notificationCommand(note) {
+  if (!note) return []
+  return ["omarchy-notification-send", "--app-name", "Proton VPN", "--urgency", note.urgency,
+    "--glyph", note.glyph, note.summary, note.body, "--exec", "omarchy-shell", PLUGIN_ID, "open"]
+}
+
+// Where to go back to after a Kill Switch cycle or an automatic reconnect.
+// The free plan only accepts the fastest server.
+function returnTarget(activeTarget, status, freePlan) {
+  if (freePlan === true) return { mode: "fastest" }
   if (activeTarget && buildConnectCommand(activeTarget).ok) return activeTarget
   var server = String((status && status.server) || "").trim()
   if (server !== "") {
@@ -1376,7 +1495,26 @@ function killSwitchReturnTarget(activeTarget, status) {
   return { mode: "fastest" }
 }
 
-function killSwitchTargetLabel(target) {
+// Reconnect on drop backs off between attempts and gives up after the last.
+var RECONNECT_DELAYS_MS = [3000, 10000, 30000, 60000, 120000]
+
+function reconnectDelayMs(attempt) {
+  var n = Number(attempt)
+  if (!isFinite(n) || n < 0 || n >= RECONNECT_DELAYS_MS.length) return -1
+  return RECONNECT_DELAYS_MS[Math.floor(n)]
+}
+
+// `omarchy bar set` stores a string unless the caller passes --json.
+function normalizeBooleanSetting(value) {
+  return value === true || value === "true"
+}
+
+// States in which a pending reconnect can never succeed until the user acts.
+function reconnectAbandoned(state) {
+  return state === STATES.signedOut || state === STATES.guiConflict || state === STATES.cliMissing
+}
+
+function returnTargetLabel(target) {
   var t = target || {}
   if (t.mode === "server") return String(t.serverId || "the same server")
   if (t.label) return String(t.label)
@@ -1387,7 +1525,7 @@ function killSwitchTargetLabel(target) {
 
 function killSwitchConfirmText(value, target) {
   var label = configValueLabel("kill-switch", value)
-  return "This briefly drops the VPN, sets Kill Switch to " + label + ", then reconnects to " + killSwitchTargetLabel(target) + "."
+  return "This briefly drops the VPN, sets Kill Switch to " + label + ", then reconnects to " + returnTargetLabel(target) + "."
 }
 
 // Step after `event` in the idle → disconnecting → setting → reconnecting
@@ -1475,8 +1613,23 @@ if (typeof module !== "undefined") {
     NOTIFICATION_MODES: NOTIFICATION_MODES,
     normalizeNotificationSetting: normalizeNotificationSetting,
     linkNotification: linkNotification,
-    killSwitchReturnTarget: killSwitchReturnTarget,
-    killSwitchTargetLabel: killSwitchTargetLabel,
+    reconnectFailedNotification: reconnectFailedNotification,
+    notificationCommand: notificationCommand,
+    NOTIFICATION_GLYPHS: NOTIFICATION_GLYPHS,
+    returnTarget: returnTarget,
+    returnTargetLabel: returnTargetLabel,
+    reconnectDelayMs: reconnectDelayMs,
+    RECONNECT_DELAYS_MS: RECONNECT_DELAYS_MS,
+    normalizeBooleanSetting: normalizeBooleanSetting,
+    reconnectAbandoned: reconnectAbandoned,
+    killSwitchBlocking: killSwitchBlocking,
+    KILL_SWITCH_BLOCKING_TEXT: KILL_SWITCH_BLOCKING_TEXT,
+    portForwardingNotice: portForwardingNotice,
+    isFreePlan: isFreePlan,
+    modeAvailable: modeAvailable,
+    modeOptions: modeOptions,
+    planBlockedReason: planBlockedReason,
+    setupComplete: setupComplete,
     killSwitchConfirmText: killSwitchConfirmText,
     nextKillSwitchCycleStep: nextKillSwitchCycleStep,
     parseInterfaceCounters: parseInterfaceCounters,
@@ -1492,8 +1645,11 @@ if (typeof module !== "undefined") {
     MIN_TESTED_CLI_VERSION: MIN_TESTED_CLI_VERSION,
     MAX_TESTED_CLI_VERSION: MAX_TESTED_CLI_VERSION,
     OUTPUT_CAP: OUTPUT_CAP,
+    PLUGIN_ID: PLUGIN_ID,
     SIGNIN_COMMAND: SIGNIN_COMMAND,
-    INSTALL_COMMAND: INSTALL_COMMAND,
+    SIGNIN_SCRIPT: SIGNIN_SCRIPT,
+    SIGNIN_LAUNCHER: SIGNIN_LAUNCHER,
+    INSTALL_LAUNCHER: INSTALL_LAUNCHER,
     SERVER_LIST_URL: SERVER_LIST_URL,
     STATES: STATES,
     CONNECTION_MODES: CONNECTION_MODES,

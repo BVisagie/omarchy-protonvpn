@@ -9,7 +9,7 @@ describe("plugin manifest", () => {
   it("declares one shared service and the existing bar widget", () => {
     assert.equal(manifest.schemaVersion, 1)
     assert.equal(manifest.id, "io.github.BVisagie.protonvpn")
-    assert.equal(manifest.version, "1.2.0")
+    assert.equal(manifest.version, "1.3.0")
     assert.deepEqual(manifest.kinds, ["service", "bar-widget"])
     assert.equal(manifest.entryPoints.service, "Service.qml")
     assert.equal(manifest.entryPoints.barWidget, "Panel.qml")
@@ -32,5 +32,12 @@ describe("plugin manifest", () => {
     assert.equal(entry.type, "enum")
     assert.deepEqual(entry.options.map((o) => o.value), ["off", "drops", "all"])
     assert.equal(entry.defaultValue, "drops")
+  })
+
+  it("publishes reconnect on drop as an opt-in boolean", () => {
+    assert.equal(manifest.barWidget.defaults.reconnectOnDrop, false)
+    const entry = manifest.barWidget.schema.find((item) => item.key === "reconnectOnDrop")
+    assert.equal(entry.type, "boolean")
+    assert.equal(entry.defaultValue, false)
   })
 })

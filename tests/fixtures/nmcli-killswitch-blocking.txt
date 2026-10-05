@@ -1,0 +1,3 @@
+Home Wi-Fi:802-11-wireless:wlan0:activated
+pvpn-killswitch:dummy:pvpnksintrf0:activated
+pvpn-killswitch-ipv6:dummy:ipv6leakintrf0:activated

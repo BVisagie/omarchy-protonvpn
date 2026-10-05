@@ -156,3 +156,19 @@ describe("priority jobs", () => {
     assert.deepEqual(queue.jobs.map((job) => job.country || job.type), ["CH", "status"])
   })
 })
+
+describe("removing queued jobs", () => {
+  it("drops matching queued jobs, returns them, and never touches the running job", () => {
+    let queue = Scheduler.emptyQueue()
+    queue = Scheduler.enqueueJob(queue, command("status")).queue
+    queue = Scheduler.beginJob(queue).queue
+    queue = Scheduler.enqueueJob(queue, command("action", { action: "connect", auto: true, priority: true })).queue
+    queue = Scheduler.enqueueJob(queue, command("config", { kind: "list" })).queue
+    const result = Scheduler.removeQueued(queue, (job) => job.auto === true)
+    assert.deepEqual(result.removed.map((job) => job.action), ["connect"])
+    assert.deepEqual(result.queue.jobs.map((job) => job.type), ["config"])
+    assert.equal(result.queue.current.type, "status")
+    assert.equal(Scheduler.hasAction(result.queue), false)
+    assert.equal(Scheduler.removeQueued(result.queue, (job) => job.auto === true).removed.length, 0)
+  })
+})

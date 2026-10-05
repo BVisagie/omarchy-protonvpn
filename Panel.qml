@@ -49,12 +49,12 @@ Panel {
   readonly property bool showWrites: showHealthy && vpn.canChangeSettings
   readonly property bool headerHasCursor: cursorActive && focusSection === "header" && vpn.installed && Model.canWrite(view.state)
   readonly property color barIconColor: {
-    if (Model.iconUrgent(view.state)) return bar ? bar.urgent : Color.urgent
+    if (Model.iconUrgent(view.state, view.blocking)) return bar ? bar.urgent : Color.urgent
     if (Model.iconDim(view.state)) return Qt.darker(barForeground, 1.55)
     return barForeground
   }
   readonly property color iconColor: {
-    if (Model.iconUrgent(view.state)) return urgent
+    if (Model.iconUrgent(view.state, view.blocking)) return urgent
     if (Model.iconDim(view.state)) return dim
     return foreground
   }
@@ -71,7 +71,8 @@ Panel {
   }
   readonly property var countryOptions: countryOptionList()
   readonly property var cityOptions: cityOptionList()
-  readonly property var modeOptions: Model.CONNECTION_MODES
+  readonly property var modeOptions: Model.modeOptions(vpn.freePlan)
+  readonly property string planNotice: Model.planBlockedReason(selectedMode, vpn.freePlan)
   readonly property bool needsCountry: Model.modeNeedsCountry(selectedMode)
   readonly property bool requiresCountry: Model.modeRequiresCountry(selectedMode)
   readonly property bool needsCity: Model.modeNeedsCity(selectedMode)
@@ -171,8 +172,9 @@ Panel {
   function visibleFocusRows() {
     var rows = []
     if (vpn.installed && (Model.canWrite(view.state) || view.state === Model.STATES.connecting || view.state === Model.STATES.disconnecting)) rows.push(["header"])
+    if (view.state === Model.STATES.cliMissing) rows.push(["install"])
+    if (view.state === Model.STATES.signedOut) rows.push(["signin"])
     if (copyCommand !== "") rows.push(["copy"])
-    if (view.state === Model.STATES.signedOut) rows.push(["terminal"])
     rows.push(["refresh"])
     if (vpn.countriesError !== "" || vpn.citiesError !== "") rows.push(["retry-locations"])
     if (showWrites && vpn.installed) {
@@ -261,7 +263,8 @@ Panel {
     else if (focusSection === "refresh") refreshAll()
     else if (focusSection === "retry-locations") retryLocations()
     else if (focusSection === "copy") vpn.copyText(copyCommand)
-    else if (focusSection === "terminal") vpn.openTerminal()
+    else if (focusSection === "install") vpn.installCli()
+    else if (focusSection === "signin") vpn.signIn()
     else if (focusSection === "mode") modeDropdown.toggle()
     else if (focusSection === "country") countryDropdown.toggle()
     else if (focusSection === "city" && selectedCountry !== "") cityDropdown.toggle()
@@ -438,7 +441,8 @@ Panel {
     else if (focusSection === "refresh") scrollItemIntoView(refreshRow)
     else if (focusSection === "retry-locations") scrollItemIntoView(retryLocationsRow)
     else if (focusSection === "copy") scrollItemIntoView(copyRow)
-    else if (focusSection === "terminal") scrollItemIntoView(terminalRow)
+    else if (focusSection === "install") scrollItemIntoView(installRow)
+    else if (focusSection === "signin") scrollItemIntoView(signInRow)
     else if (focusSection === "mode") scrollItemIntoView(modeDropdown)
     else if (focusSection === "country") scrollItemIntoView(countryDropdown)
     else if (focusSection === "city") scrollItemIntoView(cityDropdown)
@@ -593,7 +597,7 @@ Panel {
           color: root.barIconColor
           badgeColor: root.urgent
           crossed: Model.iconCrossed(root.view.state)
-          warning: Model.iconWarning(root.view.state)
+          warning: Model.iconWarning(root.view.state, root.view.blocking)
         }
       }
     }
@@ -687,7 +691,7 @@ Panel {
                   color: root.iconColor
                   badgeColor: root.urgent
                   crossed: Model.iconCrossed(root.view.state)
-                  warning: Model.iconWarning(root.view.state)
+                  warning: Model.iconWarning(root.view.state, root.view.blocking)
                 }
               }
               trailingControl: Component {
@@ -750,6 +754,39 @@ Panel {
             wrapMode: Text.WordWrap
           }
 
+          Text {
+            textFormat: Text.PlainText
+            visible: root.view.blocking === true
+            width: parent.width
+            text: Model.KILL_SWITCH_BLOCKING_TEXT
+            color: root.urgent
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.bodySmall
+            wrapMode: Text.WordWrap
+          }
+
+          Text {
+            textFormat: Text.PlainText
+            visible: vpn.reconnectPending && !vpn.actionBusy
+            width: parent.width
+            text: "Reconnect when the VPN drops is on; the next attempt runs shortly. Connecting or disconnecting yourself cancels it."
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            wrapMode: Text.WordWrap
+          }
+
+          Text {
+            textFormat: Text.PlainText
+            visible: vpn.portForwardingNotice !== "" && root.view.state === Model.STATES.connected
+            width: parent.width
+            text: vpn.portForwardingNotice
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            wrapMode: Text.WordWrap
+          }
+
           Column {
             visible: root.degraded
             width: parent.width
@@ -788,6 +825,26 @@ Panel {
           }
 
           ActionRow {
+            id: installRow
+            visible: root.view.state === Model.STATES.cliMissing
+            width: parent.width
+            title: "Install Proton VPN CLI"
+            subtitle: "Opens Omarchy's installer in a terminal."
+            sectionName: "install"
+            onActivated: vpn.installCli()
+          }
+
+          ActionRow {
+            id: signInRow
+            visible: root.view.state === Model.STATES.signedOut
+            width: parent.width
+            title: "Sign in"
+            subtitle: "Opens a terminal; this plugin never collects a password."
+            sectionName: "signin"
+            onActivated: vpn.signIn()
+          }
+
+          ActionRow {
             id: copyRow
             visible: root.copyCommand !== ""
             width: parent.width
@@ -795,16 +852,6 @@ Panel {
             subtitle: root.copyCommand
             sectionName: "copy"
             onActivated: vpn.copyText(root.copyCommand)
-          }
-
-          ActionRow {
-            id: terminalRow
-            visible: root.view.state === Model.STATES.signedOut
-            width: parent.width
-            title: "Open terminal"
-            subtitle: "Sign in there; this plugin never collects a password."
-            sectionName: "terminal"
-            onActivated: vpn.openTerminal()
           }
 
           RowLayout {
@@ -1039,6 +1086,16 @@ Panel {
               }
             }
 
+            Text {
+              textFormat: Text.PlainText
+              visible: root.planNotice !== ""
+              width: parent.width
+              text: root.planNotice
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              wrapMode: Text.WordWrap
+            }
 
             Button {
               id: switchButton
@@ -1219,7 +1276,7 @@ Panel {
               Text {
                 textFormat: Text.PlainText
                 width: parent.width
-                text: Model.killSwitchConfirmText(root.ksConfirmValue, Model.killSwitchReturnTarget(vpn.activeTarget, root.view.status))
+                text: Model.killSwitchConfirmText(root.ksConfirmValue, Model.returnTarget(vpn.activeTarget, root.view.status, vpn.freePlan))
                 color: root.foreground
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
