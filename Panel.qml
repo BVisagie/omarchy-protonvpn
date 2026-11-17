@@ -213,6 +213,7 @@ Panel {
         rows.push(["config:moderate-nat", "config:ipv6"])
         rows.push(["config:anonymous-crash-reports", "config:custom-dns"])
         if (showDnsField()) rows.push(["dns"])
+        if (vpn.autoConnectWifi && vpn.wifiName !== "") rows.push(["trust"])
         if (view.state === Model.STATES.disconnected) rows.push(["signout"])
         if (signOutConfirm) rows.push(["so-cancel", "so-confirm"])
       }
@@ -295,6 +296,7 @@ Panel {
     else if (focusSection === "dns") applyDns()
     else if (focusSection === "ks-cancel") cancelKillSwitch()
     else if (focusSection === "ks-confirm") confirmKillSwitch()
+    else if (focusSection === "trust") vpn.toggleTrustedNetwork(vpn.wifiName)
     else if (focusSection === "signout") askSignOut()
     else if (focusSection === "so-cancel") cancelSignOut()
     else if (focusSection === "so-confirm") confirmSignOut()
@@ -529,6 +531,7 @@ Panel {
     else if (focusSection === "config:kill-switch") scrollItemIntoView(killSwitchDropdown)
     else if (focusSection === "config:custom-dns") scrollItemIntoView(customDnsToggle)
     else if (focusSection === "ks-cancel" || focusSection === "ks-confirm") scrollItemIntoView(ksConfirm)
+    else if (focusSection === "trust") scrollItemIntoView(trustRow)
     else if (focusSection === "signout") scrollItemIntoView(signOutRow)
     else if (focusSection === "so-cancel" || focusSection === "so-confirm") scrollItemIntoView(signOutConfirmRow)
     else {
@@ -1510,6 +1513,20 @@ Panel {
                   }
                 }
               }
+            }
+
+            ActionRow {
+              id: trustRow
+              visible: vpn.autoConnectWifi && vpn.wifiName !== ""
+              width: parent.width
+              title: vpn.wifiTrusted
+                ? root.tr("wifi.untrust", "Stop trusting %1").arg(vpn.wifiName)
+                : root.tr("wifi.trust", "Trust %1").arg(vpn.wifiName)
+              subtitle: vpn.wifiTrusted
+                ? root.tr("wifi.untrustHint", "Proton VPN connects automatically here again.")
+                : root.tr("wifi.trustHint", "Proton VPN connects automatically on Wi-Fi you have not trusted. Trust this network to skip it.")
+              sectionName: "trust"
+              onActivated: vpn.toggleTrustedNetwork(vpn.wifiName)
             }
 
             ActionRow {

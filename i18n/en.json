@@ -255,5 +255,10 @@
   "tooltip.stalled": "Nothing is coming back through the tunnel.",
   "traffic.line": "↓ %1  ↑ %2 · %3 this session",
   "value.off": "Off",
-  "value.on": "On"
+  "value.on": "On",
+  "wifi.connecting": "Connecting on untrusted Wi-Fi…",
+  "wifi.trust": "Trust %1",
+  "wifi.trustHint": "Proton VPN connects automatically on Wi-Fi you have not trusted. Trust this network to skip it.",
+  "wifi.untrust": "Stop trusting %1",
+  "wifi.untrustHint": "Proton VPN connects automatically here again."
 }

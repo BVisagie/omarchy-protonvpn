@@ -887,6 +887,19 @@ describe("bar label", () => {
   })
 })
 
+describe("trusted Wi-Fi", () => {
+  it("keeps names as given, bounded, and toggles them", () => {
+    assert.deepEqual(Model.normalizeNetworks(["Home", "Home", "", 7, "x".repeat(33), "Café <b>"]), ["Home", "Café <b>"])
+    assert.deepEqual(Model.normalizeNetworks("Home"), [])
+    assert.equal(Model.isTrustedNetwork(["Home"], "Home"), true)
+    assert.equal(Model.isTrustedNetwork(["Home"], "home"), false)
+    assert.equal(Model.isTrustedNetwork(["Home"], ""), false)
+    assert.deepEqual(Model.toggleNetwork(["Home"], "Office"), ["Home", "Office"])
+    assert.deepEqual(Model.toggleNetwork(["Home", "Office"], "Home"), ["Office"])
+    assert.deepEqual(Model.toggleNetwork([], ""), [])
+  })
+})
+
 describe("connection duration", () => {
   it("reads the activation time NetworkManager reports", () => {
     const link = Model.parseActiveVpn("ProtonVPN NL#806:wireguard:proton0:activated:1794925926\nWi:Fi:802-11-wireless:wlan0:activated:1794903424\n")

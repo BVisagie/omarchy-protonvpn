@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Networking
 import qs.Commons
 import "Model.js" as Model
 import "Scheduler.js" as Scheduler
@@ -89,9 +90,24 @@ Item {
   readonly property bool connectOnLogin: Model.normalizeBooleanSetting(setting("connectOnLogin", false))
   readonly property string _runtimeDir: Quickshell.env("XDG_RUNTIME_DIR") || ""
   property bool _loginConnectPending: false
-  property int _loginTicks: 0
-  property int _loginAttempts: 0
-  property bool _loginInternal: false
+  // True when the lock file already existed: the shell reloaded mid-login.
+  property bool _shellReloaded: false
+
+  // Connect on untrusted Wi-Fi: joining a network that is not in
+  // trustedNetworks connects, once per join. The name comes from
+  // NetworkManager over D-Bus, through Quickshell; no process starts.
+  readonly property bool autoConnectWifi: Model.normalizeBooleanSetting(setting("autoConnectWifi", false))
+  readonly property var trustedNetworks: Model.normalizeNetworks(setting("trustedNetworks", []))
+  readonly property string wifiName: currentWifiName()
+  readonly property bool wifiTrusted: Model.isTrustedNetwork(trustedNetworks, wifiName)
+  property bool _wifiConnectPending: false
+  property bool _wifiSeen: false
+  property bool _started: false
+
+  // Shared by both: ticks and attempts of the current automatic connect.
+  property int _autoTicks: 0
+  property int _autoAttempts: 0
+  property bool _autoConnectInternal: false
 
   property int _setupChecks: 0
   property string portForwardingNotice: ""
@@ -855,12 +871,15 @@ Item {
       snapshot: snapshot(),
       options: options || ({}),
       auto: _autoInternal === true,
-      login: _loginInternal === true
+      autoConnect: _autoConnectInternal === true
     }
     if (!enqueue(job)) return false
     if (job.auto !== true) cancelReconnect()
     // Anything the user does wins over the login connect.
-    if (job.login !== true) _loginConnectPending = false
+    if (job.autoConnect !== true) {
+      _loginConnectPending = false
+      _wifiConnectPending = false
+    }
     lastError = ""
     actionStatus = label || ""
     if (action === "connect") state = Model.STATES.connecting
@@ -1093,26 +1112,60 @@ Item {
 
   onReconnectOnDropChanged: if (!reconnectOnDrop) cancelReconnect()
 
+  function currentWifiName() {
+    var devices = Networking.devices ? Networking.devices.values : []
+    for (var i = 0; i < devices.length; i++) {
+      var device = devices[i]
+      if (!device || device.type !== DeviceType.Wifi || !device.connected) continue
+      var networks = device.networks ? device.networks.values : []
+      for (var j = 0; j < networks.length; j++) {
+        if (networks[j] && networks[j].connected) return String(networks[j].name || "")
+      }
+    }
+    return ""
+  }
+
+  // A reload sees the current network for the first time too; only a real
+  // join counts, so a VPN you turned off stays off.
+  onWifiNameChanged: {
+    var first = !_wifiSeen
+    if (wifiName !== "") _wifiSeen = true
+    _wifiConnectPending = false
+    if (!_started || wifiName === "" || !autoConnectWifi || wifiTrusted || (first && _shellReloaded)) return
+    _autoTicks = 0
+    _autoAttempts = 0
+    _wifiConnectPending = true
+  }
+
+  onWifiTrustedChanged: if (wifiTrusted) _wifiConnectPending = false
+
+  function toggleTrustedNetwork(name) {
+    saveSettings({ trustedNetworks: Model.toggleNetwork(trustedNetworks, name) })
+  }
+
   // Every 10 seconds for up to 3 minutes, while the network and Proton's
   // services come up: connect once Proton says Disconnected, at most 3 times.
   // Signed out, not installed, or already connected ends it.
-  function tryLoginConnect() {
-    _loginTicks++
+  function tryAutoConnect() {
+    _autoTicks++
     var done = state === Model.STATES.connected || linkActive || state === Model.STATES.signedOut || state === Model.STATES.cliMissing
-    if (done || _loginTicks > 18 || _loginAttempts >= 3) {
+    if (done || _autoTicks > 18 || _autoAttempts >= 3) {
       _loginConnectPending = false
+      _wifiConnectPending = false
       return
     }
     if (state !== Model.STATES.disconnected || !canToggle) {
       if (!processBusy) requestStatusRefresh()
       return
     }
-    _loginAttempts++
+    _autoAttempts++
     var last = rememberRecent && recentTargets.length > 0 ? recentTargets[0] : null
-    _loginInternal = true
+    _autoConnectInternal = true
     var started = connectWith(Model.returnTarget(last, null, freePlan))
-    _loginInternal = false
-    if (started) actionStatus = tr("login.connecting", "Connecting at login…")
+    _autoConnectInternal = false
+    if (started) actionStatus = _wifiConnectPending
+      ? tr("wifi.connecting", "Connecting on untrusted Wi-Fi…")
+      : tr("login.connecting", "Connecting at login…")
   }
 
   // Two small kernel files, read in place: no process starts for a sample.
@@ -1218,7 +1271,10 @@ Item {
   Component.onCompleted: {
     loginMarker.reload()
     loginMarker.text()
-    _loginConnectPending = _runtimeDir !== "" && !loginMarker.loaded
+    _shellReloaded = _runtimeDir === "" || loginMarker.loaded
+    _loginConnectPending = !_shellReloaded
+    _wifiSeen = wifiName !== ""
+    _started = true
     if (active) refresh()
   }
 
@@ -1247,11 +1303,11 @@ Item {
   }
 
   Timer {
-    id: loginConnectTimer
+    id: autoConnectTimer
     interval: 10000
     repeat: true
-    running: root.active && root.connectOnLogin && root._loginConnectPending
-    onTriggered: root.tryLoginConnect()
+    running: root.active && ((root.connectOnLogin && root._loginConnectPending) || (root.autoConnectWifi && root._wifiConnectPending))
+    onTriggered: root.tryAutoConnect()
   }
 
   Timer {

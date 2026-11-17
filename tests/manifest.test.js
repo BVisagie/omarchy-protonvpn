@@ -40,6 +40,7 @@ describe("plugin manifest", () => {
     assert.equal(manifest.barWidget.defaults.barLabel, "none")
     assert.equal(manifest.barWidget.defaults.rememberRecent, false)
     assert.equal(manifest.barWidget.defaults.connectOnLogin, false)
+    assert.equal(manifest.barWidget.defaults.autoConnectWifi, false)
   })
 
   it("publishes reconnect on drop as an opt-in boolean", () => {

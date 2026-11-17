@@ -26,7 +26,8 @@
       "reconnectOnDrop": false,
       "rememberRecent": false,
       "barLabel": "none",
-      "connectOnLogin": false
+      "connectOnLogin": false,
+      "autoConnectWifi": false
     },
     "schema": [
       {
@@ -86,6 +87,12 @@
         "key": "connectOnLogin",
         "type": "boolean",
         "label": "Connect when you log in",
+        "defaultValue": false
+      },
+      {
+        "key": "autoConnectWifi",
+        "type": "boolean",
+        "label": "Connect on Wi-Fi networks you have not trusted",
         "defaultValue": false
       }
     ]

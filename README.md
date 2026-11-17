@@ -17,7 +17,7 @@ A bar widget and keyboard-driven panel for Omarchy 4.5 or later that controls Pr
 - Says under the status what protects you: Kill Switch, NetShield, and Secure Core, as Proton reports them.
 - Shows when Kill Switch is blocking internet traffic after a drop, so a dead connection is never a mystery.
 - Warns when the tunnel is up but nothing comes back through it, which a plain "connected" hides.
-- Sends a desktop notification when the VPN drops while the panel is closed; clicking it opens the panel. It can also reconnect for you, and connect when you log in.
+- Sends a desktop notification when the VPN drops while the panel is closed; clicking it opens the panel. It can also reconnect for you, connect when you log in, and connect on Wi-Fi networks you have not trusted.
 - Installs the CLI and signs you in from the panel, through Omarchy's own terminal windows, and signs you out again after asking.
 - Follows your Omarchy theme and language, and the panel works entirely from the keyboard.
 
@@ -148,6 +148,7 @@ After changing a string in the code, run `node tests/tools/build_catalog.js` to 
 | Reconnect when the VPN drops | `reconnectOnDrop` | `false` | `true`, `false` |
 | Remember recent connections and the last target across restarts | `rememberRecent` | `false` | `true`, `false` |
 | Connect when you log in | `connectOnLogin` | `false` | `true`, `false` |
+| Connect on Wi-Fi networks you have not trusted | `autoConnectWifi` | `false` | `true`, `false` |
 | Text beside the bar icon while connected | `barLabel` | `none` | `none`, `country` (NL), `server` (NL#806), `city` (Amsterdam) |
 
 Change a setting with `omarchy bar set`. Numbers and booleans need `--json`:
@@ -162,6 +163,8 @@ omarchy bar set io.github.BVisagie.protonvpn barLabel country
 The bar label shows only while connected, and only on horizontal bars.
 
 With `connectOnLogin` on, the first shell start after you log in connects to the fastest server, or to your last place with `rememberRecent` on. It does not connect when the shell merely reloads, for example after a theme change: the plugin's lock file in `$XDG_RUNTIME_DIR`, which logging out clears, tells the two apart. It waits for Proton to report Disconnected, checking every 10 seconds for up to 3 minutes while the network and Proton's services come up, and tries at most 3 times. Connecting or disconnecting yourself in that time cancels it, and it never runs while you are signed out. With Kill Switch on, a network that needs a sign-in page (a captive portal) may not let it through until you disconnect.
+
+With `autoConnectWifi` on, joining a Wi-Fi network you have not trusted connects the same way, once per join, with the same waiting, limits, and cancelling. SETTINGS then shows **Trust** for the current network, which skips it from then on, or **Stop trusting**. Trusted names are saved as `trustedNetworks` in this widget's entry in `~/.config/omarchy/shell.json`. The plugin reads the current network from NetworkManager over D-Bus, through Quickshell, without starting a process. It never disconnects on a trusted network, a shell reload never counts as joining one, and a network whose name NetworkManager does not report counts as trusted. Sign in to a captive portal before you join it with Kill Switch on, or trust it.
 
 A drop is any tunnel loss the widget did not start itself, including one from another terminal. `all` also notifies when the tunnel connects. Notifications go through `omarchy-notification-send`; clicking one opens the panel.
 
@@ -186,6 +189,7 @@ bindd = SUPER ALT SHIFT, V, Proton VPN connect, exec, omarchy-shell io.github.BV
 - It never runs anything as root. Installing the CLI goes through Omarchy's installer, which asks for your password in its own terminal.
 - It never makes extra network requests such as “what is my IP” lookups, map tiles, or telemetry.
 - The exit IP is shown only when the Proton CLI itself returns it after connecting. Exit IP and traffic totals stay in memory and disappear when `omarchy-shell` exits.
+- With `autoConnectWifi` on, the plugin reads the name of the Wi-Fi network you are on from NetworkManager, and saves the names you trust in its `shell.json` entry.
 - Favorites, and recent places only with `rememberRecent` on, are saved as connection choices (mode, country code, city, server ID) in this widget's own entry in `~/.config/omarchy/shell.json`, through Omarchy's plugin API. If you keep your dotfiles in a public repository, that file shows where you connect.
 - Traffic rates come from the tunnel's own kernel counters under `/sys/class/net/`. While the tunnel is up they are read every two seconds with the panel open and every five seconds with it closed, for the stall warning; rates are shown only in the open panel. Reading them starts no process. Captured test fixtures are synthetic or redacted.
 - Raw CLI diagnostics are capped before they are shown.

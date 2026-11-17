@@ -21,7 +21,7 @@ describe("QML scheduler contract", () => {
   it("polls protonvpn status on a timer only while a panel is open", () => {
     assert.match(service, /id: refreshTimer[\s\S]{0,120}running: root\.active && \(root\.openPanels > 0 \|\| !root\.linkAvailable\)\n/)
     assert.doesNotMatch(service, /id: refreshTimer[\s\S]{0,200}triggeredOnStart/)
-    assert.match(service, /Component\.onCompleted: \{[\s\S]{0,160}if \(active\) refresh\(\)\n  \}/)
+    assert.match(service, /Component\.onCompleted: \{[\s\S]{0,320}if \(active\) refresh\(\)\n  \}/)
     assert.match(service, /openPanels = Math\.max\(0, openPanels - 1\)/)
     assert.match(panel, /onOpenedChanged: \{\n\s*trackOpen\(opened\)/)
     assert.match(panel, /Component\.onDestruction: trackOpen\(false\)/)
@@ -339,10 +339,18 @@ describe("QML scheduler contract", () => {
     const completed = service.indexOf("loginMarker.reload()")
     const refresh = service.indexOf("if (active) refresh()", completed)
     assert.ok(completed !== -1 && refresh > completed, "the marker is read before the first CLI run creates it")
-    assert.match(service, /_loginConnectPending = _runtimeDir !== "" && !loginMarker\.loaded/)
-    assert.match(service, /running: root\.active && root\.connectOnLogin && root\._loginConnectPending/)
-    assert.match(service, /if \(job\.login !== true\) _loginConnectPending = false/)
-    assert.match(service, /_loginTicks > 18 \|\| _loginAttempts >= 3/)
+    assert.match(service, /_shellReloaded = _runtimeDir === "" \|\| loginMarker\.loaded\n\s*_loginConnectPending = !_shellReloaded/)
+    assert.match(service, /running: root\.active && \(\(root\.connectOnLogin && root\._loginConnectPending\) \|\| \(root\.autoConnectWifi && root\._wifiConnectPending\)\)/)
+    assert.match(service, /if \(job\.autoConnect !== true\) \{\n\s*_loginConnectPending = false\n\s*_wifiConnectPending = false/)
+    assert.match(service, /_autoTicks > 18 \|\| _autoAttempts >= 3/)
+  })
+
+  it("connects on untrusted Wi-Fi only when a network is really joined", () => {
+    assert.match(service, /import Quickshell\.Networking/)
+    assert.match(service, /if \(!_started \|\| wifiName === "" \|\| !autoConnectWifi \|\| wifiTrusted \|\| \(first && _shellReloaded\)\) return/)
+    assert.match(service, /onWifiTrustedChanged: if \(wifiTrusted\) _wifiConnectPending = false/)
+    assert.match(service, /readonly property var trustedNetworks: Model\.normalizeNetworks\(setting\("trustedNetworks", \[\]\)\)/)
+    assert.match(panel, /focusSection === "trust"\) vpn\.toggleTrustedNetwork\(vpn\.wifiName\)/)
   })
 
   it("signs out only from Disconnected, after asking", () => {

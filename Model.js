@@ -1315,6 +1315,32 @@ function quickConnectRows(favorites, recents, activeTarget) {
   return rows
 }
 
+// Trusted Wi-Fi names, from shell.json: SSIDs are 1 to 32 bytes.
+var MAX_TRUSTED_NETWORKS = 32
+
+function normalizeNetworks(list) {
+  var out = []
+  var source = Array.isArray(list) ? list : []
+  for (var i = 0; i < source.length && out.length < MAX_TRUSTED_NETWORKS; i++) {
+    var name = source[i]
+    if (typeof name !== "string" || name.length === 0 || name.length > 32 || out.indexOf(name) !== -1) continue
+    out.push(name)
+  }
+  return out
+}
+
+function isTrustedNetwork(list, name) {
+  return String(name || "") !== "" && normalizeNetworks(list).indexOf(String(name)) !== -1
+}
+
+function toggleNetwork(list, name) {
+  var clean = normalizeNetworks(list)
+  var value = String(name || "")
+  if (value === "" || value.length > 32) return clean
+  if (clean.indexOf(value) !== -1) return clean.filter(function(item) { return item !== value })
+  return clean.length < MAX_TRUSTED_NETWORKS ? clean.concat([value]) : clean
+}
+
 function switchLabel(options, loc) {
   return fill(say(loc, "connect.switchTo", "Switch to %1"), recentTarget(options, null, loc).label)
 }
@@ -2031,6 +2057,9 @@ if (typeof module !== "undefined") {
     countryName: countryName,
     targetName: targetName,
     quickConnectRows: quickConnectRows,
+    normalizeNetworks: normalizeNetworks,
+    isTrustedNetwork: isTrustedNetwork,
+    toggleNetwork: toggleNetwork,
     buildConnectCommand: buildConnectCommand,
     buildConfigSetCommand: buildConfigSetCommand,
     displayLoad: displayLoad,
