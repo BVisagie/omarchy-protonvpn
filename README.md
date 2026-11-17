@@ -14,6 +14,7 @@ A bar widget and keyboard-driven panel for Omarchy 4.5 or later that controls Pr
 - Switches servers in place while connected. **QUICK CONNECT** lists your starred favorites and recent places by name, so you can return to one in a click.
 - Shows how long you have been connected, and live download and upload rates and session totals while the panel is open.
 - Changes every setting `protonvpn config` exposes, including Kill Switch while connected, after asking first.
+- Says under the status what protects you: Kill Switch, NetShield, and Secure Core, as Proton reports them.
 - Shows when Kill Switch is blocking internet traffic after a drop, so a dead connection is never a mystery.
 - Warns when the tunnel is up but nothing comes back through it, which a plain "connected" hides.
 - Sends a desktop notification when the VPN drops while the panel is closed; clicking it opens the panel. It can also reconnect for you.

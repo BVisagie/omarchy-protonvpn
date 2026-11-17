@@ -1422,6 +1422,27 @@ function tooltipText(view, loc) {
   return view && view.message ? view.message : say(loc, "tooltip.error", "Proton VPN error.")
 }
 
+// What protects the connection, from values the plugin already has: the
+// CLI's settings and the server name. Facts only, never a score.
+function protectionsText(configValues, view, loc) {
+  var values = configValues || {}
+  if (values["kill-switch"] === undefined && values.netshield === undefined) return ""
+  var parts = []
+  if (values["kill-switch"] !== undefined) {
+    parts.push(values["kill-switch"] === "off"
+      ? say(loc, "protect.killSwitchOff", "Kill Switch off")
+      : say(loc, "protect.killSwitchOn", "Kill Switch on"))
+  }
+  if (values.netshield !== undefined && values.netshield !== "") {
+    parts.push(values.netshield === "off"
+      ? say(loc, "protect.netShieldOff", "NetShield off")
+      : fill(say(loc, "protect.netShield", "NetShield: %1"), configValueLabel("netshield", values.netshield, loc)))
+  }
+  var server = view && view.state === STATES.connected && view.status ? String(view.status.server || "") : ""
+  if (/^[A-Za-z]{2,3}-[A-Za-z]{2,3}#\d+$/.test(server)) parts.push(say(loc, "protect.secureCore", "Secure Core"))
+  return parts.join(" · ")
+}
+
 // Text beside the bar icon while connected: "NL", "NL#806", or "Amsterdam".
 // Server IDs start with the exit country ("IS-CH#1" exits in Iceland).
 var BAR_LABELS = ["none", "country", "server", "city"]
@@ -2005,6 +2026,7 @@ if (typeof module !== "undefined") {
     BAR_LABELS: BAR_LABELS,
     normalizeBarLabel: normalizeBarLabel,
     barLabelText: barLabelText,
+    protectionsText: protectionsText,
     heroMeta: heroMeta,
     heroDetail: heroDetail,
     relativeTime: relativeTime,

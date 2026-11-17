@@ -958,6 +958,17 @@ Panel {
             }
           }
 
+          Text {
+            textFormat: Text.PlainText
+            visible: text !== "" && root.showHealthy && vpn.configLoaded
+            width: parent.width
+            text: Model.protectionsText(vpn.configValues, root.view, root.loc)
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            elide: Text.ElideRight
+          }
+
           // Tunnel traffic, read locally from sysfs only while a panel is open.
           Text {
             textFormat: Text.PlainText

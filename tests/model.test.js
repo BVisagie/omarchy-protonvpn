@@ -844,6 +844,18 @@ describe("quick connect", () => {
   })
 })
 
+describe("protections line", () => {
+  it("states Kill Switch, NetShield, and Secure Core as facts", () => {
+    const connected = { state: "connected", status: { server: "IS-CH#1" } }
+    assert.equal(Model.protectionsText({ "kill-switch": "standard", netshield: "malware-ads-trackers" }, connected),
+      "Kill Switch on · NetShield: Malware, ads, and trackers · Secure Core")
+    assert.equal(Model.protectionsText({ "kill-switch": "off", netshield: "off" }, { state: "connected", status: { server: "NL#1" } }),
+      "Kill Switch off · NetShield off")
+    assert.equal(Model.protectionsText({ "kill-switch": "standard", netshield: "" }, null), "Kill Switch on")
+    assert.equal(Model.protectionsText({}, connected), "")
+  })
+})
+
 describe("bar label", () => {
   const view = { state: "connected", status: { server: "IS-CH#1", location: "Reykjavik, via Switzerland" } }
   it("names the connection beside the icon only when asked and connected", () => {
