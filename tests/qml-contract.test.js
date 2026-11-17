@@ -29,8 +29,8 @@ describe("QML scheduler contract", () => {
 
   it("samples traffic and notifies only through fixed, bounded commands", () => {
     assert.match(service, /id: trafficTimer[\s\S]{0,120}running: root\.active && root\.openPanels > 0 && root\.linkActive/)
-    assert.match(service, /if \(!Model\.isTunnelDevice\(linkDevice\)\) return/)
-    assert.match(service, /boundedCommand\(\["\/usr\/bin\/cat", base \+ "rx_bytes", base \+ "tx_bytes"\], 2000\)/)
+    assert.match(service, /readonly property string _statsDir: Model\.isTunnelDevice\(linkDevice\) \? "\/sys\/class\/net\/" \+ linkDevice \+ "\/statistics\/" : ""/)
+    assert.doesNotMatch(service, /\/usr\/bin\/cat/)
     assert.match(service, /var command = Model\.notificationCommand\(note\)\n\s*if \(command\.length > 0\) Quickshell\.execDetached\(command\)/)
     assert.doesNotMatch(service, /notify-send/)
   })
@@ -169,7 +169,14 @@ describe("QML scheduler contract", () => {
   })
 
   it("keeps the declared trust boundary in the runtime service", () => {
-    assert.doesNotMatch(service, /\b(?:curl|wget)\b|FileView|settings\.json|keyring|pkill|sudo|pkexec/)
+    assert.doesNotMatch(service, /\b(?:curl|wget)\b|settings\.json|keyring|pkill|sudo|pkexec/)
+    // FileView reads only the tunnel's two byte counters.
+    const views = [...service.matchAll(/FileView \{[\s\S]*?\n  \}/g)].map((m) => m[0])
+    assert.equal(views.length, 2)
+    for (const view of views) {
+      assert.match(view, /path: root\._statsDir !== "" \? root\._statsDir \+ "(?:rx|tx)_bytes" : ""/)
+      assert.doesNotMatch(view, /watchChanges|setText|atomicWrites/)
+    }
     assert.doesNotMatch(service, /"connection", "(?:up|down|delete|modify)"/)
   })
 

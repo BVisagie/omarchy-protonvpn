@@ -83,6 +83,8 @@ Item {
   property var traffic: Model.emptyTraffic()
   property string _trafficDevice: ""
   property string _trafficServer: ""
+  // Only a validated proton0-style device ever reaches a sysfs path.
+  readonly property string _statsDir: Model.isTunnelDevice(linkDevice) ? "/sys/class/net/" + linkDevice + "/statistics/" : ""
   readonly property string trafficText: Model.trafficText(traffic, loc)
   // Options behind the current connection, when this session made it.
   property var activeTarget: null
@@ -1029,22 +1031,18 @@ Item {
 
   onReconnectOnDropChanged: if (!reconnectOnDrop) cancelReconnect()
 
+  // Two small kernel files, read in place: no process starts for a sample.
   function sampleTraffic() {
-    if (!active || openPanels === 0 || !linkActive || trafficProcess.running) return
-    if (!Model.isTunnelDevice(linkDevice)) return
+    if (!active || openPanels === 0 || !linkActive || _statsDir === "") return
     if (linkDevice !== _trafficDevice || linkServer !== _trafficServer) {
       traffic = Model.emptyTraffic()
       _trafficDevice = linkDevice
       _trafficServer = linkServer
     }
-    var base = "/sys/class/net/" + linkDevice + "/statistics/"
-    trafficProcess.command = boundedCommand(["/usr/bin/cat", base + "rx_bytes", base + "tx_bytes"], 2000)
-    trafficProcess.running = true
-  }
-
-  function applyTraffic(result) {
-    if (result.exitCode !== 0 || result.timedOut === true) return
-    traffic = Model.trafficSample(traffic, Model.parseInterfaceCounters(result.stdout), Date.now())
+    rxFile.reload()
+    txFile.reload()
+    if (!rxFile.loaded || !txFile.loaded) return
+    traffic = Model.trafficSample(traffic, Model.parseInterfaceCounters(rxFile.text() + " " + txFile.text()), Date.now())
   }
 
   function reportError(errorMessage) {
@@ -1213,17 +1211,18 @@ Item {
     }
   }
 
-  Process {
-    id: trafficProcess
-    running: false
-    command: []
-    stdout: StdioCollector {
-      id: trafficStdout
-      waitForEnd: true
-    }
-    onExited: function(exitCode) {
-      root.applyTraffic({ exitCode: exitCode, stdout: String(trafficStdout.text || ""), timedOut: exitCode === 124 })
-    }
+  FileView {
+    id: rxFile
+    path: root._statsDir !== "" ? root._statsDir + "rx_bytes" : ""
+    blockLoading: true
+    printErrors: false
+  }
+
+  FileView {
+    id: txFile
+    path: root._statsDir !== "" ? root._statsDir + "tx_bytes" : ""
+    blockLoading: true
+    printErrors: false
   }
 
   // Read-only: `nmcli monitor` only prints what NetworkManager reports.

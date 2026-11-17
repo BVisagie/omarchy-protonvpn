@@ -185,7 +185,8 @@ Supervised by `scripts/run_bounded.py`, which caps output, enforces a deadline, 
 - `/usr/bin/which protonvpn` to find the CLI
 - `protonvpn` subcommands: `--help`, `status`, `connect`, `disconnect`, `countries list`, `cities list`, `config list`, and `config set`
 - `/usr/bin/nmcli -t -e no -f NAME,TYPE,DEVICE,STATE connection show --active`
-- `/usr/bin/cat /sys/class/net/<device>/statistics/rx_bytes /sys/class/net/<device>/statistics/tx_bytes`, only for a `proton0`-style device and only while the panel is open
+
+Read in place, without starting a process: `/sys/class/net/<device>/statistics/rx_bytes` and `tx_bytes`, only for a `proton0`-style device.
 
 Started directly and kept running while the widget is loaded, with its output read one line at a time and discarded:
 
