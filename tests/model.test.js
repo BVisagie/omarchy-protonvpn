@@ -1007,9 +1007,23 @@ describe("CLI package version", () => {
     assert.equal(Model.parseCheckUpdates("linux 6.1-1 -> 6.2-1\n"), null)
   })
 
-  it("orders versions the way pacman does", () => {
-    const c = Model.comparePackageVersions
-    assert.deepEqual([c("1.0.5-1", "1.0.6-1"), c("1.0.10-1", "1.0.9-1"), c("1.0.5-1", "1.0.5-2"), c("1.0.5-1", "1.0.5-1"), c("1:1.0-1", "2.0-1")], [-1, 1, -1, 0, 1])
+  it("orders versions the way pacman's vercmp does", () => {
+    // Each expected sign was taken from /usr/bin/vercmp.
+    const cases = [
+      ["1.0.5-1", "1.0.6-1", -1], ["1.0.10-1", "1.0.9-1", 1], ["1.0.5-1", "1.0.5-2", -1], ["1.0.5-1", "1.0.5-1", 0],
+      ["1:1.0-1", "2.0-1", 1], ["1.0.5-1", "1.0.5.post1-1", -1], ["1.0a-1", "1.0-1", -1], ["1.0-1", "1.0b-1", 1],
+      ["1.0rc1-1", "1.0-1", -1], ["1.0.0-1", "1.0-1", 1], ["1.0_1-1", "1.0.1-1", 0], ["2.0", "2.0-1", 0],
+      ["1.0-1", "1.0.1", -1], ["1.2.3alpha", "1.2.3", -1], ["01.2", "1.2", 0], ["1..2", "1.2", 1],
+      ["1.0+a", "1.0+b", -1], ["0:1.0", "1.0", 0], ["1.0~rc1", "1.0", 1]
+    ]
+    for (const [a, b, sign] of cases) assert.equal(Model.comparePackageVersions(a, b), sign, `${a} vs ${b}`)
+  })
+
+  it("lets a later local sync replace an older mirror check", () => {
+    const now = Date.UTC(2026, 10, 17)
+    const info = Model.cliVersionInfo({ installed: "1.0.5-1", repo: "extra", repoVersion: "1.0.6-1", repoSyncedMs: now, mirrorVersion: "", mirrorCheckedMs: now - 60000 }, now)
+    assert.equal(info.latest, "1.0.6-1")
+    assert.equal(info.newer, true)
   })
 
   it("says whether an update is available, and from where", () => {

@@ -106,7 +106,8 @@ describe("QML scheduler contract", () => {
   })
 
   it("asks before a Kill Switch change drops a live tunnel", () => {
-    assert.match(panel, /else if \(key === "kill-switch"\) chooseKillSwitch\(vpn\.configDisplayValue\("kill-switch"\) === "off" \? "standard" : "off"\)/)
+    assert.match(panel, /else if \(key === "kill-switch"\) chooseKillSwitch\(switchChecked\("kill-switch"\) \? "off" : "standard"\)/)
+    assert.match(panel, /if \(!def \|\| !vpn\.configLoaded\) return/)
     assert.match(panel, /SwitchPair \{ leftKey: "kill-switch"; rightKey: "vpn-accelerator" \}/)
     assert.match(panel, /component SwitchCell: SettingRow \{[\s\S]{0,300}onActivated: root\.activateConfig\(key\)/)
     assert.match(panel, /ksConfirmValue = value\n\s*cursorActive = true\n\s*focusSection = "ks-cancel"/)

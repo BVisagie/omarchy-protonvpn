@@ -1892,29 +1892,65 @@ function parseCheckUpdates(raw) {
   return null
 }
 
-// pacman's order for the versions it prints: epoch, then the dotted
-// version, then the package release.
+// pacman's own order (libalpm's alpm_pkg_vercmp): epoch, then version,
+// then release, each compared with rpmvercmp's segment rules.
+function rpmvercmp(a, b) {
+  if (a === b) return 0
+  var alnum = /[A-Za-z0-9]/
+  var digit = /[0-9]/
+  var alpha = /[A-Za-z]/
+  var one = 0
+  var two = 0
+  var p1 = 0
+  var p2 = 0
+  while (one < a.length && two < b.length) {
+    while (one < a.length && !alnum.test(a[one])) one++
+    while (two < b.length && !alnum.test(b[two])) two++
+    if (!(one < a.length && two < b.length)) break
+    // Different separator lengths decide it.
+    if (one - p1 !== two - p2) return one - p1 < two - p2 ? -1 : 1
+    p1 = one
+    p2 = two
+    var isnum = digit.test(a[p1])
+    var kind = isnum ? digit : alpha
+    while (p1 < a.length && kind.test(a[p1])) p1++
+    while (p2 < b.length && kind.test(b[p2])) p2++
+    var segA = a.substring(one, p1)
+    var segB = b.substring(two, p2)
+    // A numeric segment is newer than an alpha one.
+    if (segB === "") return isnum ? 1 : -1
+    if (isnum) {
+      segA = segA.replace(/^0+/, "")
+      segB = segB.replace(/^0+/, "")
+      if (segA.length !== segB.length) return segA.length > segB.length ? 1 : -1
+    }
+    if (segA !== segB) return segA < segB ? -1 : 1
+    one = p1
+    two = p2
+  }
+  if (one >= a.length && two >= b.length) return 0
+  // A remaining alpha string never beats an empty one.
+  if ((one >= a.length && !alpha.test(b[two] || "")) || alpha.test(a[one] || "")) return -1
+  return 1
+}
+
+function parseEvr(value) {
+  var text = String(value || "")
+  var epoch = "0"
+  var colon = text.indexOf(":")
+  if (colon !== -1 && /^\d+$/.test(text.substring(0, colon))) { epoch = text.substring(0, colon) || "0"; text = text.substring(colon + 1) }
+  var dash = text.lastIndexOf("-")
+  return { epoch: epoch, version: dash === -1 ? text : text.substring(0, dash), release: dash === -1 ? "" : text.substring(dash + 1) }
+}
+
 function comparePackageVersions(left, right) {
-  function split(v) {
-    var text = String(v || "")
-    var epoch = 0
-    var colon = text.indexOf(":")
-    if (colon !== -1) { epoch = parseInt(text.substring(0, colon), 10) || 0; text = text.substring(colon + 1) }
-    var dash = text.lastIndexOf("-")
-    return { epoch: epoch, version: dash === -1 ? text : text.substring(0, dash), rel: dash === -1 ? "0" : text.substring(dash + 1) }
-  }
-  var a = split(left)
-  var b = split(right)
-  if (a.epoch !== b.epoch) return a.epoch < b.epoch ? -1 : 1
-  var parts = Math.max(a.version.split(".").length, b.version.split(".").length, 3)
-  var av = a.version.split(".")
-  var bv = b.version.split(".")
-  for (var i = 0; i < parts; i++) {
-    var x = parseInt(av[i] || "0", 10)
-    var y = parseInt(bv[i] || "0", 10)
-    if (x !== y) return x < y ? -1 : 1
-  }
-  return compareVersions(a.rel, b.rel)
+  if (String(left) === String(right)) return 0
+  var a = parseEvr(left)
+  var b = parseEvr(right)
+  var r = rpmvercmp(a.epoch, b.epoch)
+  if (r === 0) r = rpmvercmp(a.version, b.version)
+  if (r === 0 && a.release !== "" && b.release !== "") r = rpmvercmp(a.release, b.release)
+  return r
 }
 
 // What the CLI row says. Latest comes from the mirrors when checked, else
@@ -1922,7 +1958,8 @@ function comparePackageVersions(left, right) {
 function cliVersionInfo(pkg, nowMs, loc) {
   var p = pkg || {}
   var installed = String(p.installed || p.cliVersion || "")
-  var mirror = p.mirrorCheckedMs > 0
+  // The mirror answer holds only until the local database syncs after it.
+  var mirror = p.mirrorCheckedMs > 0 && p.mirrorCheckedMs >= Number(p.repoSyncedMs || 0)
   var latest = mirror ? String(p.mirrorVersion || installed) : String(p.repoVersion || "")
   var newer = installed !== "" && latest !== "" && comparePackageVersions(installed, latest) < 0
   var source = ""

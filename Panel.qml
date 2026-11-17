@@ -340,7 +340,9 @@ Panel {
 
   function activateConfig(key) {
     var def = Model.settingDef(key)
-    if (!def) return
+    // Until settings load, a switch shows Off without knowing; changing it
+    // then would send a guess.
+    if (!def || !vpn.configLoaded) return
     if (vpn.configUpgrade && vpn.configUpgrade[key]) {
       vpn.setConfig(key, def.values[def.values.length - 1])
       return
@@ -351,7 +353,7 @@ Panel {
       return
     }
     if (key === "netshield") netshieldDropdown.toggle()
-    else if (key === "kill-switch") chooseKillSwitch(vpn.configDisplayValue("kill-switch") === "off" ? "standard" : "off")
+    else if (key === "kill-switch") chooseKillSwitch(switchChecked("kill-switch") ? "off" : "standard")
     else if (key === "custom-dns") toggleCustomDns()
   }
 
