@@ -203,6 +203,8 @@
   "setting.vpn-accelerator.label": "VPN Accelerator",
   "setting.vpn-accelerator.tooltip": "Improves connection stability and, in some cases, speed.",
   "settings.help": "Most CLI settings apply without reconnecting. IPv6 and custom DNS need a new VPN connection.",
+  "settings.hide": "Hide settings (s)",
+  "settings.show": "Show every Proton VPN setting (s)",
   "setup.copy": "Copy command",
   "setup.install": "Install Proton VPN CLI",
   "setup.installHint": "Opens Omarchy's installer in a terminal.",

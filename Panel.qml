@@ -45,6 +45,8 @@ Panel {
   property var countedVpn: null
   // Kill Switch value awaiting confirmation while connected; "" when none.
   property string ksConfirmValue: ""
+  // SETTINGS starts folded so the panel opens on status and CONNECT.
+  property bool settingsOpen: false
 
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color urgent: bar ? bar.urgent : Color.urgent
@@ -201,7 +203,8 @@ Panel {
         for (var r = 0; r < recentChoices.length; r++) recent.push("recent:" + r)
         rows.push(recent)
       }
-      if (vpn.configLoaded) {
+      rows.push(["settings"])
+      if (settingsOpen && vpn.configLoaded) {
         rows.push(["config:netshield", "config:kill-switch"])
         if (ksConfirmValue !== "") rows.push(["ks-cancel", "ks-confirm"])
         rows.push(["config:port-forwarding", "config:vpn-accelerator"])
@@ -282,6 +285,7 @@ Panel {
     else if (focusSection === "city" && selectedCountry !== "") cityDropdown.toggle()
     else if (focusSection === "server") Qt.callLater(function() { if (serverField) serverField.forceActiveFocus() })
     else if (focusSection === "switch") switchNow()
+    else if (focusSection === "settings") toggleSettings()
     else if (focusSection.indexOf("recent:") === 0) connectRecent(parseInt(focusSection.substring(7), 10))
     else if (focusSection === "dns") applyDns()
     else if (focusSection === "ks-cancel") cancelKillSwitch()
@@ -318,6 +322,14 @@ Panel {
     cursorActive = true
     focusSection = "ks-cancel"
     scrollItemIntoView(ksConfirm)
+  }
+
+  function toggleSettings() {
+    settingsOpen = !settingsOpen
+    if (!settingsOpen) ksConfirmValue = ""
+    cursorActive = true
+    focusSection = "settings"
+    scrollItemIntoView(settingsOpen ? settingsBody : settingsHeader)
   }
 
   function cancelKillSwitch() {
@@ -460,6 +472,7 @@ Panel {
     else if (focusSection === "city") scrollItemIntoView(cityDropdown)
     else if (focusSection === "server") scrollItemIntoView(serverField)
     else if (focusSection === "switch") scrollItemIntoView(switchButton)
+    else if (focusSection === "settings") scrollItemIntoView(settingsHeader)
     else if (focusSection.indexOf("recent:") === 0) scrollItemIntoView(recentGrid)
     else if (focusSection === "dns") scrollItemIntoView(dnsField)
     else if (focusSection === "config:netshield") scrollItemIntoView(netshieldDropdown)
@@ -633,6 +646,7 @@ Panel {
       onTextKey: function(t) {
         if (t === "r" || t === "R") root.refreshAll()
         else if (t === "t" || t === "T") root.tryToggle()
+        else if ((t === "s" || t === "S") && root.showWrites && vpn.installed) root.toggleSettings()
       }
 
       Flickable {
@@ -1161,20 +1175,66 @@ Panel {
 
             PanelSeparator { foreground: root.foreground }
 
-            Column {
+            CursorSurface {
+              id: settingsHeader
               width: parent.width
-              spacing: Style.spacing.labelGap
+              implicitHeight: settingsHeaderRow.implicitHeight + Style.space(8)
+              hasCursor: root.cursorActive && root.focusSection === "settings"
+              foreground: root.foreground
+              fill: root.hoverFill
 
-              PanelSectionHeader {
-                text: root.tr("section.settings", "SETTINGS")
-                foreground: root.foreground
-                fontFamily: root.fontFamily
+              MouseArea {
+                id: settingsHeaderMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onEntered: root.setFocusSection("settings")
+                onClicked: root.toggleSettings()
               }
 
-              SettingHelp {
-                width: parent.width
-                text: Model.settingsSectionHelp(root.loc)
+              SettingTip {
+                text: root.settingsOpen ? root.tr("settings.hide", "Hide settings (s)") : root.tr("settings.show", "Show every Proton VPN setting (s)")
+                tipHovered: settingsHeaderMouse.containsMouse
+                tipCursor: root.keyboardNavigation && settingsHeader.hasCursor
               }
+
+              RowLayout {
+                id: settingsHeaderRow
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.rightMargin: Style.space(6)
+                spacing: Style.spacing.controlGap
+
+                PanelSectionHeader {
+                  text: root.tr("section.settings", "SETTINGS")
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                }
+
+                Item { Layout.fillWidth: true }
+
+                Text {
+                  textFormat: Text.PlainText
+                  // Chevron down when open, pointing at the row when folded.
+                  text: "󰅀"
+                  rotation: root.settingsOpen ? 0 : (I18n.rightToLeft ? 90 : -90)
+                  color: root.dim
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.body
+                }
+              }
+            }
+
+            Column {
+              id: settingsBody
+              visible: root.settingsOpen
+              width: parent.width
+              spacing: Style.spacing.rowGap
+
+            SettingHelp {
+              width: parent.width
+              text: Model.settingsSectionHelp(root.loc)
             }
 
             Text {
@@ -1389,6 +1449,7 @@ Panel {
             Item {
               width: parent.width
               height: Style.space(6)
+            }
             }
           }
         }

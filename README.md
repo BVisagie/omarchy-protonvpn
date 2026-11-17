@@ -108,6 +108,7 @@ Inside the panel:
 - `h` / `l` or left/right arrows move the cursor across a row
 - `Enter` / `Space` activates the selected control
 - `t` toggles connect/disconnect with the same safety gate as right-click
+- `s` shows or hides SETTINGS, which starts folded so the panel opens on status and CONNECT
 - `r` refreshes
 - `Tab` / `Shift+Tab` switches to the next bar panel
 - `Esc` closes

@@ -327,6 +327,14 @@ describe("QML scheduler contract", () => {
     assert.doesNotMatch(panel, /implicitHeight: Style\.space\(40\)/)
   })
 
+  it("folds SETTINGS away until asked for", () => {
+    assert.match(panel, /property bool settingsOpen: false/)
+    assert.match(panel, /rows\.push\(\["settings"\]\)\n\s*if \(settingsOpen && vpn\.configLoaded\) \{/)
+    assert.match(panel, /id: settingsBody\n\s*visible: root\.settingsOpen/)
+    assert.match(panel, /focusSection === "settings"\) toggleSettings\(\)/)
+    assert.match(panel, /\(t === "s" \|\| t === "S"\) && root\.showWrites && vpn\.installed\) root\.toggleSettings\(\)/)
+  })
+
   it("moves the cursor by row and column instead of a flat list", () => {
     assert.match(panel, /function visibleFocusRows\(\)/)
     assert.match(panel, /rows\.push\(\["config:netshield", "config:kill-switch"\]\)/)
