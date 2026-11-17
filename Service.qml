@@ -83,6 +83,9 @@ Item {
   property var traffic: Model.emptyTraffic()
   property string _trafficDevice: ""
   property string _trafficServer: ""
+  // Data going out with nothing coming back; read even with every panel closed.
+  property var health: Model.emptyHealth()
+  readonly property bool tunnelStalled: linkActive && state === Model.STATES.connected && health.stalled === true
   // Only a validated proton0-style device ever reaches a sysfs path.
   readonly property string _statsDir: Model.isTunnelDevice(linkDevice) ? "/sys/class/net/" + linkDevice + "/statistics/" : ""
   readonly property string trafficText: Model.trafficText(traffic, loc)
@@ -124,7 +127,8 @@ Item {
     signedIn: root.signedIn,
     lastUpdatedMs: root.lastUpdatedMs,
     connectedSnapshot: root.connectedSnapshot,
-    blocking: root.killSwitchBlocking
+    blocking: root.killSwitchBlocking,
+    stalled: root.tunnelStalled
   })
   // A Kill Switch cycle owns the connection until it finishes; only its own
   // steps may write while it runs.
@@ -1032,17 +1036,22 @@ Item {
   onReconnectOnDropChanged: if (!reconnectOnDrop) cancelReconnect()
 
   // Two small kernel files, read in place: no process starts for a sample.
+  // Rates are shown only in an open panel; the stall check runs regardless.
   function sampleTraffic() {
-    if (!active || openPanels === 0 || !linkActive || _statsDir === "") return
+    if (!active || !linkActive || _statsDir === "") return
     if (linkDevice !== _trafficDevice || linkServer !== _trafficServer) {
       traffic = Model.emptyTraffic()
+      health = Model.emptyHealth()
       _trafficDevice = linkDevice
       _trafficServer = linkServer
     }
     rxFile.reload()
     txFile.reload()
     if (!rxFile.loaded || !txFile.loaded) return
-    traffic = Model.trafficSample(traffic, Model.parseInterfaceCounters(rxFile.text() + " " + txFile.text()), Date.now())
+    var counters = Model.parseInterfaceCounters(rxFile.text() + " " + txFile.text())
+    var now = Date.now()
+    health = Model.tunnelHealth(health, counters, now)
+    if (openPanels > 0) traffic = Model.trafficSample(traffic, counters, now)
   }
 
   function reportError(errorMessage) {
@@ -1103,13 +1112,18 @@ Item {
 
   Timer {
     id: trafficTimer
-    interval: 2000
+    interval: root.openPanels > 0 ? 2000 : 5000
     repeat: true
-    running: root.active && root.openPanels > 0 && root.linkActive
+    running: root.active && root.linkActive
     triggeredOnStart: true
     onTriggered: root.sampleTraffic()
-    onRunningChanged: if (!running) root.traffic = Model.emptyTraffic()
+    onRunningChanged: if (!running) {
+      root.traffic = Model.emptyTraffic()
+      root.health = Model.emptyHealth()
+    }
   }
+
+  onOpenPanelsChanged: if (openPanels === 0) traffic = Model.emptyTraffic()
 
   onActiveChanged: {
     if (active) refresh()

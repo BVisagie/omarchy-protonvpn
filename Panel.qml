@@ -589,7 +589,7 @@ Panel {
           color: root.barIconColor
           badgeColor: root.urgent
           crossed: Model.iconCrossed(root.view.state)
-          warning: Model.iconWarning(root.view.state, root.view.blocking)
+          warning: Model.iconWarning(root.view.state, root.view.blocking, root.view.stalled)
         }
       }
     }
@@ -683,7 +683,7 @@ Panel {
                   color: root.iconColor
                   badgeColor: root.urgent
                   crossed: Model.iconCrossed(root.view.state)
-                  warning: Model.iconWarning(root.view.state, root.view.blocking)
+                  warning: Model.iconWarning(root.view.state, root.view.blocking, root.view.stalled)
                 }
               }
               trailingControl: Component {
@@ -751,6 +751,17 @@ Panel {
             visible: root.view.blocking === true
             width: parent.width
             text: Model.killSwitchBlockingText(root.loc)
+            color: root.urgent
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.bodySmall
+            wrapMode: Text.WordWrap
+          }
+
+          Text {
+            textFormat: Text.PlainText
+            visible: root.view.stalled === true
+            width: parent.width
+            text: Model.stalledText(root.loc)
             color: root.urgent
             font.family: root.fontFamily
             font.pixelSize: Style.font.bodySmall

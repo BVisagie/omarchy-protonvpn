@@ -8,7 +8,7 @@ This plugin:
 - runs only the fixed commands listed under [Commands this plugin runs](README.md#commands-this-plugin-runs);
 - passes commands as argument arrays without shell interpolation; the one script it hands to a terminal, for sign-in, is a fixed string with no plugin values in it;
 - supervises every command whose output it reads with output limits, deadlines, process-group cleanup, and, for `protonvpn`, a per-user lock, except `nmcli monitor`, a long-running stream whose lines are read one at a time and discarded (`wl-copy`, `omarchy-install-app`, and the sign-in terminal start directly, only when you use the matching control, and `omarchy-notification-send` starts directly with fixed text when the tunnel changes while the panel is closed);
-- reads tunnel byte counters from `/sys/class/net/<device>/statistics` only for a validated `proton0`-style device and only while the panel is open;
+- reads tunnel byte counters from `/sys/class/net/<device>/statistics` only for a validated `proton0`-style device and only while that tunnel is up, in place and without starting a process;
 - uses `nmcli` only to read active connection metadata and to follow NetworkManager's change events (`nmcli monitor`);
 - never asks for or stores Proton credentials; the sign-in terminal passes only the username, and the CLI asks for the rest;
 - never runs anything as root; installing the CLI goes through Omarchy's installer, which asks for the password in its own terminal;

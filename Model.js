@@ -1308,7 +1308,8 @@ function tooltipText(view, loc) {
   if (view && view.blocking === true) return say(loc, "tooltip.blocking", "Proton VPN disconnected. Kill Switch is blocking internet traffic.")
   if (state === STATES.connected) {
     var summary = connectedSummary(view.status, loc)
-    return summary !== "" ? "Proton VPN · " + summary : say(loc, "tooltip.connected", "Proton VPN connected.")
+    var line = summary !== "" ? "Proton VPN · " + summary : say(loc, "tooltip.connected", "Proton VPN connected.")
+    return view.stalled === true ? line + "\n" + say(loc, "tooltip.stalled", "Nothing is coming back through the tunnel.") : line
   }
   if (state === STATES.disconnected) return say(loc, "tooltip.disconnected", "Proton VPN disconnected.")
   if (state === STATES.connecting) return say(loc, "tooltip.connecting", "Connecting to Proton VPN…")
@@ -1454,8 +1455,8 @@ function iconCrossed(state) {
   return state === STATES.disconnected || state === STATES.signedOut
 }
 
-function iconWarning(state, blocking) {
-  return blocking === true || state === STATES.cliMissing || state === STATES.guiConflict || state === STATES.error || state === STATES.stale
+function iconWarning(state, blocking, stalled) {
+  return blocking === true || stalled === true || state === STATES.cliMissing || state === STATES.guiConflict || state === STATES.error || state === STATES.stale
 }
 
 function iconUrgent(state, blocking) {
@@ -1680,6 +1681,39 @@ function trafficSample(previous, counters, nowMs) {
   return next
 }
 
+// A tunnel can stay up while nothing comes back through it: the server is
+// gone, or the network under it is. Data going out with nothing returning
+// for STALL_AFTER_MS says so. Idle (nothing sent) is never a stall, and a
+// gap between samples (suspend) starts the watch over.
+var STALL_AFTER_MS = 30000
+var STALL_MIN_SENT_BYTES = 2048
+var STALL_MAX_GAP_MS = 20000
+
+function emptyHealth() {
+  return { rx: -1, tx: -1, atMs: 0, quietSinceMs: 0, txAtQuiet: 0, stalled: false }
+}
+
+function tunnelHealth(previous, counters, nowMs) {
+  var prev = previous || emptyHealth()
+  if (!counters) return prev
+  var restart = prev.rx < 0 || counters.rx < prev.rx || counters.tx < prev.tx || nowMs - prev.atMs > STALL_MAX_GAP_MS
+  if (restart || counters.rx > prev.rx) {
+    return { rx: counters.rx, tx: counters.tx, atMs: nowMs, quietSinceMs: nowMs, txAtQuiet: counters.tx, stalled: false }
+  }
+  return {
+    rx: counters.rx,
+    tx: counters.tx,
+    atMs: nowMs,
+    quietSinceMs: prev.quietSinceMs,
+    txAtQuiet: prev.txAtQuiet,
+    stalled: nowMs - prev.quietSinceMs >= STALL_AFTER_MS && counters.tx - prev.txAtQuiet >= STALL_MIN_SENT_BYTES
+  }
+}
+
+function stalledText(loc) {
+  return say(loc, "health.stalled", "Connected, but nothing has come back through the tunnel for 30 seconds. The server or the network under it may be down; reconnect or switch servers if it lasts.")
+}
+
 function formatBytes(value, loc) {
   var n = Number(value)
   if (!isFinite(n) || n < 0) n = 0
@@ -1744,6 +1778,10 @@ if (typeof module !== "undefined") {
     formatBytes: formatBytes,
     formatRate: formatRate,
     trafficText: trafficText,
+    emptyHealth: emptyHealth,
+    tunnelHealth: tunnelHealth,
+    stalledText: stalledText,
+    STALL_AFTER_MS: STALL_AFTER_MS,
 
     crashedAfterOutput: crashedAfterOutput,
     readSucceeded: readSucceeded,

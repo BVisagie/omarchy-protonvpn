@@ -15,6 +15,7 @@ A bar widget and keyboard-driven panel for Omarchy 4.5 or later that controls Pr
 - Shows live download and upload rates and session totals while the panel is open.
 - Changes every setting `protonvpn config` exposes, including Kill Switch while connected, after asking first.
 - Shows when Kill Switch is blocking internet traffic after a drop, so a dead connection is never a mystery.
+- Warns when the tunnel is up but nothing comes back through it, which a plain "connected" hides.
 - Sends a desktop notification when the VPN drops while the panel is closed; clicking it opens the panel. It can also reconnect for you.
 - Installs the CLI and signs you in from the panel, through Omarchy's own terminal windows.
 - Follows your Omarchy theme and language, and the panel works entirely from the keyboard.
@@ -173,7 +174,7 @@ bindd = SUPER ALT SHIFT, V, Proton VPN connect, exec, omarchy-shell io.github.BV
 - It never runs anything as root. Installing the CLI goes through Omarchy's installer, which asks for your password in its own terminal.
 - It never makes extra network requests such as “what is my IP” lookups, map tiles, or telemetry.
 - The exit IP is shown only when the Proton CLI itself returns it after connecting. Exit IP, recent targets, and traffic totals stay in memory and disappear when `omarchy-shell` exits.
-- Traffic rates come from the tunnel's own kernel counters under `/sys/class/net/`. They are read every two seconds only while the panel is open and the tunnel is up. Captured test fixtures are synthetic or redacted.
+- Traffic rates come from the tunnel's own kernel counters under `/sys/class/net/`. While the tunnel is up they are read every two seconds with the panel open and every five seconds with it closed, for the stall warning; rates are shown only in the open panel. Reading them starts no process. Captured test fixtures are synthetic or redacted.
 - Raw CLI diagnostics are capped before they are shown.
 
 Omarchy plugins run unsandboxed inside the long-lived `omarchy-shell` process with your user privileges. This plugin invokes `protonvpn` only after discovering it on `PATH`. Review the code before enabling it.
@@ -241,6 +242,8 @@ The recorded parser fixtures target CLI versions 1.0.1 through 1.0.5. Versions o
 **Daemon unavailable.** `proton-vpn-daemon` did not respond. Check the Proton CLI service, then refresh. This is a Proton CLI/service problem.
 
 **Connection timeout.** `Timed out after 10s waiting for event(s): CONNECTED` means the CLI reached Proton but the handshake did not finish. Retry or check the network. This is separate from the widget's command-queue watchdog.
+
+**"Nothing has come back through the tunnel."** The tunnel has sent data for 30 seconds without receiving any. The Proton server or the network under the VPN may be down. Reconnect, or switch servers. An idle tunnel never shows this, and the warning clears as soon as anything arrives.
 
 **Status looks outdated.** A failed or timed-out poll keeps the last good result and marks it stale. Connection and settings changes stay disabled until a fresh probe succeeds. Refresh after the network or Proton daemon recovers.
 

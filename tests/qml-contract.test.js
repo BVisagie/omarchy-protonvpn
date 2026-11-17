@@ -28,7 +28,9 @@ describe("QML scheduler contract", () => {
   })
 
   it("samples traffic and notifies only through fixed, bounded commands", () => {
-    assert.match(service, /id: trafficTimer[\s\S]{0,120}running: root\.active && root\.openPanels > 0 && root\.linkActive/)
+    assert.match(service, /id: trafficTimer\n\s*interval: root\.openPanels > 0 \? 2000 : 5000\n\s*repeat: true\n\s*running: root\.active && root\.linkActive/)
+    assert.match(service, /if \(openPanels > 0\) traffic = Model\.trafficSample\(traffic, counters, now\)/)
+    assert.match(panel, /visible: root\.view\.stalled === true[\s\S]{0,80}text: Model\.stalledText\(root\.loc\)/)
     assert.match(service, /readonly property string _statsDir: Model\.isTunnelDevice\(linkDevice\) \? "\/sys\/class\/net\/" \+ linkDevice \+ "\/statistics\/" : ""/)
     assert.doesNotMatch(service, /\/usr\/bin\/cat/)
     assert.match(service, /var command = Model\.notificationCommand\(note\)\n\s*if \(command\.length > 0\) Quickshell\.execDetached\(command\)/)

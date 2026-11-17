@@ -92,6 +92,7 @@
   "fix.signedOut": "Choose Sign in to enter your username, password, and 2FA in a terminal, or run `%1` yourself. The panel refreshes once you are signed in.",
   "fix.stale": "Use Refresh after the network, daemon, or CLI is available again. Confirm `protonvpn status` in a terminal if the widget still fails.",
   "fix.timeout": "The Proton VPN command did not finish in time. Refresh after the CLI or daemon responds again.",
+  "health.stalled": "Connected, but nothing has come back through the tunnel for 30 seconds. The server or the network under it may be down; reconnect or switch servers if it lasts.",
   "hero.blocking": "Kill Switch is blocking traffic",
   "hero.checking": "Checking status",
   "hero.cliMissing": "CLI not installed",
@@ -230,6 +231,7 @@
   "tooltip.disconnecting": "Disconnecting Proton VPN…",
   "tooltip.error": "Proton VPN error.",
   "tooltip.stale": "Proton VPN status may be outdated.",
+  "tooltip.stalled": "Nothing is coming back through the tunnel.",
   "traffic.line": "↓ %1  ↑ %2 · %3 this session",
   "value.off": "Off",
   "value.on": "On"

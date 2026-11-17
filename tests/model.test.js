@@ -811,6 +811,40 @@ describe("free plan", () => {
   })
 })
 
+describe("stalled tunnel", () => {
+  function run(samples) {
+    let health = Model.emptyHealth()
+    for (const [atMs, rx, tx] of samples) health = Model.tunnelHealth(health, { rx, tx }, atMs)
+    return health
+  }
+
+  it("flags data going out with nothing coming back for 30 seconds", () => {
+    assert.equal(run([[0, 100, 100], [5000, 100, 3000], [25000, 100, 6000]]).stalled, false)
+    assert.equal(run([[0, 100, 100], [5000, 100, 3000], [15000, 100, 5000], [30000, 100, 6000]]).stalled, true)
+  })
+
+  it("clears as soon as anything comes back", () => {
+    const stalled = run([[0, 100, 100], [15000, 100, 3000], [30000, 100, 6000]])
+    assert.equal(stalled.stalled, true)
+    assert.equal(Model.tunnelHealth(stalled, { rx: 101, tx: 6100 }, 35000).stalled, false)
+  })
+
+  it("never calls an idle tunnel stalled", () => {
+    assert.equal(run([[0, 100, 100], [15000, 100, 100], [60000, 100, 500]]).stalled, false)
+  })
+
+  it("starts over after a gap such as suspend, or reset counters", () => {
+    assert.equal(run([[0, 100, 100], [15000, 100, 3000], [600000, 100, 9000]]).stalled, false)
+    assert.equal(run([[0, 900, 900], [15000, 100, 3000], [30000, 100, 9000]]).stalled, false)
+  })
+
+  it("shows in the icon and tooltip", () => {
+    assert.equal(Model.iconWarning("connected", false, true), true)
+    assert.equal(Model.iconWarning("connected", false, false), false)
+    assert.match(Model.tooltipText({ state: "connected", status: { server: "NL#1" }, stalled: true }), /nothing is coming back/i)
+  })
+})
+
 describe("NetworkManager monitor", () => {
   it("restarts with a capped backoff", () => {
     assert.deepEqual([0, 1, 2, 5, 6, 20].map(Model.monitorRestartDelayMs), [1000, 2000, 4000, 32000, 60000, 60000])
