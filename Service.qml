@@ -108,7 +108,8 @@ Item {
   // Shared by both: ticks and attempts of the current automatic connect.
   property int _autoTicks: 0
   property int _autoAttempts: 0
-  property bool _autoConnectInternal: false
+  // "login" or "wifi" while tryAutoConnect starts a connect; jobs keep it.
+  property string _autoConnectKind: ""
 
   property int _setupChecks: 0
   property string portForwardingNotice: ""
@@ -456,7 +457,7 @@ Item {
   function handleAction(result, job) {
     // Any nmcli poll that started before this result may describe the old tunnel.
     _linkEpoch++
-    var automatic = job.auto === true || job.autoConnect === true
+    var automatic = job.auto === true || job.autoConnect !== ""
     var disconnectAfter = automatic && _disconnectAfterReconnect
     if (automatic) _disconnectAfterReconnect = false
     var classified = Model.classifyCommandResult(result, job.snapshot || snapshot(), loc)
@@ -826,10 +827,11 @@ Item {
     // Asking to disconnect while a reconnect waits means staying disconnected,
     // even though there is no tunnel to take down yet.
     var stoppedReconnect = false
-    if (!_ksInternal && (reconnectPending || autoConnectArmed)) {
-      if (_currentJob && (_currentJob.auto === true || _currentJob.autoConnect === true)) _disconnectAfterReconnect = true
+    var automaticRunning = !!_currentJob && (_currentJob.auto === true || !!_currentJob.autoConnect)
+    if (!_ksInternal && (reconnectPending || autoConnectArmed || automaticRunning || autoConnectQueued())) {
+      if (automaticRunning) _disconnectAfterReconnect = true
       cancelReconnect()
-      cancelAutoConnect()
+      cancelAutoConnect("")
       stoppedReconnect = true
     }
     if (!canToggle) {
@@ -884,12 +886,12 @@ Item {
       snapshot: snapshot(),
       options: options || ({}),
       auto: _autoInternal === true,
-      autoConnect: _autoConnectInternal === true
+      autoConnect: _autoConnectKind
     }
     if (!enqueue(job)) return false
     if (job.auto !== true) cancelReconnect()
     // Anything the user does wins over the login connect.
-    if (job.autoConnect !== true) cancelAutoConnect()
+    if (job.autoConnect === "") cancelAutoConnect("")
     lastError = ""
     actionStatus = label || ""
     if (action === "connect") state = Model.STATES.connecting
@@ -1138,7 +1140,7 @@ Item {
   // A reload discovers the current network a moment after start; that is
   // not a join, so a VPN you turned off stays off. A join later still counts.
   onWifiNameChanged: {
-    _wifiConnectPending = false
+    cancelAutoConnect("wifi")
     if (!_started || wifiName === "" || !autoConnectWifi || wifiTrusted) return
     if (_shellReloaded && Date.now() - _startedMs < 10000) return
     _autoTicks = 0
@@ -1146,13 +1148,25 @@ Item {
     _wifiConnectPending = true
   }
 
-  onWifiTrustedChanged: if (wifiTrusted) _wifiConnectPending = false
+  // A trigger that no longer holds takes its waiting connect with it.
+  onWifiTrustedChanged: if (wifiTrusted) cancelAutoConnect("wifi")
+  onAutoConnectWifiChanged: if (!autoConnectWifi) cancelAutoConnect("wifi")
+  onConnectOnLoginChanged: if (!connectOnLogin) cancelAutoConnect("login")
 
-  // Like dropQueuedReconnect, for the login and Wi-Fi connects.
-  function cancelAutoConnect() {
-    _loginConnectPending = false
-    _wifiConnectPending = false
-    var dropped = Scheduler.removeQueued(_queueState, function(job) { return job.autoConnect === true })
+  function autoConnectQueued() {
+    var queued = _queueState.jobs || []
+    for (var i = 0; i < queued.length; i++) if (queued[i].autoConnect) return true
+    return false
+  }
+
+  // Like dropQueuedReconnect, for the login and Wi-Fi connects; kind ""
+  // cancels both.
+  function cancelAutoConnect(kind) {
+    if (kind !== "wifi") _loginConnectPending = false
+    if (kind !== "login") _wifiConnectPending = false
+    var dropped = Scheduler.removeQueued(_queueState, function(job) {
+      return !!job.autoConnect && (kind === "" || job.autoConnect === kind)
+    })
     if (dropped.removed.length === 0) return
     _queueState = dropped.queue
     var snapshotView = dropped.removed[0].snapshot
@@ -1181,10 +1195,11 @@ Item {
     }
     _autoAttempts++
     var last = rememberRecent && recentTargets.length > 0 ? recentTargets[0] : null
-    _autoConnectInternal = true
+    _autoConnectKind = autoConnectWifi && _wifiConnectPending ? "wifi" : "login"
     var started = connectWith(Model.returnTarget(last, null, freePlan))
-    _autoConnectInternal = false
-    if (started) actionStatus = _wifiConnectPending
+    var kind = _autoConnectKind
+    _autoConnectKind = ""
+    if (started) actionStatus = kind === "wifi"
       ? tr("wifi.connecting", "Connecting on untrusted Wi-Fi…")
       : tr("login.connecting", "Connecting at login…")
   }

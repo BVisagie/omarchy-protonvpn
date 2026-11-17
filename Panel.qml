@@ -108,6 +108,15 @@ Panel {
   readonly property var currentTarget: view.state === Model.STATES.connected
     ? (vpn.activeTarget || Model.cleanTarget({ mode: "server", serverId: view.status.server || "" })) : null
   readonly property var quickRows: Model.quickConnectRows(vpn.favorites, vpn.recentTargets, currentTarget)
+  readonly property string barLabel: root.bar && root.bar.vertical ? "" : Model.barLabelText(root.setting("barLabel", "none"), root.view)
+
+  // Same font as BarIconButton's label.
+  TextMetrics {
+    id: barLabelMetrics
+    font.family: root.fontFamily
+    font.pixelSize: Style.bar.iconFont
+    text: root.barLabel
+  }
   readonly property var focusRows: visibleFocusRows()
   readonly property var focusOrder: visibleFocusOrder()
 
@@ -677,8 +686,10 @@ Panel {
     anchors.fill: parent
     bar: root.bar
     tooltipText: Model.tooltipText(root.view, root.loc)
-    // Vertical bars stay icon-only, like Omarchy's battery percentage.
-    labelText: root.bar && root.bar.vertical ? "" : Model.barLabelText(root.setting("barLabel", "none"), root.view)
+    // Vertical bars stay icon-only, like Omarchy's battery percentage. The
+    // slot widens to the label, as the battery widget's does.
+    labelText: root.barLabel
+    slotSize: Style.bar.iconSlot + (root.barLabel !== "" ? Math.ceil(barLabelMetrics.advanceWidth) + Style.space(8) : 0)
     iconComponent: Component {
       Item {
         ProtonVpnIcon {
