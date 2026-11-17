@@ -19,6 +19,15 @@ Panel {
   // may not exist yet, so never let the panel bind against null.
   readonly property var vpn: root.sharedVpn || localVpn
 
+  // The plugin's own strings, following Setup > Language live.
+  readonly property QtObject strings: Translations { directory: Qt.resolvedUrl("i18n") }
+  function tr(key, english) { return root.strings.t(key, english) }
+  readonly property var loc: ({
+    tr: function(key, english) { return root.strings.t(key, english) },
+    tn: function(key, count, english) { return root.strings.tn(key, count, english) },
+    num: function(value, places) { return I18n.formatNumber(value, places) }
+  })
+
   property string focusSection: "header"
   property bool cursorActive: false
   property string selectedMode: "fastest"
@@ -61,18 +70,18 @@ Panel {
   // Header controls derive visibility from state, never from a child's
   // `visible`: that reads false while the parent is hidden, so a parent bound
   // to it could never show again.
-  readonly property string heroDetailText: Model.heroDetail(view)
+  readonly property string heroDetailText: Model.heroDetail(view, root.loc)
   readonly property bool powerSwitchShown: vpn.installed && (Model.canWrite(view.state) || view.state === Model.STATES.connecting || view.state === Model.STATES.disconnecting)
   readonly property string toggleHint: {
-    if (view.state === Model.STATES.connecting) return "Connecting…"
-    if (view.state === Model.STATES.disconnecting) return "Disconnecting…"
-    if (view.state === Model.STATES.connected) return "Disconnect Proton VPN"
-    return "Connect Proton VPN"
+    if (view.state === Model.STATES.connecting) return tr("action.connecting", "Connecting…")
+    if (view.state === Model.STATES.disconnecting) return tr("action.disconnecting", "Disconnecting…")
+    if (view.state === Model.STATES.connected) return tr("toggle.disconnect", "Disconnect Proton VPN")
+    return tr("toggle.connect", "Connect Proton VPN")
   }
   readonly property var countryOptions: countryOptionList()
   readonly property var cityOptions: cityOptionList()
-  readonly property var modeOptions: Model.modeOptions(vpn.freePlan)
-  readonly property string planNotice: Model.planBlockedReason(selectedMode, vpn.freePlan)
+  readonly property var modeOptions: Model.modeOptions(vpn.freePlan, root.loc)
+  readonly property string planNotice: Model.planBlockedReason(selectedMode, vpn.freePlan, root.loc)
   readonly property bool needsCountry: Model.modeNeedsCountry(selectedMode)
   readonly property bool requiresCountry: Model.modeRequiresCountry(selectedMode)
   readonly property bool needsCity: Model.modeNeedsCity(selectedMode)
@@ -81,8 +90,6 @@ Panel {
   readonly property string copyCommand: Model.copyCommandFor(view.state)
   readonly property bool pickerOpen: modeDropdown.popupOpen || countryDropdown.popupOpen || cityDropdown.popupOpen || netshieldDropdown.popupOpen || killSwitchDropdown.popupOpen
   readonly property bool editorFocused: (serverField.visible && serverField.activeFocus) || (dnsField.visible && dnsField.activeFocus)
-  readonly property var netshieldSetting: Model.settingDef("netshield")
-  readonly property var killSwitchSetting: Model.settingDef("kill-switch")
   readonly property var toggleSettings: toggleSettingList()
   readonly property var statusPairs: statusPairList()
   readonly property bool offerSwitch: Model.shouldOfferSwitch({
@@ -121,16 +128,16 @@ Panel {
   }
 
   function countryEmptyText() {
-    if (vpn.countriesLoading) return "Loading countries…"
+    if (vpn.countriesLoading) return tr("field.loadingCountries", "Loading countries…")
     if (vpn.countriesError !== "") return vpn.countriesError
-    return "No countries found"
+    return tr("field.noCountries", "No countries found")
   }
 
   function cityEmptyText() {
-    if (vpn.citiesLoading) return "Loading cities…"
+    if (vpn.citiesLoading) return tr("field.loadingCities", "Loading cities…")
     if (vpn.citiesError !== "") return vpn.citiesError
-    if (selectedCountry === "") return "Choose a country first"
-    return "No cities found"
+    if (selectedCountry === "") return tr("field.countryFirst", "Choose a country first")
+    return tr("field.noCities", "No cities found")
   }
 
   function connectOptions() {
@@ -161,11 +168,11 @@ Panel {
     var status = view.status
     if (!status) return list
     if (view.state === Model.STATES.connected || (view.stale && status.protocol !== "")) {
-      list.push({ label: "Load", value: Model.displayLoad(status.load) })
+      list.push({ label: tr("status.load", "Load"), value: Model.displayLoad(status.load, root.loc) })
     }
-    if (status.exitIp !== "") list.push({ label: "Exit IP", value: status.exitIp })
-    var updated = Model.lastUpdatedText(view, Date.now() + nowTick)
-    if (updated !== "") list.push({ label: view.stale ? "Stale" : "Updated", value: updated })
+    if (status.exitIp !== "") list.push({ label: tr("status.exitIp", "Exit IP"), value: status.exitIp })
+    var updated = Model.lastUpdatedText(view, Date.now() + nowTick, root.loc)
+    if (updated !== "") list.push({ label: view.stale ? tr("hero.staleBadge", "Stale") : tr("status.updated", "Updated"), value: updated })
     return list
   }
 
@@ -329,7 +336,7 @@ Panel {
       vpn.disconnect()
       return
     }
-    var plan = Model.buildConnectCommand(connectOptions())
+    var plan = Model.buildConnectCommand(connectOptions(), root.loc)
     if (!plan.ok) {
       vpn.reportError(plan.message)
       if (!root.opened) root.open()
@@ -382,7 +389,7 @@ Panel {
   }
 
   function applyDns() {
-    var checked = Model.validateDnsList(dnsText)
+    var checked = Model.validateDnsList(dnsText, root.loc)
     if (!checked.ok) {
       vpn.reportError(checked.message)
       setFocusSection("dns")
@@ -399,7 +406,7 @@ Panel {
       vpn.setConfig("custom-dns", "off")
       return
     }
-    var checked = Model.validateDnsList(dnsText)
+    var checked = Model.validateDnsList(dnsText, root.loc)
     if (checked.ok) {
       applyDns()
       return
@@ -469,21 +476,6 @@ Panel {
       }
       if (toggleGrid) scrollItemIntoView(toggleGrid)
     }
-  }
-
-  function choiceOptions(def) {
-    var options = []
-    if (!def || !def.values) return options
-    for (var i = 0; i < def.values.length; i++) {
-      var value = def.values[i]
-      var option = {
-        value: value,
-        label: def.valueLabels && def.valueLabels[value] ? def.valueLabels[value] : value
-      }
-      if (def.valueDescriptions && def.valueDescriptions[value]) option.description = def.valueDescriptions[value]
-      options.push(option)
-    }
-    return options
   }
 
   implicitWidth: button.implicitWidth
@@ -581,14 +573,14 @@ Panel {
     function refresh(): string { root.refreshAll(); return "ok" }
     function connectVpn(): string { root.connectNow(); return "ok" }
     function disconnectVpn(): string { root.disconnectNow(); return "ok" }
-    function status(): string { return Model.tooltipText(root.view) }
+    function status(): string { return Model.tooltipText(root.view, root.loc) }
   }
 
   BarIconButton {
     id: button
     anchors.fill: parent
     bar: root.bar
-    tooltipText: Model.tooltipText(root.view)
+    tooltipText: Model.tooltipText(root.view, root.loc)
     iconComponent: Component {
       Item {
         ProtonVpnIcon {
@@ -678,7 +670,7 @@ Panel {
               id: hero
               width: parent.width
               title: Model.heroTitle(root.view)
-              meta: Model.heroMeta(root.view)
+              meta: Model.heroMeta(root.view, root.loc)
               // The protocol pill lives beside the toggle (trailingControl) so both
               // share one vertical center; PanelHero would pin it to the title line.
               detail: ""
@@ -758,7 +750,7 @@ Panel {
             textFormat: Text.PlainText
             visible: root.view.blocking === true
             width: parent.width
-            text: Model.KILL_SWITCH_BLOCKING_TEXT
+            text: Model.killSwitchBlockingText(root.loc)
             color: root.urgent
             font.family: root.fontFamily
             font.pixelSize: Style.font.bodySmall
@@ -769,7 +761,7 @@ Panel {
             textFormat: Text.PlainText
             visible: vpn.reconnectPending && !vpn.actionBusy
             width: parent.width
-            text: "Reconnect when the VPN drops is on; the next attempt runs shortly. Connecting or disconnecting yourself cancels it."
+            text: root.tr("reconnect.pending", "Reconnect when the VPN drops is on; the next attempt runs shortly. Connecting or disconnecting yourself cancels it.")
             color: root.dim
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
@@ -795,7 +787,7 @@ Panel {
             Text {
               textFormat: Text.PlainText
               width: parent.width
-              text: Model.degradedExplanation(root.view.state)
+              text: Model.degradedExplanation(root.view.state, root.loc)
               color: root.foreground
               font.family: root.fontFamily
               font.pixelSize: Style.font.body
@@ -805,7 +797,7 @@ Panel {
             Text {
               textFormat: Text.PlainText
               width: parent.width
-              text: Model.degradedRemediation(root.view)
+              text: Model.degradedRemediation(root.view, root.loc)
               color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.bodySmall
@@ -828,8 +820,8 @@ Panel {
             id: installRow
             visible: root.view.state === Model.STATES.cliMissing
             width: parent.width
-            title: "Install Proton VPN CLI"
-            subtitle: "Opens Omarchy's installer in a terminal."
+            title: root.tr("setup.install", "Install Proton VPN CLI")
+            subtitle: root.tr("setup.installHint", "Opens Omarchy's installer in a terminal.")
             sectionName: "install"
             onActivated: vpn.installCli()
           }
@@ -838,8 +830,8 @@ Panel {
             id: signInRow
             visible: root.view.state === Model.STATES.signedOut
             width: parent.width
-            title: "Sign in"
-            subtitle: "Opens a terminal; this plugin never collects a password."
+            title: root.tr("setup.signIn", "Sign in")
+            subtitle: root.tr("setup.signInHint", "Opens a terminal; this plugin never collects a password.")
             sectionName: "signin"
             onActivated: vpn.signIn()
           }
@@ -848,7 +840,7 @@ Panel {
             id: copyRow
             visible: root.copyCommand !== ""
             width: parent.width
-            title: "Copy command"
+            title: root.tr("setup.copy", "Copy command")
             subtitle: root.copyCommand
             sectionName: "copy"
             onActivated: vpn.copyText(root.copyCommand)
@@ -893,8 +885,8 @@ Panel {
             Button {
               id: refreshRow
               Layout.alignment: Qt.AlignVCenter | Qt.AlignRight
-              text: vpn.refreshing ? "Refreshing…" : "Refresh"
-              tooltipText: vpn.refreshing ? "Checking Proton VPN…" : "Update status, locations, and settings"
+              text: vpn.refreshing ? root.tr("refresh.running", "Refreshing…") : root.tr("refresh.label", "Refresh")
+              tooltipText: vpn.refreshing ? root.tr("refresh.runningTip", "Checking Proton VPN…") : root.tr("refresh.tip", "Update status, locations, and settings")
               hasCursor: root.cursorActive && root.focusSection === "refresh"
               foreground: root.foreground
               fontFamily: root.fontFamily
@@ -930,7 +922,7 @@ Panel {
             id: retryLocationsRow
             visible: (vpn.countriesError !== "" || vpn.citiesError !== "") && vpn.installed
             width: parent.width
-            title: "Retry locations"
+            title: root.tr("discovery.retry", "Retry locations")
             subtitle: vpn.countriesError !== "" ? vpn.countriesError : vpn.citiesError
             sectionName: "retry-locations"
             onActivated: root.retryLocations()
@@ -945,7 +937,7 @@ Panel {
             PanelSeparator { foreground: root.foreground }
 
             PanelSectionHeader {
-              text: "CONNECT"
+              text: root.tr("section.connect", "CONNECT")
               foreground: root.foreground
               fontFamily: root.fontFamily
             }
@@ -956,7 +948,7 @@ Panel {
               spacing: Style.spacing.rowGap
 
               FieldColumn {
-                FieldLabel { text: "Mode" }
+                FieldLabel { text: root.tr("field.mode", "Mode") }
                 SearchableDropdown {
                   id: modeDropdown
                   Layout.fillWidth: true
@@ -967,7 +959,7 @@ Panel {
                   foreground: root.foreground
                   fontFamily: root.fontFamily
                   hasCursor: root.cursorActive && root.focusSection === "mode"
-                  placeholderText: "Search modes"
+                  placeholderText: root.tr("field.searchModes", "Search modes")
                   onHovered: function(on) {
                     modeTip.tipHovered = on
                     if (on) root.setFocusSection("mode")
@@ -979,7 +971,7 @@ Panel {
 
                   SettingTip {
                     id: modeTip
-                    text: Model.modeTooltip(root.selectedMode)
+                    text: Model.modeTooltip(root.selectedMode, root.loc)
                     tipCursor: root.keyboardNavigation && modeDropdown.hasCursor
                     tipPopupOpen: modeDropdown.popupOpen
                   }
@@ -988,7 +980,7 @@ Panel {
 
               FieldColumn {
                 fieldVisible: root.needsCountry
-                FieldLabel { text: "Country" }
+                FieldLabel { text: root.tr("field.country", "Country") }
                 SearchableDropdown {
                   id: countryDropdown
                   Layout.fillWidth: true
@@ -999,8 +991,8 @@ Panel {
                   foreground: root.foreground
                   fontFamily: root.fontFamily
                   hasCursor: root.cursorActive && root.focusSection === "country"
-                  placeholderText: "Search countries"
-                  triggerLabel: Model.connectFieldTriggerLabel("country", { mode: root.selectedMode, country: root.selectedCountry })
+                  placeholderText: root.tr("field.searchCountries", "Search countries")
+                  triggerLabel: Model.connectFieldTriggerLabel("country", { mode: root.selectedMode, country: root.selectedCountry }, root.loc)
                   emptyText: root.countryEmptyText()
                   onHovered: function(on) {
                     countryTip.tipHovered = on
@@ -1013,7 +1005,7 @@ Panel {
 
                   SettingTip {
                     id: countryTip
-                    text: Model.connectFieldTooltip("country")
+                    text: Model.connectFieldTooltip("country", root.loc)
                     tipCursor: root.keyboardNavigation && countryDropdown.hasCursor
                     tipPopupOpen: countryDropdown.popupOpen
                   }
@@ -1022,7 +1014,7 @@ Panel {
 
               FieldColumn {
                 fieldVisible: root.needsCity
-                FieldLabel { text: "City" }
+                FieldLabel { text: root.tr("field.city", "City") }
                 SearchableDropdown {
                   id: cityDropdown
                   Layout.fillWidth: true
@@ -1033,12 +1025,12 @@ Panel {
                   foreground: root.foreground
                   fontFamily: root.fontFamily
                   hasCursor: root.cursorActive && root.focusSection === "city"
-                  placeholderText: "Search cities"
+                  placeholderText: root.tr("field.searchCities", "Search cities")
                   triggerLabel: Model.connectFieldTriggerLabel("city", {
                     mode: root.selectedMode,
                     country: root.selectedCountry,
                     loading: vpn.citiesLoading && vpn.citiesCountry === root.selectedCountry
-                  })
+                  }, root.loc)
                   emptyText: root.cityEmptyText()
                   enabled: root.selectedCountry !== ""
                   onHovered: function(on) {
@@ -1052,7 +1044,7 @@ Panel {
 
                   SettingTip {
                     id: cityTip
-                    text: Model.connectFieldTooltip("city")
+                    text: Model.connectFieldTooltip("city", root.loc)
                     tipCursor: root.keyboardNavigation && cityDropdown.hasCursor
                     tipPopupOpen: cityDropdown.popupOpen
                   }
@@ -1061,7 +1053,7 @@ Panel {
 
               FieldColumn {
                 fieldVisible: root.needsServer
-                FieldLabel { text: "Server ID" }
+                FieldLabel { text: root.tr("field.server", "Server ID") }
                 TextField {
                   id: serverField
                   Layout.fillWidth: true
@@ -1078,7 +1070,7 @@ Panel {
                   onAccepted: root.offerSwitch ? root.switchNow() : root.tryToggle()
 
                   SettingTip {
-                    text: Model.connectFieldTooltip("server")
+                    text: Model.connectFieldTooltip("server", root.loc)
                     tipHovered: serverField.hovered
                     tipCursor: root.keyboardNavigation && root.cursorActive && root.focusSection === "server"
                   }
@@ -1102,8 +1094,8 @@ Panel {
               visible: root.offerSwitch
               width: parent.width
               bordered: true
-              text: Model.switchLabel(root.connectOptions())
-              tooltipText: "Reconnect with these choices. Proton replaces the current connection."
+              text: Model.switchLabel(root.connectOptions(), root.loc)
+              tooltipText: root.tr("connect.switchTip", "Reconnect with these choices. Proton replaces the current connection.")
               hasCursor: root.cursorActive && root.focusSection === "switch"
               foreground: root.foreground
               fontFamily: root.fontFamily
@@ -1113,7 +1105,7 @@ Panel {
 
             PanelSectionHeader {
               visible: root.recentChoices.length > 0
-              text: "RECENT"
+              text: root.tr("section.recent", "RECENT")
               foreground: root.foreground
               fontFamily: root.fontFamily
             }
@@ -1135,7 +1127,7 @@ Panel {
                   Layout.fillWidth: true
                   Layout.preferredWidth: 1
                   text: modelData.label
-                  tooltipText: "Reconnect using " + modelData.label + (modelData.detail ? " · last used " + modelData.detail : "")
+                  tooltipText: modelData.detail ? root.tr("recent.tipDetail", "Reconnect using %1 · last used %2").arg(modelData.label).arg(modelData.detail) : root.tr("recent.tip", "Reconnect using %1").arg(modelData.label)
                   hasCursor: root.cursorActive && root.focusSection === "recent:" + index
                   foreground: root.foreground
                   fontFamily: root.fontFamily
@@ -1158,14 +1150,14 @@ Panel {
               spacing: Style.spacing.labelGap
 
               PanelSectionHeader {
-                text: "SETTINGS"
+                text: root.tr("section.settings", "SETTINGS")
                 foreground: root.foreground
                 fontFamily: root.fontFamily
               }
 
               SettingHelp {
                 width: parent.width
-                text: Model.SETTINGS_SECTION_HELP
+                text: Model.settingsSectionHelp(root.loc)
               }
             }
 
@@ -1188,19 +1180,19 @@ Panel {
               rowSpacing: Style.spacing.labelGap
 
               FieldColumn {
-                FieldLabel { text: "NetShield" }
+                FieldLabel { text: Model.settingLabel("netshield", root.loc) }
                 SearchableDropdown {
                   id: netshieldDropdown
                   Layout.fillWidth: true
                   Layout.preferredWidth: 0
                   showLabel: false
                   value: vpn.configDisplayValue("netshield")
-                  options: root.choiceOptions(root.netshieldSetting)
+                  options: Model.settingChoiceOptions("netshield", root.loc)
                   foreground: root.foreground
                   fontFamily: root.fontFamily
                   hasCursor: root.cursorActive && root.focusSection === "config:netshield"
-                  placeholderText: "NetShield"
-                  emptyText: vpn.configUpgrade.netshield ? "Upgrade to enable" : "No values"
+                  placeholderText: Model.settingLabel("netshield", root.loc)
+                  emptyText: vpn.configUpgrade.netshield ? root.tr("config.upgrade", "Upgrade to enable") : root.tr("config.noValues", "No values")
                   onHovered: function(on) {
                     netshieldTip.tipHovered = on
                     if (on) root.setFocusSection("config:netshield")
@@ -1209,7 +1201,7 @@ Panel {
 
                   SettingTip {
                     id: netshieldTip
-                    text: Model.settingTooltip("netshield")
+                    text: Model.settingTooltip("netshield", root.loc)
                     tipCursor: root.keyboardNavigation && netshieldDropdown.hasCursor
                     tipPopupOpen: netshieldDropdown.popupOpen
                   }
@@ -1219,7 +1211,7 @@ Panel {
                   textFormat: Text.PlainText
                   visible: vpn.configUpgrade.netshield === true
                   Layout.fillWidth: true
-                  text: "Upgrade to enable. Changing it still sends the CLI command so Proton can report the restriction."
+                  text: root.tr("config.upgradeHint", "Upgrade to enable. Changing it still sends the CLI command so Proton can report the restriction.")
                   color: root.dim
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
@@ -1228,18 +1220,18 @@ Panel {
               }
 
               FieldColumn {
-                FieldLabel { text: "Kill Switch" }
+                FieldLabel { text: Model.settingLabel("kill-switch", root.loc) }
                 SearchableDropdown {
                   id: killSwitchDropdown
                   Layout.fillWidth: true
                   Layout.preferredWidth: 0
                   showLabel: false
                   value: vpn.configDisplayValue("kill-switch")
-                  options: root.choiceOptions(root.killSwitchSetting)
+                  options: Model.settingChoiceOptions("kill-switch", root.loc)
                   foreground: root.foreground
                   fontFamily: root.fontFamily
                   hasCursor: root.cursorActive && root.focusSection === "config:kill-switch"
-                  placeholderText: "Kill Switch"
+                  placeholderText: Model.settingLabel("kill-switch", root.loc)
                   onHovered: function(on) {
                     killSwitchTip.tipHovered = on
                     if (on) root.setFocusSection("config:kill-switch")
@@ -1248,7 +1240,7 @@ Panel {
 
                   SettingTip {
                     id: killSwitchTip
-                    text: Model.settingTooltip("kill-switch")
+                    text: Model.settingTooltip("kill-switch", root.loc)
                     tipCursor: root.keyboardNavigation && killSwitchDropdown.hasCursor
                     tipPopupOpen: killSwitchDropdown.popupOpen
                   }
@@ -1258,7 +1250,7 @@ Panel {
                   textFormat: Text.PlainText
                   visible: Model.isVpnActive(root.view) && root.ksConfirmValue === ""
                   Layout.fillWidth: true
-                  text: "Changing it briefly reconnects the VPN."
+                  text: root.tr("killSwitch.reconnectHint", "Changing it briefly reconnects the VPN.")
                   color: root.dim
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
@@ -1276,7 +1268,7 @@ Panel {
               Text {
                 textFormat: Text.PlainText
                 width: parent.width
-                text: Model.killSwitchConfirmText(root.ksConfirmValue, Model.returnTarget(vpn.activeTarget, root.view.status, vpn.freePlan))
+                text: Model.killSwitchConfirmText(root.ksConfirmValue, Model.returnTarget(vpn.activeTarget, root.view.status, vpn.freePlan), root.loc)
                 color: root.foreground
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
@@ -1287,7 +1279,7 @@ Panel {
                 spacing: Style.spacing.rowGap
 
                 Button {
-                  text: "Cancel"
+                  text: root.tr("action.cancel", "Cancel")
                   bordered: true
                   hasCursor: root.cursorActive && root.focusSection === "ks-cancel"
                   foreground: root.foreground
@@ -1297,7 +1289,7 @@ Panel {
                 }
 
                 Button {
-                  text: "Reconnect and change"
+                  text: root.tr("killSwitch.confirmButton", "Reconnect and change")
                   bordered: true
                   hasCursor: root.cursorActive && root.focusSection === "ks-confirm"
                   foreground: root.foreground
@@ -1337,7 +1329,7 @@ Panel {
                   Layout.fillWidth: true
                   implicitHeight: Style.spacing.controlHeight
                   titleSize: Style.font.body
-                  label: "Custom DNS"
+                  label: Model.settingLabel("custom-dns", root.loc)
                   checked: Model.parseCustomDnsValue(vpn.configDisplayValue("custom-dns")).enabled
                   hasCursor: root.cursorActive && root.focusSection === "config:custom-dns"
                   foreground: root.foreground
@@ -1350,7 +1342,7 @@ Panel {
 
                   SettingTip {
                     id: customDnsTip
-                    text: Model.settingTooltip("custom-dns")
+                    text: Model.settingTooltip("custom-dns", root.loc)
                     tipCursor: root.keyboardNavigation && customDnsToggle.hasCursor
                   }
                 }
@@ -1526,7 +1518,7 @@ Panel {
     Layout.fillWidth: true
     implicitHeight: Style.spacing.controlHeight
     titleSize: Style.font.body
-    label: setting.label || ""
+    label: Model.settingLabel(key, root.loc)
     checked: String(currentValue) === "on"
     hasCursor: root.cursorActive && root.focusSection === "config:" + key
     foreground: root.foreground
@@ -1538,7 +1530,7 @@ Panel {
     onClicked: vpn.setConfig(key, checked ? "off" : "on")
 
     SettingTip {
-      text: Model.settingTooltip(toggleSettingRow.key)
+      text: Model.settingTooltip(toggleSettingRow.key, root.loc)
       tipHovered: toggleSettingRow.tipHovered
       tipCursor: root.keyboardNavigation && toggleSettingRow.hasCursor
     }

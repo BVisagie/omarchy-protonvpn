@@ -6,7 +6,7 @@
   <img src="docs/images/panel-fastest.png" alt="Proton VPN panel in a green Omarchy theme, connected to NL#553 in Amsterdam on the fastest server, with Zurich selected under RECENT" width="32%">
 </p>
 
-A bar widget and keyboard-driven panel for Omarchy 4 (Quattro) that controls Proton VPN through Proton's official Linux CLI, `protonvpn`. Every connection and setting change goes through that CLI. The plugin does not reimplement Proton protocols, call Proton's private APIs, handle your credentials, edit Proton's files, or make network requests of its own. [Privacy](#privacy) lists exactly what it runs.
+A bar widget and keyboard-driven panel for Omarchy 4.5 or later that controls Proton VPN through Proton's official Linux CLI, `protonvpn`. Every connection and setting change goes through that CLI. The plugin does not reimplement Proton protocols, call Proton's private APIs, handle your credentials, edit Proton's files, or make network requests of its own. [Privacy](#privacy) lists exactly what it runs.
 
 ## What it does
 
@@ -17,11 +17,11 @@ A bar widget and keyboard-driven panel for Omarchy 4 (Quattro) that controls Pro
 - Shows when Kill Switch is blocking internet traffic after a drop, so a dead connection is never a mystery.
 - Sends a desktop notification when the VPN drops while the panel is closed; clicking it opens the panel. It can also reconnect for you.
 - Installs the CLI and signs you in from the panel, through Omarchy's own terminal windows.
-- Follows your Omarchy theme, and the panel works entirely from the keyboard.
+- Follows your Omarchy theme and language, and the panel works entirely from the keyboard.
 
 ## What you need
 
-- Omarchy 4 (Quattro).
+- Omarchy 4.5 or later, which provides the translation catalogs the panel reads.
 - The official Proton VPN CLI, `proton-vpn-cli`, signed in to your Proton account. See [Install the Proton VPN CLI](#install-the-proton-vpn-cli).
 - NetworkManager, Python 3 at `/usr/bin/python3`, `which`, and `wl-clipboard`, all normally present on Omarchy. Without Python 3 no command can run.
 
@@ -126,6 +126,12 @@ With port forwarding on, the panel repeats what the CLI says after connecting: w
 On Proton's free plan the CLI only connects to the fastest server. When `protonvpn config list` marks settings "Upgrade to enable", the panel labels the other modes as needing a paid plan and explains that instead of running a command that would fail. A Kill Switch change or an automatic reconnect then returns to the fastest server.
 
 Some rows show a short caption. Hover a CONNECT or SETTINGS control, or move onto it with `j` / `k`, for a Proton-sourced tooltip. That copy is paraphrased from Proton’s official support articles and the Linux CLI guide. It is not a substitute for those pages, and the widget does not fetch Proton’s website.
+
+## Languages
+
+The panel follows **Setup → Language** live, without a shell restart. Its strings live in `i18n/`, one JSON catalog per Omarchy language code. Only English ships today; a missing string falls back to English. To add a language, copy `i18n/en.json` to the language's code (for example `i18n/de.json`) and translate the values, keeping each `%1` placeholder. Proton CLI output, server names, and diagnostics stay as the CLI wrote them.
+
+After changing a string in the code, run `node tests/tools/build_catalog.js` to rewrite `i18n/en.json`; the tests fail until it matches.
 
 ## Widget settings
 
@@ -255,6 +261,7 @@ That script runs Node and Python tests, `omarchy plugin validate .` when Omarchy
 - `ProtonVpnIcon.qml` draws the Proton VPN mark in the current theme color for the bar and panel.
 - `Model.js` contains parsers, validation, compatibility detection, and display rules covered by captured fixtures.
 - `scripts/run_bounded.py` is a local process supervisor and lock; it does not implement VPN behavior or make network requests.
+- `i18n/` holds the translation catalogs; `tests/tools/build_catalog.js` regenerates `en.json` from the code.
 
 ## License
 

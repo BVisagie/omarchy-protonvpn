@@ -794,7 +794,20 @@ describe("free plan", () => {
     assert.equal(free.length, Model.CONNECTION_MODES.length)
     assert.equal(free.find((option) => option.value === "country").description, "Needs a paid plan")
     assert.equal(free.find((option) => option.value === "fastest").description, Model.modeDef("fastest").description)
-    assert.deepEqual(Model.modeOptions(false), Model.CONNECTION_MODES)
+    assert.deepEqual(Model.modeOptions(false), Model.CONNECTION_MODES.map((def) => ({ value: def.value, label: def.label, description: def.description })))
+  })
+
+  it("words tables and messages through the catalog when one is given", () => {
+    const loc = { tr: (key, english) => "[" + key + "]", num: (value) => "n" + value }
+    assert.equal(Model.modeLabel("country", loc), "[mode.country.label]")
+    assert.equal(Model.settingLabel("kill-switch", loc), "[setting.kill-switch.label]")
+    assert.equal(Model.configValueLabel("netshield", "malware-only", loc), "[setting.netshield.value.malware-only]")
+    assert.equal(Model.settingChoiceOptions("kill-switch", loc)[1].description, "[setting.kill-switch.valueDescription.standard]")
+    assert.equal(Model.displayLoad(23.4, loc), "n23%")
+    assert.equal(Model.relativeTime(1000, 61000, loc), "[age.minutes]")
+    assert.equal(Model.fill("%1 of %2", "a", "b"), "a of b")
+    assert.equal(Model.formatBytes(1500), "1.5 KB")
+    assert.equal(Model.formatBytes(1500, { num: (value, places) => value.toFixed(places).replace(".", ",") }), "1,5 KB")
   })
 })
 

@@ -51,7 +51,7 @@ describe("QML scheduler contract", () => {
   it("shows the Kill Switch block and colors the icon for it", () => {
     assert.match(service, /blocking: root\.killSwitchBlocking/)
     assert.match(service, /linkKillSwitch = link\.killSwitch === true/)
-    assert.match(panel, /visible: root\.view\.blocking === true[\s\S]{0,80}text: Model\.KILL_SWITCH_BLOCKING_TEXT/)
+    assert.match(panel, /visible: root\.view\.blocking === true[\s\S]{0,80}text: Model\.killSwitchBlockingText\(root\.loc\)/)
     assert.doesNotMatch(panel, /Model\.icon(?:Urgent|Warning)\((?:root\.)?view\.state\)/)
   })
 
@@ -75,9 +75,9 @@ describe("QML scheduler contract", () => {
   it("treats a disconnect request during reconnect backoff as cancellation", () => {
     const disconnect = service.indexOf("function disconnect()")
     const cancel = service.indexOf("cancelReconnect()", disconnect)
-    const notConnected = service.indexOf('reportError("Proton VPN is not connected.")', disconnect)
+    const notConnected = service.indexOf('reportError(tr("action.notConnected", "Proton VPN is not connected."))', disconnect)
     assert.ok(disconnect !== -1 && cancel !== -1 && cancel < notConnected)
-    assert.match(service, /if \(stoppedReconnect\) return noteReconnectStopped\(\)\n\s*reportError\("Proton VPN is not connected\."\)/)
+    assert.match(service, /if \(stoppedReconnect\) return noteReconnectStopped\(\)\n\s*reportError\(tr\("action\.notConnected", "Proton VPN is not connected\."\)\)/)
     assert.match(service, /if \(disconnectAfter\) Qt\.callLater\(disconnect\)/)
   })
 
@@ -93,7 +93,7 @@ describe("QML scheduler contract", () => {
     const run = service.indexOf("return runAction(plan.command", connect)
     assert.ok(connect !== -1 && blocked !== -1 && run !== -1 && blocked < run)
     assert.match(service, /_ksTarget = Model\.returnTarget\(activeTarget, status, freePlan\)/)
-    assert.match(panel, /readonly property var modeOptions: Model\.modeOptions\(vpn\.freePlan\)/)
+    assert.match(panel, /readonly property var modeOptions: Model\.modeOptions\(vpn\.freePlan, root\.loc\)/)
   })
 
   it("asks before a Kill Switch change drops a live tunnel", () => {
@@ -153,6 +153,13 @@ describe("QML scheduler contract", () => {
     assert.doesNotMatch(service, /nmcli[\s\S]{0,100}(connection", "down"|connection", "up")/)
   })
 
+  it("words text through the plugin's own catalog", () => {
+    for (const file of [service, panel]) {
+      assert.match(file, /Translations \{ directory: Qt\.resolvedUrl\("i18n"\) \}/)
+      assert.match(file, /num: function\(value, places\) \{ return I18n\.formatNumber\(value, places\) \}/)
+    }
+  })
+
   it("keeps the declared trust boundary in the runtime service", () => {
     assert.doesNotMatch(service, /\b(?:curl|wget)\b|FileView|settings\.json|keyring|pkill|sudo|pkexec/)
     assert.doesNotMatch(service, /"connection", "(?:up|down|delete|modify)"/)
@@ -207,14 +214,14 @@ describe("QML scheduler contract", () => {
     assert.match(panel, /component SettingTip: PanelToolTip/)
     assert.match(panel, /property bool keyboardNavigation: false/)
     assert.match(panel, /tipCursor: root\.keyboardNavigation && modeDropdown\.hasCursor/)
-    assert.match(panel, /Model\.modeTooltip\(root\.selectedMode\)/)
-    assert.match(panel, /Model\.connectFieldTooltip\("country"\)/)
-    assert.match(panel, /Model\.connectFieldTooltip\("city"\)/)
-    assert.match(panel, /Model\.connectFieldTooltip\("server"\)/)
-    assert.match(panel, /Model\.settingTooltip\("netshield"\)/)
-    assert.match(panel, /Model\.settingTooltip\("kill-switch"\)/)
-    assert.match(panel, /Model\.settingTooltip\("custom-dns"\)/)
-    assert.match(panel, /Model\.settingTooltip\(toggleSettingRow\.key\)/)
+    assert.match(panel, /Model\.modeTooltip\(root\.selectedMode, root\.loc\)/)
+    assert.match(panel, /Model\.connectFieldTooltip\("country", root\.loc\)/)
+    assert.match(panel, /Model\.connectFieldTooltip\("city", root\.loc\)/)
+    assert.match(panel, /Model\.connectFieldTooltip\("server", root\.loc\)/)
+    assert.match(panel, /Model\.settingTooltip\("netshield", root\.loc\)/)
+    assert.match(panel, /Model\.settingTooltip\("kill-switch", root\.loc\)/)
+    assert.match(panel, /Model\.settingTooltip\("custom-dns", root\.loc\)/)
+    assert.match(panel, /Model\.settingTooltip\(toggleSettingRow\.key, root\.loc\)/)
     assert.doesNotMatch(panel, /Model\.modeSummary\(/)
     assert.doesNotMatch(panel, /Model\.settingSummary\(/)
     assert.doesNotMatch(panel, /Model\.connectFieldSummary\(/)
@@ -225,11 +232,11 @@ describe("QML scheduler contract", () => {
     const connectGrid = panel.match(/id: connectRow[\s\S]*?id: modeDropdown/)
     assert.ok(connectGrid, "CONNECT grid must contain the mode dropdown")
     assert.doesNotMatch(connectGrid[0], /SettingHelp/)
-    const settingsChoice = panel.match(/FieldLabel \{ text: "NetShield" \}[\s\S]*?id: netshieldDropdown/)
+    const settingsChoice = panel.match(/FieldLabel \{ text: Model\.settingLabel\("netshield", root\.loc\) \}[\s\S]*?id: netshieldDropdown/)
     assert.ok(settingsChoice, "SETTINGS grid must place NetShield label before its dropdown")
     assert.doesNotMatch(settingsChoice[0], /SettingHelp/)
-    assert.match(panel, /FieldLabel \{ text: "Kill Switch" \}/)
-    assert.doesNotMatch(panel, /FieldLabel \{ text: "Kill switch" \}/)
+    assert.match(panel, /FieldLabel \{ text: Model\.settingLabel\("kill-switch", root\.loc\) \}/)
+    assert.equal(require("../Model.js").settingLabel("kill-switch"), "Kill Switch")
   })
 
   it("uses the same title type for choice labels as Toggle titles", () => {
@@ -245,7 +252,7 @@ describe("QML scheduler contract", () => {
   it("offers an in-place switch for changed CONNECT choices while connected", () => {
     assert.match(panel, /readonly property bool offerSwitch: Model\.shouldOfferSwitch\(/)
     assert.match(panel, /id: switchButton\s*visible: root\.offerSwitch/)
-    assert.match(panel, /text: Model\.switchLabel\(root\.connectOptions\(\)\)/)
+    assert.match(panel, /text: Model\.switchLabel\(root\.connectOptions\(\), root\.loc\)/)
     assert.match(panel, /onClicked: root\.switchNow\(\)/)
     assert.match(panel, /if \(offerSwitch\) rows\.push\(\["switch"\]\)/)
     assert.match(panel, /focusSection === "switch"\) switchNow\(\)/)

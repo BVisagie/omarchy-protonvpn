@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import qs.Commons
 import "Model.js" as Model
 import "Scheduler.js" as Scheduler
 
@@ -13,6 +14,16 @@ Item {
   // False keeps a panel-local fallback instance idle while the shared Omarchy
   // service is available.
   property bool active: true
+
+  // The plugin's own strings, following Setup > Language live. Messages kept
+  // in properties are worded once, when they happen.
+  readonly property QtObject strings: Translations { directory: Qt.resolvedUrl("i18n") }
+  function tr(key, english) { return root.strings.t(key, english) }
+  readonly property var loc: ({
+    tr: function(key, english) { return root.strings.t(key, english) },
+    tn: function(key, count, english) { return root.strings.tn(key, count, english) },
+    num: function(value, places) { return I18n.formatNumber(value, places) }
+  })
 
   property string state: Model.STATES.checking
   property var status: Model.emptyStatus()
@@ -72,7 +83,7 @@ Item {
   property var traffic: Model.emptyTraffic()
   property string _trafficDevice: ""
   property string _trafficServer: ""
-  readonly property string trafficText: Model.trafficText(traffic)
+  readonly property string trafficText: Model.trafficText(traffic, loc)
   // Options behind the current connection, when this session made it.
   property var activeTarget: null
 
@@ -324,7 +335,7 @@ Item {
       cliVersion = ""
       cliCommands = []
       compatibilityWarning = ""
-      applyView(Model.classifyProbe({ cliMissing: true, exitCode: result.exitCode, stdout: "", stderr: "", timedOut: result.timedOut === true }))
+      applyView(Model.classifyProbe({ cliMissing: true, exitCode: result.exitCode, stdout: "", stderr: "", timedOut: result.timedOut === true }, null, loc))
       return
     }
     enqueue({ type: "help", command: ["protonvpn", "--help"], timeout: 5000 })
@@ -337,12 +348,12 @@ Item {
       ? Model.parseCliHelp(result.stdout) : Model.parseCliHelp("")
     cliVersion = info.version
     cliCommands = info.commands
-    compatibilityWarning = Model.compatibilityWarning(info)
+    compatibilityWarning = Model.compatibilityWarning(info, loc)
   }
 
   function handleStatus(result) {
     if (!installed) {
-      applyView(Model.classifyProbe({ cliMissing: true }))
+      applyView(Model.classifyProbe({ cliMissing: true }, null, loc))
       return
     }
     var previous = snapshot()
@@ -351,7 +362,7 @@ Item {
       stdout: result.stdout,
       stderr: result.stderr,
       timedOut: result.timedOut === true
-    }, previous)
+    }, previous, loc)
     if (next.state === Model.STATES.connected) {
       if (previous.status && previous.status.server === next.status.server) next.status.exitIp = String(previous.status.exitIp || "")
       if (linkConfirmed() && linkServer !== "" && next.status.server === "") next.status.server = linkServer
@@ -373,9 +384,9 @@ Item {
     _linkEpoch++
     var disconnectAfter = job.auto === true && _disconnectAfterReconnect
     if (job.auto === true) _disconnectAfterReconnect = false
-    var classified = Model.classifyCommandResult(result, job.snapshot || snapshot())
+    var classified = Model.classifyCommandResult(result, job.snapshot || snapshot(), loc)
     if (classified.stateHint === Model.STATES.guiConflict || classified.stateHint === Model.STATES.signedOut) {
-      applyView(Model.classifyProbe(result, job.snapshot || snapshot()))
+      applyView(Model.classifyProbe(result, job.snapshot || snapshot(), loc))
       actionStatus = ""
       delayedRefresh.restart()
       abortKillSwitch(classified.message)
@@ -384,7 +395,7 @@ Item {
     }
     if (classified.ok) {
       lastError = ""
-      actionStatus = classified.message || (job.action === "disconnect" ? "Disconnected." : "Connected.")
+      actionStatus = classified.message || (job.action === "disconnect" ? tr("action.disconnected", "Disconnected.") : tr("action.connected", "Connected."))
       if (job.action === "disconnect") {
         linkActive = false
         linkServer = ""
@@ -405,14 +416,14 @@ Item {
         if (outcome.location !== "") nextStatus.location = outcome.location
         nextStatus.exitIp = outcome.exitIp
         applyView(connectedView(nextStatus))
-        var target = Model.recentTarget(job.options || {}, outcome)
+        var target = Model.recentTarget(job.options || {}, outcome, loc)
         activeTarget = target
         recentTargets = Model.recordRecentTarget(recentTargets, target, 3)
-        portForwardingNotice = Model.portForwardingNotice(outcome.portForwarding)
+        portForwardingNotice = Model.portForwardingNotice(outcome.portForwarding, loc)
         noteLink(true, true)
         if (job.auto === true) {
           cancelReconnect()
-          actionStatus = "Reconnected after the drop."
+          actionStatus = tr("action.reconnected", "Reconnected after the drop.")
           if (disconnectAfter) Qt.callLater(disconnect)
         }
       }
@@ -448,9 +459,9 @@ Item {
   }
 
   function handleDiscovery(result, job) {
-    var classified = Model.classifyCommandResult(result, snapshot())
+    var classified = Model.classifyCommandResult(result, snapshot(), loc)
     if (classified.stateHint === Model.STATES.signedOut || classified.stateHint === Model.STATES.guiConflict) {
-      applyView(Model.classifyProbe(result, snapshot()))
+      applyView(Model.classifyProbe(result, snapshot(), loc))
       countriesLoading = false
       citiesLoading = false
       return
@@ -458,21 +469,21 @@ Item {
     if (job.kind === "countries") {
       countriesLoading = false
       if (!Model.readSucceeded(result)) {
-        countriesError = classified.message || "Could not list countries."
+        countriesError = classified.message || tr("discovery.countriesFailed", "Could not list countries.")
         if (countries.length > 0) discoveryStale = true
         return
       }
       var countriesCrashed = Model.crashedAfterOutput(result)
-      var parsedCountries = Model.parseCountries(result.stdout)
+      var parsedCountries = Model.parseCountries(result.stdout, loc)
       if (!parsedCountries.ok || (countriesCrashed && parsedCountries.countries.length === 0)) {
-        countriesError = countriesCrashed ? (classified.message || "Could not list countries.") : parsedCountries.message
+        countriesError = countriesCrashed ? (classified.message || tr("discovery.countriesFailed", "Could not list countries.")) : parsedCountries.message
         if (countriesCrashed && countries.length > 0) discoveryStale = true
         return
       }
       countries = parsedCountries.countries
       // A table has no end marker, so crashed output is shown but fetched again.
       countriesLoaded = !countriesCrashed
-      countriesError = parsedCountries.countries.length === 0 ? "No countries returned." : ""
+      countriesError = parsedCountries.countries.length === 0 ? tr("discovery.noCountries", "No countries returned.") : ""
       discoveryStale = false
       return
     }
@@ -480,15 +491,15 @@ Item {
       if (String(job.country || "") !== citiesCountry) return
       citiesLoading = false
       if (!Model.readSucceeded(result)) {
-        citiesError = classified.message || "Could not list cities."
+        citiesError = classified.message || tr("discovery.citiesFailed", "Could not list cities.")
         if (cities.length > 0) discoveryStale = true
         return
       }
       var citiesCrashed = Model.crashedAfterOutput(result)
-      var parsedCities = Model.parseCities(result.stdout)
+      var parsedCities = Model.parseCities(result.stdout, loc)
       if (!parsedCities.ok || (citiesCrashed && parsedCities.cities.length === 0)) {
         if (citiesCrashed) {
-          citiesError = classified.message || "Could not list cities."
+          citiesError = classified.message || tr("discovery.citiesFailed", "Could not list cities.")
           if (cities.length > 0) discoveryStale = true
           return
         }
@@ -502,29 +513,29 @@ Item {
         cache[citiesCountry] = parsedCities.cities
         _citiesCache = cache
       }
-      citiesError = parsedCities.cities.length === 0 ? "No cities returned for that country." : ""
+      citiesError = parsedCities.cities.length === 0 ? tr("discovery.noCities", "No cities returned for that country.") : ""
       discoveryStale = false
     }
   }
 
   function handleConfig(result, job) {
-    var classified = Model.classifyCommandResult(result, snapshot())
+    var classified = Model.classifyCommandResult(result, snapshot(), loc)
     if (classified.stateHint === Model.STATES.signedOut || classified.stateHint === Model.STATES.guiConflict) {
       pendingSetting = ""
       pendingValue = ""
-      applyView(Model.classifyProbe(result, snapshot()))
+      applyView(Model.classifyProbe(result, snapshot(), loc))
       if (job.kind === "set") abortKillSwitch(classified.message)
       return
     }
     if (job.kind === "list") {
       if (!Model.readSucceeded(result)) {
-        configError = classified.message || "Could not read Proton VPN settings."
+        configError = classified.message || tr("config.readFailed", "Could not read Proton VPN settings.")
         return
       }
       var configCrashed = Model.crashedAfterOutput(result)
-      var parsed = Model.parseConfigList(result.stdout)
+      var parsed = Model.parseConfigList(result.stdout, loc)
       if (!parsed.ok || (configCrashed && !Model.configListComplete(parsed))) {
-        configError = configCrashed ? (classified.message || "Could not read Proton VPN settings.") : parsed.message
+        configError = configCrashed ? (classified.message || tr("config.readFailed", "Could not read Proton VPN settings.")) : parsed.message
         return
       }
       configValues = parsed.settings
@@ -538,8 +549,8 @@ Item {
     if (job.kind === "set") {
       if (classified.ok) {
         lastError = ""
-        actionStatus = classified.message || "Setting updated."
-        restartNotice = job.restart === true ? Model.restartNotice(job.setting) : ""
+        actionStatus = classified.message || tr("config.updated", "Setting updated.")
+        restartNotice = job.restart === true ? Model.restartNotice(job.setting, loc) : ""
         if (/please establish a new VPN connection/i.test(classified.detail)) restartNotice = classified.detail
       } else {
         lastError = classified.message
@@ -683,10 +694,10 @@ Item {
 
   function connectWith(options) {
     if (!canToggle) {
-      reportError(Model.writeBlockedReason(state) || "Proton VPN is not ready to connect.")
+      reportError(Model.writeBlockedReason(state, loc) || tr("blocked.connect", "Proton VPN is not ready to connect."))
       return false
     }
-    var blocked = Model.planBlockedReason((options || {}).mode, freePlan)
+    var blocked = Model.planBlockedReason((options || {}).mode, freePlan, loc)
     if (blocked !== "") {
       reportError(blocked)
       // The plan is inferred from cached settings; re-read them in case the
@@ -694,12 +705,12 @@ Item {
       refreshConfig()
       return false
     }
-    var plan = Model.buildConnectCommand(options)
+    var plan = Model.buildConnectCommand(options, loc)
     if (!plan.ok) {
       reportError(plan.message)
       return false
     }
-    return runAction(plan.command, "connect", "Connecting…", options)
+    return runAction(plan.command, "connect", tr("action.connecting", "Connecting…"), options)
   }
 
   function disconnect() {
@@ -713,21 +724,21 @@ Item {
     }
     if (!canToggle) {
       if (stoppedReconnect) return noteReconnectStopped()
-      reportError(Model.writeBlockedReason(state) || "Proton VPN is not ready to disconnect.")
+      reportError(Model.writeBlockedReason(state, loc) || tr("blocked.disconnect", "Proton VPN is not ready to disconnect."))
       return false
     }
     if (state !== Model.STATES.connected) {
       if (stoppedReconnect) return noteReconnectStopped()
-      reportError("Proton VPN is not connected.")
+      reportError(tr("action.notConnected", "Proton VPN is not connected."))
       return false
     }
-    return runAction(["protonvpn", "disconnect"], "disconnect", "Disconnecting…", null)
+    return runAction(["protonvpn", "disconnect"], "disconnect", tr("action.disconnecting", "Disconnecting…"), null)
   }
 
   function noteReconnectStopped() {
     actionStatus = _disconnectAfterReconnect
-      ? "Disconnecting once the current reconnect attempt finishes…"
-      : "Automatic reconnect cancelled."
+      ? tr("reconnect.disconnectAfter", "Disconnecting once the current reconnect attempt finishes…")
+      : tr("reconnect.cancelled", "Automatic reconnect cancelled.")
     actionStatusTimer.restart()
     return true
   }
@@ -741,7 +752,7 @@ Item {
   function runAction(command, action, label, options) {
     if (!installed || actionRunning) return false
     if (!Model.canWrite(state)) {
-      reportError(Model.writeBlockedReason(state))
+      reportError(Model.writeBlockedReason(state, loc))
       return false
     }
     var job = {
@@ -764,12 +775,12 @@ Item {
 
   function setConfig(settingName, value, extra) {
     if (!canChangeSettings) {
-      reportError(Model.writeBlockedReason(state) || "Proton VPN is not ready for settings changes.")
+      reportError(Model.writeBlockedReason(state, loc) || tr("blocked.settings", "Proton VPN is not ready for settings changes."))
       return false
     }
     var ctx = extra || ({})
     ctx.connected = Model.isVpnActive(snapshot())
-    var plan = Model.buildConfigSetCommand(settingName, value, ctx)
+    var plan = Model.buildConfigSetCommand(settingName, value, ctx, loc)
     if (!plan.ok) {
       reportError(plan.message)
       return false
@@ -777,7 +788,7 @@ Item {
     pendingSetting = settingName
     pendingValue = value
     lastError = ""
-    actionStatus = "Updating " + settingName + "…"
+    actionStatus = tr("config.updating", "Updating %1…").arg(Model.settingLabel(settingName, loc))
     if (!enqueue({ type: "config", kind: "set", setting: settingName, restart: plan.restart === true, command: plan.command, timeout: 20000, priority: true })) {
       pendingSetting = ""
       pendingValue = ""
@@ -792,10 +803,10 @@ Item {
   function setKillSwitch(value) {
     if (!Model.isVpnActive(snapshot())) return setConfig("kill-switch", value)
     if (!canChangeSettings) {
-      reportError(Model.writeBlockedReason(state) || "Proton VPN is not ready for settings changes.")
+      reportError(Model.writeBlockedReason(state, loc) || tr("blocked.settings", "Proton VPN is not ready for settings changes."))
       return false
     }
-    var check = Model.buildConfigSetCommand("kill-switch", value, { connected: false })
+    var check = Model.buildConfigSetCommand("kill-switch", value, { connected: false }, loc)
     if (!check.ok) {
       reportError(check.message)
       return false
@@ -813,7 +824,7 @@ Item {
     }
     pendingSetting = "kill-switch"
     pendingValue = _ksValue
-    actionStatus = "Changing Kill Switch…"
+    actionStatus = tr("killSwitch.changing", "Changing Kill Switch…")
     return true
   }
 
@@ -824,7 +835,7 @@ Item {
     if (step === "disconnecting" && next === "idle") {
       pendingSetting = ""
       pendingValue = ""
-      reportError("Kill Switch unchanged: " + String(message || "the VPN did not disconnect."))
+      reportError(tr("killSwitch.unchanged", "Kill Switch unchanged: %1").arg(String(message || tr("killSwitch.noDisconnect", "the VPN did not disconnect."))))
       return
     }
     if (next === "setting") {
@@ -832,19 +843,19 @@ Item {
       var started = setConfig("kill-switch", _ksValue)
       _ksInternal = false
       if (!started) advanceKillSwitch("setFailed", lastError)
-      else actionStatus = "Changing Kill Switch…"
+      else actionStatus = tr("killSwitch.changing", "Changing Kill Switch…")
       return
     }
     if (next === "reconnecting") {
-      if (event === "setFailed") _ksError = "Kill Switch unchanged: " + String(message || "Proton VPN rejected the change.")
+      if (event === "setFailed") _ksError = tr("killSwitch.unchanged", "Kill Switch unchanged: %1").arg(String(message || tr("killSwitch.rejected", "Proton VPN rejected the change.")))
       _ksInternal = true
       var reconnecting = connectWith(_ksTarget)
       _ksInternal = false
       if (!reconnecting) {
         ksStep = "idle"
-        reportError(_ksError !== "" ? _ksError : "Kill Switch changed, but reconnecting failed. Connect again.")
+        reportError(_ksError !== "" ? _ksError : tr("killSwitch.reconnectFailed", "Kill Switch changed, but reconnecting failed. Connect again."))
       } else {
-        actionStatus = "Reconnecting to " + Model.returnTargetLabel(_ksTarget) + "…"
+        actionStatus = tr("reconnect.to", "Reconnecting to %1…").arg(Model.returnTargetLabel(_ksTarget, loc))
       }
       return
     }
@@ -852,10 +863,10 @@ Item {
       var carried = _ksError
       _ksError = ""
       _ksTarget = null
-      if (event === "connectFailed") reportError(carried !== "" ? carried + " Reconnecting also failed. Connect again." : "Kill Switch changed, but reconnecting failed. Connect again.")
+      if (event === "connectFailed") reportError(carried !== "" ? carried + " " + tr("killSwitch.alsoFailed", "Reconnecting also failed. Connect again.") : tr("killSwitch.reconnectFailed", "Kill Switch changed, but reconnecting failed. Connect again."))
       else if (carried !== "") reportError(carried)
       else {
-        actionStatus = "Kill Switch changed and reconnected."
+        actionStatus = tr("killSwitch.done", "Kill Switch changed and reconnected.")
         actionStatusTimer.restart()
       }
     }
@@ -871,8 +882,10 @@ Item {
     _ksError = ""
     pendingSetting = ""
     pendingValue = ""
-    var where = step === "disconnecting" ? "Kill Switch unchanged" : "Kill Switch change interrupted and the VPN is disconnected"
-    reportError(where + ": " + String(message || "Proton VPN stopped responding."))
+    var why = String(message || tr("killSwitch.stopped", "Proton VPN stopped responding."))
+    reportError(step === "disconnecting"
+      ? tr("killSwitch.unchanged", "Kill Switch unchanged: %1").arg(why)
+      : tr("killSwitch.interrupted", "Kill Switch change interrupted and the VPN is disconnected: %1").arg(why))
   }
 
   // Decide whether a tunnel change deserves a desktop notification. Our own
@@ -898,7 +911,7 @@ Item {
       reconnecting: reconnectPending,
       server: status.server || linkServer,
       location: status.location
-    }))
+    }, loc))
   }
 
   function sendNotification(note) {
@@ -959,8 +972,8 @@ Item {
 
   function giveUpReconnect() {
     cancelReconnect()
-    reportError("Could not reconnect after the VPN dropped. Connect again.")
-    sendNotification(Model.reconnectFailedNotification({ setting: notificationSetting, openPanels: openPanels, killSwitch: linkKillSwitch }))
+    reportError(tr("reconnect.gaveUp", "Could not reconnect after the VPN dropped. Connect again."))
+    sendNotification(Model.reconnectFailedNotification({ setting: notificationSetting, openPanels: openPanels, killSwitch: linkKillSwitch }, loc))
   }
 
   function tryReconnect() {
@@ -979,7 +992,7 @@ Item {
     _autoInternal = true
     var started = connectWith(_reconnectTarget)
     _autoInternal = false
-    if (started) actionStatus = "Reconnecting to " + Model.returnTargetLabel(_reconnectTarget) + "…"
+    if (started) actionStatus = tr("reconnect.to", "Reconnecting to %1…").arg(Model.returnTargetLabel(_reconnectTarget, loc))
     else scheduleNextReconnect()
   }
 
@@ -1004,7 +1017,7 @@ Item {
   }
 
   function reportError(errorMessage) {
-    lastError = String(errorMessage || "Proton VPN command failed")
+    lastError = String(errorMessage || tr("failure.generic", "Proton VPN command failed."))
     actionStatus = lastError
     actionStatusTimer.restart()
   }
@@ -1013,7 +1026,7 @@ Item {
     var text = String(value || "")
     if (text === "") return
     Quickshell.execDetached(["wl-copy", "--", text])
-    actionStatus = "Copied"
+    actionStatus = tr("action.copied", "Copied")
     actionStatusTimer.restart()
   }
 
@@ -1021,12 +1034,12 @@ Item {
   // installed and signed in, or give up after six minutes.
   function installCli() {
     Quickshell.execDetached(Model.INSTALL_LAUNCHER)
-    watchSetup("Installing in a terminal…")
+    watchSetup(tr("setup.installing", "Installing in a terminal…"))
   }
 
   function signIn() {
     Quickshell.execDetached(Model.SIGNIN_LAUNCHER)
-    watchSetup("Signing in from a terminal…")
+    watchSetup(tr("setup.signingIn", "Signing in from a terminal…"))
   }
 
   function watchSetup(label) {

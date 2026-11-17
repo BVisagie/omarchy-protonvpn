@@ -37,7 +37,7 @@ else
 fi
 
 echo "==> QML files present"
-for file in Panel.qml Service.qml ProtonVpnIcon.qml Model.js Scheduler.js scripts/run_bounded.py; do
+for file in Panel.qml Service.qml ProtonVpnIcon.qml Model.js Scheduler.js scripts/run_bounded.py i18n/en.json; do
   [[ -s "$file" ]] || fail "missing $file"
 done
 
