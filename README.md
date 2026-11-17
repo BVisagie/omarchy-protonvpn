@@ -130,7 +130,7 @@ On Proton's free plan the CLI only connects to the fastest server. When `protonv
 
 While disconnected, the bottom of SETTINGS offers **Sign out**. It asks first, with Cancel selected, then runs `protonvpn signout`, which also clears the CLI's own settings. Favorites stay. Disconnect first if you are connected.
 
-The bottom of SETTINGS shows the installed Proton VPN CLI version and the latest one your package database knows, with when that database was last synced. It reads that locally. **Check for updates** asks your Arch mirrors instead, through pacman's `checkupdates`, only when you press it. When a newer version exists, **Update** opens Omarchy's own system update in a terminal, which asks for your password there; Arch does not support updating one package alone, so the CLI updates with everything else.
+The bottom of SETTINGS shows the installed Proton VPN CLI version and the latest one your package database knows, with how old that database is. It reads that locally. **Check** asks your Arch mirrors instead, through pacman's `checkupdates`, only when you press it. When a newer version exists, **Update** opens Omarchy's own system update in a terminal, which asks for your password there; Arch does not support updating one package alone, so the CLI updates with everything else.
 
 Some rows show a short caption. Hover a CONNECT or SETTINGS control, or move onto it with `j` / `k`, for a Proton-sourced tooltip. That copy is paraphrased from Proton’s official support articles and the Linux CLI guide. It is not a substitute for those pages, and the widget does not fetch Proton’s website.
 
@@ -209,8 +209,8 @@ omarchy-shell io.github.BVisagie.protonvpn statusJson | jq -r .server
 - Proton CLI runs take a lock in your runtime directory (`$XDG_RUNTIME_DIR/omarchy-protonvpn-<Hyprland session>.lock`, or `omarchy-protonvpn.lock` outside Hyprland), so two shells never run the CLI at the same time. The lock file is empty, and a new one per login also tells the widget a login from a shell reload.
 - A read-only `nmcli monitor` stream says when NetworkManager changes anything, and a read-only `nmcli connection show --active` probe then reads the `proton0`-style tunnel. With the stream running, the probe otherwise runs once a minute; without it, every `linkWatchIntervalSec`. Neither creates, changes, or removes NetworkManager connections.
 - It never collects, logs, stores, or passes Proton credentials. The sign-in terminal passes only your username to the CLI.
-- It never runs anything as root. Installing the CLI goes through Omarchy's installer, which asks for your password in its own terminal.
-- It never makes extra network requests such as “what is my IP” lookups, map tiles, or telemetry. The one exception is **Check for updates** in SETTINGS, which runs pacman's `checkupdates` against your Arch mirrors only when you press it.
+- It never runs anything as root. Installing or updating the CLI goes through Omarchy's installer or system update, each of which asks for your password in its own terminal.
+- It never makes extra network requests such as “what is my IP” lookups, map tiles, or telemetry. The one exception is **Check** in SETTINGS, which runs pacman's `checkupdates` against your Arch mirrors only when you press it.
 - The exit IP is shown only when the Proton CLI itself returns it after connecting. Exit IP and traffic totals stay in memory and disappear when `omarchy-shell` exits.
 - Quickshell keeps the name of the Wi-Fi network you are on in memory, from NetworkManager. The plugin acts on it only with `autoConnectWifi` on, and saves the names you trust in its `shell.json` entry.
 - Favorites, and recent places only with `rememberRecent` on, are saved as connection choices (mode, country code, city, server ID) in this widget's own entry in `~/.config/omarchy/shell.json`, through Omarchy's plugin API. If you keep your dotfiles in a public repository, that file shows where you connect.
@@ -227,7 +227,7 @@ Supervised by `scripts/run_bounded.py`, which caps output, enforces a deadline, 
 - `protonvpn` subcommands: `--help`, `status`, `connect`, `disconnect`, `countries list`, `cities list`, `config list`, `config set`, and `signout`
 - `/usr/bin/nmcli -t -e no -f NAME,TYPE,DEVICE,STATE,TIMESTAMP connection show --active`
 - `/usr/bin/pacman -Q proton-vpn-cli`, `/usr/bin/pacman -Sddp --print-format "%n %r %v" proton-vpn-cli`, and `/usr/bin/stat -c %Y /var/lib/pacman/sync/<repo>.db`, local reads of the installed and latest known CLI version, at most once a minute when the panel opens
-- `/usr/bin/checkupdates --nocolor`, only when you press **Check for updates**; it asks your Arch mirrors in a temporary database of its own
+- `/usr/bin/checkupdates --nocolor`, only when you press **Check**; it asks your Arch mirrors in a temporary database of its own
 
 Read in place, without starting a process: `/sys/class/net/<device>/statistics/rx_bytes` and `tx_bytes`, only for a `proton0`-style device.
 

@@ -886,6 +886,10 @@ describe("status pairs", () => {
     assert.equal(Model.connectButtonLabel("connected", { mode: "country", country: "DO" }, countries), "Switch to Dominican Republic")
     assert.equal(Model.connectButtonLabel("connecting", city, countries), "Connecting…")
     assert.equal(Model.connectButtonLabel("disconnected", { mode: "fastest" }, []), "Connect to Fastest server")
+    assert.equal(Model.connectButtonLabel("disconnected", { mode: "city", country: "DO", city: "" }, countries), "Connect")
+    assert.equal(Model.connectButtonLabel("disconnected", { mode: "country", country: "" }, countries), "Connect")
+    assert.equal(Model.connectButtonLabel("connected", { mode: "server", serverId: "" }, countries), "Switch")
+    assert.equal(Model.targetName({ mode: "city", country: "DO", city: "" }, countries), "Dominican Republic")
   })
 })
 
@@ -1032,7 +1036,7 @@ describe("CLI package version", () => {
     const now = Date.UTC(2026, 10, 17)
     const day = 86400000
     const repo = Model.cliVersionInfo({ installed: "1.0.5-1", repo: "extra", repoVersion: "1.0.5-1", repoSyncedMs: now - 26 * day }, now)
-    assert.deepEqual([repo.latest, repo.source, repo.newer, repo.status], ["1.0.5-1", "extra, synced 26d ago", false, "Up to date"])
+    assert.deepEqual([repo.latest, repo.source, repo.newer, repo.status], ["1.0.5-1", "extra, database dated 26d ago", false, "Up to date"])
     const mirror = Model.cliVersionInfo({ installed: "1.0.5-1", repo: "extra", repoVersion: "1.0.5-1", mirrorVersion: "1.0.6-1", mirrorCheckedMs: now }, now)
     assert.deepEqual([mirror.latest, mirror.source, mirror.newer, mirror.status], ["1.0.6-1", "mirrors, checked just now", true, "Update available"])
     const none = Model.cliVersionInfo({ installed: "1.0.5-1", mirrorVersion: "", mirrorCheckedMs: now }, now)

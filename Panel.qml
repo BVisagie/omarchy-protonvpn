@@ -102,7 +102,7 @@ Panel {
   readonly property bool showConnectButton: offerSwitch || view.state === Model.STATES.disconnected || view.state === Model.STATES.connecting
   readonly property string refreshTip: {
     if (vpn.refreshing) return tr("refresh.runningTip", "Checking Proton VPN…")
-    var updated = Model.lastUpdatedText(view, Date.now() + nowTick, root.loc)
+    var updated = Model.relativeTime(view.lastUpdatedMs, Date.now() + nowTick, root.loc)
     return updated !== ""
       ? tr("refresh.tipUpdated", "Updated %1. Refresh status, locations, and settings (r)").arg(updated)
       : tr("refresh.tip", "Refresh status, locations, and settings (r)")
@@ -782,7 +782,9 @@ Panel {
     open: root.opened
     focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(520))
-    contentHeight: panel.fittedContentHeight(column.implicitHeight, Style.space(640))
+    // Omarchy still limits the panel to the screen; 720 lets the open panel
+    // fit without scrolling in all but its fullest states.
+    contentHeight: panel.fittedContentHeight(column.implicitHeight, Style.space(720))
 
     PanelKeyCatcher {
       id: keyCatcher
@@ -1557,7 +1559,7 @@ Panel {
                     elide: Text.ElideRight
                     font.family: root.fontFamily
                     font.pixelSize: Style.font.body
-                    color: root.signOutConfirm || vpn.cliCheckError !== "" ? root.urgent : root.foreground
+                    color: root.signOutConfirm ? root.urgent : root.foreground
                     text: root.signOutConfirm
                       ? root.tr("signout.ask", "Sign out?")
                       : (root.cliInfo.installed !== "" ? root.tr("cli.installedVersion", "Proton VPN CLI %1").arg(root.cliInfo.installed) : "")
@@ -1570,11 +1572,12 @@ Panel {
                       elide: Text.ElideRight
                       font.family: root.fontFamily
                       font.pixelSize: Style.font.body
-                      color: !root.signOutConfirm && root.cliInfo.newer && vpn.cliCheckError === "" ? Color.accent : root.dim
+                      color: root.signOutConfirm ? root.dim
+                        : (vpn.cliCheckError !== "" ? root.urgent : (root.cliInfo.newer ? Color.accent : root.dim))
                       text: root.signOutConfirm
                         ? root.tr("signout.favoritesStay", "Favorites stay.")
                         : (vpn.cliCheckError !== "" ? "· " + vpn.cliCheckError
-                          : (root.cliInfo.newer ? "· " + root.tr("cli.available", "%1 available").arg(root.cliInfo.latest)
+                          : (root.cliInfo.newer ? "→ " + root.cliInfo.latest
                             : (root.cliInfo.status !== "" ? "· " + root.cliInfo.status : "")))
                     }
                   }
@@ -1615,7 +1618,7 @@ Panel {
                     bordered: hot
                     verticalPadding: Style.space(3)
                     text: root.tr("signout.title", "Sign out")
-                    tooltipText: root.tr("signout.short", "Clears the CLI's settings. Favorites stay.")
+                    tooltipText: root.tr("signout.tip", "Clears the CLI's settings; signing in again needs your password and 2FA. Favorites stay.")
                     hasCursor: hot
                     foreground: hot ? root.urgent : root.foreground
                     fontFamily: root.fontFamily

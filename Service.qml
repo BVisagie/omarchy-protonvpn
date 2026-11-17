@@ -1310,6 +1310,7 @@ Item {
   function readCliPackage() {
     if (!active || !installed || packageProcess.running || Date.now() - _pkgReadMs < 60000) return
     _pkgReadMs = Date.now()
+    cliCheckError = ""
     runPackageStep("installed", ["/usr/bin/pacman", "-Q", Model.CLI_PACKAGE], 5000)
   }
 
@@ -1355,9 +1356,9 @@ Item {
     Quickshell.execDetached(Model.UPDATE_LAUNCHER)
     actionStatus = tr("cli.updating", "Updating in a terminal…")
     actionStatusTimer.restart()
-    // Read the installed version again once the panel next opens.
+    // Read the installed version again once the panel next opens; the mirror
+    // answer goes stale by itself once the CLI or the database catches up.
     _pkgReadMs = 0
-    cliMirrorCheckedMs = 0
   }
 
   function configDisplayValue(key) {

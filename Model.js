@@ -1284,7 +1284,7 @@ function targetName(target, countries, loc) {
   var mode = String(t.mode || "fastest")
   var country = countryName(t.country, countries)
   if (mode === "country") return country
-  if (mode === "city") return country !== "" ? t.city + " · " + country : String(t.city || "")
+  if (mode === "city") return String(t.city || "") === "" ? country : (country !== "" ? t.city + " · " + country : String(t.city))
   if (mode === "server") return String(t.serverId || "")
   return modeLabel(mode, loc) + (country !== "" ? " · " + country : "")
 }
@@ -1548,6 +1548,10 @@ function trafficPairs(traffic, loc) {
 // "Switch to Zurich · Switzerland" while connected.
 function connectButtonLabel(state, options, countries, loc) {
   if (state === STATES.connecting) return say(loc, "action.connecting", "Connecting…")
+  // Until the choices name a place the CLI accepts, say only what it does.
+  if (!buildConnectCommand(options).ok) {
+    return state === STATES.connected ? say(loc, "connect.switch", "Switch") : say(loc, "connect.connect", "Connect")
+  }
   var name = targetName(options, countries, loc)
   return state === STATES.connected
     ? fill(say(loc, "connect.switchTo", "Switch to %1"), name)
@@ -1971,7 +1975,7 @@ function cliVersionInfo(pkg, nowMs, loc) {
   var source = ""
   if (mirror) source = fill(say(loc, "cli.fromMirrors", "mirrors, checked %1"), relativeTime(p.mirrorCheckedMs, nowMs, loc))
   else if (p.repoVersion) source = p.repoSyncedMs > 0
-    ? fill(say(loc, "cli.fromRepo", "%1, synced %2"), p.repo, relativeTime(p.repoSyncedMs, nowMs, loc))
+    ? fill(say(loc, "cli.fromRepo", "%1, database dated %2"), p.repo, relativeTime(p.repoSyncedMs, nowMs, loc))
     : String(p.repo || "")
   return {
     installed: installed,
