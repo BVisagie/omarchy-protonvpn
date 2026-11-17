@@ -13,7 +13,8 @@ describe("QML scheduler contract", () => {
 
   it("uses one Omarchy service instead of constructing a service per monitor", () => {
     assert.match(panel, /root\.bar\.shell\.serviceFor\(root\.moduleName\)/)
-    assert.match(panel, /onVpnChanged: \{[\s\S]{0,200}if \(vpn\) vpn\.setSettings\(root\.settings\)/)
+    assert.match(panel, /onVpnChanged: \{[\s\S]{0,200}pushSettings\(\)/)
+    assert.match(panel, /if \(vpn && root\.settings && Object\.keys\(root\.settings\)\.length > 0\) vpn\.setSettings\(root\.settings\)/)
     assert.doesNotMatch(panel, /Service\s*\{\s*id:\s*vpn/)
     assert.match(service, /running: root\.active && root\.installed/)
   })
@@ -144,6 +145,11 @@ describe("QML scheduler contract", () => {
     assert.match(service, /id: commandProcess/)
     assert.doesNotMatch(service, /id: statusProcess/)
     assert.doesNotMatch(service, /id: actionProcess/)
+  })
+
+  it("drops waiting automatic connects once the tunnel is up", () => {
+    assert.match(service, /if \(now\) \{\n(?:\s*\/\/[^\n]*\n)*\s*cancelReconnect\(\)\n\s*cancelAutoConnect\(""\)/)
+    assert.match(service, /_autoAttempts >= 3\) \{\n\s*cancelAutoConnect\(""\)/)
   })
 
   it("widens the bar slot to fit the label", () => {

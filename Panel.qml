@@ -416,6 +416,12 @@ Panel {
     else if (name.indexOf("star:") === 0) starQuick(parseInt(name.substring(5), 10))
   }
 
+  // Omarchy gives a panel its bar before its settings; an empty object in
+  // between would briefly switch every opt-in off in the shared service.
+  function pushSettings() {
+    if (vpn && root.settings && Object.keys(root.settings).length > 0) vpn.setSettings(root.settings)
+  }
+
   // With rememberRecent on, CONNECT starts where the last connection went.
   // Once, when the bar's settings first arrive; they come after load.
   property bool draftRestored: false
@@ -581,7 +587,7 @@ Panel {
       countedVpn = null
       trackOpen(opened)
     }
-    if (vpn) vpn.setSettings(root.settings)
+    pushSettings()
   }
   Component.onDestruction: trackOpen(false)
 
@@ -604,11 +610,11 @@ Panel {
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
   onSettingsChanged: {
-    if (vpn) vpn.setSettings(root.settings)
+    pushSettings()
     restoreDraft()
   }
   Component.onCompleted: {
-    if (vpn) vpn.setSettings(root.settings)
+    pushSettings()
     restoreDraft()
   }
   onSelectedModeChanged: {

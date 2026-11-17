@@ -165,6 +165,7 @@
   "protect.killSwitchOff": "Kill Switch off",
   "protect.killSwitchOn": "Kill Switch on",
   "protect.netShield": "NetShield: %1",
+  "protect.netShieldBypassed": "NetShield off (custom DNS)",
   "protect.netShieldOff": "NetShield off",
   "protect.secureCore": "Secure Core",
   "quick.activeTip": "You are connected here. Press f to star or unstar it.",

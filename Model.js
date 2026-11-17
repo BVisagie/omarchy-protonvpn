@@ -1519,7 +1519,9 @@ function protectionsText(configValues, view, loc) {
       : say(loc, "protect.killSwitchOn", "Kill Switch on"))
   }
   if (values.netshield !== undefined && values.netshield !== "") {
-    parts.push(values.netshield === "off"
+    // Custom DNS sends queries past Proton, so NetShield cannot filter them.
+    if (values.netshield !== "off" && parseCustomDnsValue(values["custom-dns"]).enabled) parts.push(say(loc, "protect.netShieldBypassed", "NetShield off (custom DNS)"))
+    else parts.push(values.netshield === "off"
       ? say(loc, "protect.netShieldOff", "NetShield off")
       : fill(say(loc, "protect.netShield", "NetShield: %1"), configValueLabel("netshield", values.netshield, loc)))
   }

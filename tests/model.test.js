@@ -870,6 +870,8 @@ describe("protections line", () => {
       "Kill Switch off · NetShield off")
     assert.equal(Model.protectionsText({ "kill-switch": "standard", netshield: "" }, null), "Kill Switch on")
     assert.equal(Model.protectionsText({}, connected), "")
+    assert.equal(Model.protectionsText({ "kill-switch": "off", netshield: "malware-only", "custom-dns": "on [1.1.1.1]" }, null), "Kill Switch off · NetShield off (custom DNS)")
+    assert.equal(Model.protectionsText({ "kill-switch": "off", netshield: "malware-only", "custom-dns": "off" }, null), "Kill Switch off · NetShield: Malware only")
   })
 })
 

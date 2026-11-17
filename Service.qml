@@ -1026,7 +1026,11 @@ Item {
     var previous = _notifiedActive
     _notifiedActive = now
     var dropped = previous === true && !now && selfInitiated !== true && ksStep === "idle"
-    if (now) cancelReconnect()
+    if (now) {
+      // The tunnel is up; a waiting automatic connect would only replace it.
+      cancelReconnect()
+      cancelAutoConnect("")
+    }
     else if (dropped && reconnectOnDrop) armReconnect()
     sendNotification(Model.linkNotification(previous, now, {
       setting: notificationSetting,
@@ -1185,8 +1189,7 @@ Item {
     _autoTicks++
     var done = state === Model.STATES.connected || linkActive || state === Model.STATES.signedOut || state === Model.STATES.cliMissing
     if (done || _autoTicks > 18 || _autoAttempts >= 3) {
-      _loginConnectPending = false
-      _wifiConnectPending = false
+      cancelAutoConnect("")
       return
     }
     if (state !== Model.STATES.disconnected || !canToggle) {
