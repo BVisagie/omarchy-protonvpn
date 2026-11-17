@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.4.0 — 2026-11-17
+
+- Fold SETTINGS behind one row (`s`), so the panel opens on status and CONNECT.
+- Replace RECENT with **QUICK CONNECT**: the current connection, starred favorites, and recent places, by full name. A star, or `f`, keeps a place as a favorite in the widget's `shell.json` entry. A new `rememberRecent` setting also saves recent places there and starts CONNECT on the last one.
+- Show how long you have been connected, what protects the connection (Kill Switch, NetShield, Secure Core), and protocols by their proper names.
+- Warn in the panel, icon, and tooltip when the tunnel is up but nothing has come back through it for 30 seconds. It never reconnects on its own.
+- Add `connectOnLogin`, which connects at the first shell start after login but not when the shell reloads, and `autoConnectWifi`, which connects on Wi-Fi networks you have not trusted. Both wait for Proton, try at most three times, and give way to anything you do.
+- Add a `barLabel` setting to show the country, server, or city beside the bar icon.
+- Sign out from SETTINGS while disconnected, after asking.
+- Add IPC functions `connectFastest`, `connectTo`, `toggleVpn`, and `statusJson`.
+- Follow Omarchy's language setting: every string goes through translation catalogs in `i18n/`, and numbers follow the language. English ships first. Requires Omarchy 4.5.
+- Follow NetworkManager events through `nmcli monitor` instead of polling every 4 seconds, with a poll once a minute as a safety net. `linkWatchIntervalSec` now applies only while events are unavailable.
+- Read traffic counters in place instead of starting `python3` and `cat` for every sample.
+- Fix a successful command with no output reporting "Command failed".
+- Keep agent skill folders out of the plugin, validate the files a clone would contain, and add `scripts/load-smoke.sh`, which loads the widget in a throwaway Quickshell instance.
+
 ## 1.3.0 — 2026-10-05
 
 - Show when Kill Switch is blocking internet traffic after a drop. The panel reads Proton's `pvpn-killswitch` connection from the existing `nmcli` probe, turns the bar icon urgent, and says how to restore access. Drop notifications say so too.
