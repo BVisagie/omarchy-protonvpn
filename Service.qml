@@ -1328,7 +1328,7 @@ Item {
     var ok = result.exitCode === 0 && result.timedOut !== true
     if (step === "installed") {
       cliInstalled = ok ? Model.parseInstalledPackage(result.stdout) : ""
-      runPackageStep("repo", ["/usr/bin/pacman", "-Sp", "--print-format", "%r %v", Model.CLI_PACKAGE], 5000)
+      runPackageStep("repo", ["/usr/bin/pacman", "-Sddp", "--print-format", "%n %r %v", Model.CLI_PACKAGE], 5000)
     } else if (step === "repo") {
       var sync = ok ? Model.parseSyncPackage(result.stdout) : null
       cliRepo = sync ? sync.repo : ""

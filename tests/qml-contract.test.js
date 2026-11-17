@@ -204,7 +204,7 @@ describe("QML scheduler contract", () => {
 
   it("reads the CLI's package versions locally and asks the mirrors only on request", () => {
     assert.match(service, /\["\/usr\/bin\/pacman", "-Q", Model\.CLI_PACKAGE\]/)
-    assert.match(service, /\["\/usr\/bin\/pacman", "-Sp", "--print-format", "%r %v", Model\.CLI_PACKAGE\]/)
+    assert.match(service, /\["\/usr\/bin\/pacman", "-Sddp", "--print-format", "%n %r %v", Model\.CLI_PACKAGE\]/)
     assert.match(service, /\["\/usr\/bin\/stat", "-c", "%Y", "\/var\/lib\/pacman\/sync\/" \+ sync\.repo \+ "\.db"\]/)
     // checkupdates appears once, in the function only the panel's button calls.
     assert.equal(service.match(/checkupdates/g).length >= 1, true)

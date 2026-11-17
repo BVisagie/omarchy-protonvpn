@@ -1867,7 +1867,7 @@ function runnerLockName(signature) {
 // The CLI package: installed, in the local package database, and on the
 // mirrors when the user asks. Formats are pacman's own, not localized:
 //   pacman -Q proton-vpn-cli                      -> "proton-vpn-cli 1.0.5-1"
-//   pacman -Sp --print-format "%r %v" proton-vpn-cli -> "extra 1.0.5-1"
+//   pacman -Sddp --print-format "%n %r %v" proton-vpn-cli -> "proton-vpn-cli extra 1.0.5-1"
 //   checkupdates                                  -> "proton-vpn-cli 1.0.5-1 -> 1.0.6-1"
 var PACKAGE_VERSION = /^(?:\d+:)?[0-9A-Za-z.+~_]+(?:-[0-9.]+)?$/
 
@@ -1876,10 +1876,16 @@ function parseInstalledPackage(raw) {
   return parts.length === 2 && parts[0] === CLI_PACKAGE && PACKAGE_VERSION.test(parts[1]) ? parts[1] : ""
 }
 
+// Only the CLI's own line: without -dd pacman also lists dependencies.
 function parseSyncPackage(raw) {
-  var parts = String(raw || "").trim().split("\n")[0].trim().split(/\s+/)
-  if (parts.length !== 2 || !/^[a-z0-9._-]{1,32}$/.test(parts[0]) || !PACKAGE_VERSION.test(parts[1])) return null
-  return { repo: parts[0], version: parts[1] }
+  var lines = String(raw || "").split("\n")
+  for (var i = 0; i < lines.length; i++) {
+    var parts = lines[i].trim().split(/\s+/)
+    if (parts.length !== 3 || parts[0] !== CLI_PACKAGE) continue
+    if (!/^[a-z0-9._-]{1,32}$/.test(parts[1]) || !PACKAGE_VERSION.test(parts[2])) return null
+    return { repo: parts[1], version: parts[2] }
+  }
+  return null
 }
 
 // null when checkupdates lists nothing for the CLI.

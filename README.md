@@ -226,7 +226,7 @@ Supervised by `scripts/run_bounded.py`, which caps output, enforces a deadline, 
 - `/usr/bin/which protonvpn` to find the CLI
 - `protonvpn` subcommands: `--help`, `status`, `connect`, `disconnect`, `countries list`, `cities list`, `config list`, `config set`, and `signout`
 - `/usr/bin/nmcli -t -e no -f NAME,TYPE,DEVICE,STATE,TIMESTAMP connection show --active`
-- `/usr/bin/pacman -Q proton-vpn-cli`, `/usr/bin/pacman -Sp --print-format "%r %v" proton-vpn-cli`, and `/usr/bin/stat -c %Y /var/lib/pacman/sync/<repo>.db`, local reads of the installed and latest known CLI version, at most once a minute when the panel opens
+- `/usr/bin/pacman -Q proton-vpn-cli`, `/usr/bin/pacman -Sddp --print-format "%n %r %v" proton-vpn-cli`, and `/usr/bin/stat -c %Y /var/lib/pacman/sync/<repo>.db`, local reads of the installed and latest known CLI version, at most once a minute when the panel opens
 - `/usr/bin/checkupdates --nocolor`, only when you press **Check for updates**; it asks your Arch mirrors in a temporary database of its own
 
 Read in place, without starting a process: `/sys/class/net/<device>/statistics/rx_bytes` and `tx_bytes`, only for a `proton0`-style device.
