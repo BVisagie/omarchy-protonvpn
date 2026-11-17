@@ -45,6 +45,8 @@ Panel {
   property var countedVpn: null
   // Kill Switch value awaiting confirmation while connected; "" when none.
   property string ksConfirmValue: ""
+  // Sign-out waits for a second, explicit choice.
+  property bool signOutConfirm: false
   // SETTINGS starts folded so the panel opens on status and CONNECT.
   property bool settingsOpen: false
 
@@ -211,6 +213,8 @@ Panel {
         rows.push(["config:moderate-nat", "config:ipv6"])
         rows.push(["config:anonymous-crash-reports", "config:custom-dns"])
         if (showDnsField()) rows.push(["dns"])
+        if (view.state === Model.STATES.disconnected) rows.push(["signout"])
+        if (signOutConfirm) rows.push(["so-cancel", "so-confirm"])
       }
     }
     return rows
@@ -291,6 +295,9 @@ Panel {
     else if (focusSection === "dns") applyDns()
     else if (focusSection === "ks-cancel") cancelKillSwitch()
     else if (focusSection === "ks-confirm") confirmKillSwitch()
+    else if (focusSection === "signout") askSignOut()
+    else if (focusSection === "so-cancel") cancelSignOut()
+    else if (focusSection === "so-confirm") confirmSignOut()
     else if (focusSection.indexOf("config:") === 0) activateConfig(focusSection.substring(7))
   }
 
@@ -323,6 +330,24 @@ Panel {
     cursorActive = true
     focusSection = "ks-cancel"
     scrollItemIntoView(ksConfirm)
+  }
+
+  function askSignOut() {
+    signOutConfirm = true
+    cursorActive = true
+    focusSection = "so-cancel"
+    scrollItemIntoView(signOutConfirmRow)
+  }
+
+  function cancelSignOut() {
+    signOutConfirm = false
+    focusSection = "signout"
+  }
+
+  function confirmSignOut() {
+    signOutConfirm = false
+    focusSection = "refresh"
+    vpn.signOut()
   }
 
   function toggleSettings() {
@@ -504,6 +529,8 @@ Panel {
     else if (focusSection === "config:kill-switch") scrollItemIntoView(killSwitchDropdown)
     else if (focusSection === "config:custom-dns") scrollItemIntoView(customDnsToggle)
     else if (focusSection === "ks-cancel" || focusSection === "ks-confirm") scrollItemIntoView(ksConfirm)
+    else if (focusSection === "signout") scrollItemIntoView(signOutRow)
+    else if (focusSection === "so-cancel" || focusSection === "so-confirm") scrollItemIntoView(signOutConfirmRow)
     else {
       var grids = [choiceGrid, toggleGrid]
       for (var g = 0; g < grids.length; g++) {
@@ -527,7 +554,10 @@ Panel {
   onOpenedChanged: {
     trackOpen(opened)
     if (opened) openPanel()
-    else ksConfirmValue = ""
+    else {
+      ksConfirmValue = ""
+      signOutConfirm = false
+    }
   }
   onVpnChanged: {
     if (countedVpn && countedVpn !== vpn) {
@@ -1478,6 +1508,57 @@ Panel {
                     onTextChanged: root.dnsText = text
                     onAccepted: root.applyDns()
                   }
+                }
+              }
+            }
+
+            ActionRow {
+              id: signOutRow
+              visible: root.view.state === Model.STATES.disconnected && !root.signOutConfirm
+              width: parent.width
+              title: root.tr("signout.title", "Sign out")
+              subtitle: root.tr("signout.hint", "Signs this computer out of Proton VPN and clears the CLI's settings. Favorites stay.")
+              sectionName: "signout"
+              onActivated: root.askSignOut()
+            }
+
+            Column {
+              id: signOutConfirmRow
+              visible: root.signOutConfirm
+              width: parent.width
+              spacing: Style.spacing.rowGap
+
+              Text {
+                textFormat: Text.PlainText
+                width: parent.width
+                text: root.tr("signout.confirm", "Sign out of Proton VPN on this computer? You will need your password and 2FA to sign in again.")
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                wrapMode: Text.WordWrap
+              }
+
+              Row {
+                spacing: Style.spacing.rowGap
+
+                Button {
+                  text: root.tr("action.cancel", "Cancel")
+                  bordered: true
+                  hasCursor: root.cursorActive && root.focusSection === "so-cancel"
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                  onClicked: root.cancelSignOut()
+                  onHovered: function(on) { if (on) root.setFocusSection("so-cancel") }
+                }
+
+                Button {
+                  text: root.tr("signout.title", "Sign out")
+                  bordered: true
+                  hasCursor: root.cursorActive && root.focusSection === "so-confirm"
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                  onClicked: root.confirmSignOut()
+                  onHovered: function(on) { if (on) root.setFocusSection("so-confirm") }
                 }
               }
             }

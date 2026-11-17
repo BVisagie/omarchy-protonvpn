@@ -207,7 +207,7 @@ describe("QML scheduler contract", () => {
 
   it("accepts an action before changing visual connecting state", () => {
     const enqueue = service.indexOf("if (!enqueue(job)) return false")
-    const visual = service.indexOf("state = action === \"disconnect\" ? Model.STATES.disconnecting : Model.STATES.connecting")
+    const visual = service.indexOf("if (action === \"connect\") state = Model.STATES.connecting")
     assert.ok(enqueue !== -1, "runAction must enqueue before returning")
     assert.ok(visual !== -1, "runAction must set connecting/disconnecting")
     assert.ok(enqueue < visual, "visual connecting state must be set only after enqueue accepts")
@@ -330,6 +330,14 @@ describe("QML scheduler contract", () => {
     assert.match(panel, /implicitHeight: Style\.spacing\.controlHeight/)
     assert.match(panel, /titleSize: Style\.font\.body/)
     assert.doesNotMatch(panel, /implicitHeight: Style\.space\(40\)/)
+  })
+
+  it("signs out only from Disconnected, after asking", () => {
+    assert.match(service, /if \(state !== Model\.STATES\.disconnected\) \{\n\s*reportError\(tr\("signout\.disconnectFirst"/)
+    assert.match(service, /runAction\(\["protonvpn", "signout"\], "signout"/)
+    assert.match(service, /if \(job\.action === "signout"\) \{\n\s*applyView\(Model\.signedOutView\(loc\)\)/)
+    assert.match(panel, /focusSection === "signout"\) askSignOut\(\)/)
+    assert.match(panel, /signOutConfirm = true\n\s*cursorActive = true\n\s*focusSection = "so-cancel"/)
   })
 
   it("folds SETTINGS away until asked for", () => {

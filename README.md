@@ -18,7 +18,7 @@ A bar widget and keyboard-driven panel for Omarchy 4.5 or later that controls Pr
 - Shows when Kill Switch is blocking internet traffic after a drop, so a dead connection is never a mystery.
 - Warns when the tunnel is up but nothing comes back through it, which a plain "connected" hides.
 - Sends a desktop notification when the VPN drops while the panel is closed; clicking it opens the panel. It can also reconnect for you.
-- Installs the CLI and signs you in from the panel, through Omarchy's own terminal windows.
+- Installs the CLI and signs you in from the panel, through Omarchy's own terminal windows, and signs you out again after asking.
 - Follows your Omarchy theme and language, and the panel works entirely from the keyboard.
 
 ## What you need
@@ -128,6 +128,8 @@ With port forwarding on, the panel repeats what the CLI says after connecting: w
 
 On Proton's free plan the CLI only connects to the fastest server. When `protonvpn config list` marks settings "Upgrade to enable", the panel labels the other modes as needing a paid plan and explains that instead of running a command that would fail. A Kill Switch change or an automatic reconnect then returns to the fastest server.
 
+While disconnected, the bottom of SETTINGS offers **Sign out**. It asks first, with Cancel selected, then runs `protonvpn signout`, which also clears the CLI's own settings. Favorites stay. Disconnect first if you are connected.
+
 Some rows show a short caption. Hover a CONNECT or SETTINGS control, or move onto it with `j` / `k`, for a Proton-sourced tooltip. That copy is paraphrased from Proton’s official support articles and the Linux CLI guide. It is not a substitute for those pages, and the widget does not fetch Proton’s website.
 
 ## Languages
@@ -192,7 +194,7 @@ Omarchy plugins run unsandboxed inside the long-lived `omarchy-shell` process wi
 Supervised by `scripts/run_bounded.py`, which caps output, enforces a deadline, and cleans up the process group. `protonvpn` runs also take the lock above:
 
 - `/usr/bin/which protonvpn` to find the CLI
-- `protonvpn` subcommands: `--help`, `status`, `connect`, `disconnect`, `countries list`, `cities list`, `config list`, and `config set`
+- `protonvpn` subcommands: `--help`, `status`, `connect`, `disconnect`, `countries list`, `cities list`, `config list`, `config set`, and `signout`
 - `/usr/bin/nmcli -t -e no -f NAME,TYPE,DEVICE,STATE,TIMESTAMP connection show --active`
 
 Read in place, without starting a process: `/sys/class/net/<device>/statistics/rx_bytes` and `tx_bytes`, only for a `proton0`-style device.

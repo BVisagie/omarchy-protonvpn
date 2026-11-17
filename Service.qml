@@ -438,7 +438,9 @@ Item {
     if (classified.ok) {
       lastError = ""
       actionStatus = classified.message || (job.action === "disconnect" ? tr("action.disconnected", "Disconnected.") : tr("action.connected", "Connected."))
-      if (job.action === "disconnect") {
+      if (job.action === "signout") {
+        applyView(Model.signedOutView(loc))
+      } else if (job.action === "disconnect") {
         linkActive = false
         linkServer = ""
         linkDevice = ""
@@ -804,6 +806,16 @@ Item {
     return runAction(["protonvpn", "disconnect"], "disconnect", tr("action.disconnecting", "Disconnecting…"), null)
   }
 
+  // Only from Disconnected: the CLI would drop a live tunnel itself, but
+  // asking first keeps Kill Switch and reconnects out of it.
+  function signOut() {
+    if (state !== Model.STATES.disconnected) {
+      reportError(tr("signout.disconnectFirst", "Disconnect before signing out."))
+      return false
+    }
+    return runAction(["protonvpn", "signout"], "signout", tr("signout.running", "Signing out…"), null)
+  }
+
   function noteReconnectStopped() {
     actionStatus = _disconnectAfterReconnect
       ? tr("reconnect.disconnectAfter", "Disconnecting once the current reconnect attempt finishes…")
@@ -838,7 +850,8 @@ Item {
     if (job.auto !== true) cancelReconnect()
     lastError = ""
     actionStatus = label || ""
-    state = action === "disconnect" ? Model.STATES.disconnecting : Model.STATES.connecting
+    if (action === "connect") state = Model.STATES.connecting
+    else if (action === "disconnect") state = Model.STATES.disconnecting
     return true
   }
 

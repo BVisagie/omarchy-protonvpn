@@ -669,6 +669,11 @@ function signInText(loc) {
 }
 
 // CLI output stays as Proton wrote it; only the plugin's own fallbacks change.
+// After `protonvpn signout` the CLI answers as signed out.
+function signedOutView(loc) {
+  return viewFor(STATES.signedOut, "auth", signInText(loc), "", null, false)
+}
+
 function failureMessage(kind, combined, loc) {
   if (kind === "timeout") return say(loc, "failure.timeout", "Proton VPN did not respond in time.")
   if (kind === "connectionTimeout") return say(loc, "failure.connectionTimeout", "Proton VPN timed out while connecting. The CLI reached a server but the handshake did not finish.")
@@ -1970,6 +1975,7 @@ if (typeof module !== "undefined") {
     classifyFailureKind: classifyFailureKind,
     parseStatus: parseStatus,
     classifyProbe: classifyProbe,
+    signedOutView: signedOutView,
     classifyCommandResult: classifyCommandResult,
     canToggleConnection: canToggleConnection,
     canWrite: canWrite,

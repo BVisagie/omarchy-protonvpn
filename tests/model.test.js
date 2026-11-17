@@ -844,6 +844,15 @@ describe("quick connect", () => {
   })
 })
 
+describe("sign-out", () => {
+  it("answers as signed out and blocks writes", () => {
+    const view = Model.signedOutView()
+    assert.equal(view.state, "signedOut")
+    assert.equal(view.signedIn, false)
+    assert.equal(Model.canWrite(view.state), false)
+  })
+})
+
 describe("protections line", () => {
   it("states Kill Switch, NetShield, and Secure Core as facts", () => {
     const connected = { state: "connected", status: { server: "IS-CH#1" } }
