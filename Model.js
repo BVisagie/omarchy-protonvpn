@@ -1595,6 +1595,12 @@ function reconnectDelayMs(attempt) {
   return RECONNECT_DELAYS_MS[Math.floor(n)]
 }
 
+// `nmcli monitor` restarts after 1, 2, 4 ... seconds, at most a minute apart.
+function monitorRestartDelayMs(failures) {
+  var n = Math.max(0, Math.floor(Number(failures) || 0))
+  return Math.min(60000, 1000 * Math.pow(2, Math.min(n, 6)))
+}
+
 // `omarchy bar set` stores a string unless the caller passes --json.
 function normalizeBooleanSetting(value) {
   return value === true || value === "true"
@@ -1712,6 +1718,7 @@ if (typeof module !== "undefined") {
     returnTarget: returnTarget,
     returnTargetLabel: returnTargetLabel,
     reconnectDelayMs: reconnectDelayMs,
+    monitorRestartDelayMs: monitorRestartDelayMs,
     RECONNECT_DELAYS_MS: RECONNECT_DELAYS_MS,
     normalizeBooleanSetting: normalizeBooleanSetting,
     reconnectAbandoned: reconnectAbandoned,

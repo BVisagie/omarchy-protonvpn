@@ -811,6 +811,13 @@ describe("free plan", () => {
   })
 })
 
+describe("NetworkManager monitor", () => {
+  it("restarts with a capped backoff", () => {
+    assert.deepEqual([0, 1, 2, 5, 6, 20].map(Model.monitorRestartDelayMs), [1000, 2000, 4000, 32000, 60000, 60000])
+    assert.equal(Model.monitorRestartDelayMs("x"), 1000)
+  })
+})
+
 describe("reconnect on drop", () => {
   it("backs off and then gives up", () => {
     assert.deepEqual(Model.RECONNECT_DELAYS_MS.map((_, i) => Model.reconnectDelayMs(i)), [3000, 10000, 30000, 60000, 120000])

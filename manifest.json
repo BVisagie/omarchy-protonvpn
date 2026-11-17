@@ -38,7 +38,7 @@
       {
         "key": "linkWatchIntervalSec",
         "type": "integer",
-        "label": "Live link check interval (seconds)",
+        "label": "Link check interval when NetworkManager events are unavailable (seconds)",
         "min": 2,
         "max": 60,
         "step": 1,

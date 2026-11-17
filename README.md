@@ -138,7 +138,7 @@ After changing a string in the code, run `node tests/tools/build_catalog.js` to 
 | Setting | Key | Default | Range or values |
 |---|---|---|---|
 | Status refresh while the panel is open | `refreshIntervalSec` | 30 seconds | 10–3600 |
-| Live link check interval | `linkWatchIntervalSec` | 4 seconds | 2–60 |
+| Link check interval when NetworkManager events are unavailable | `linkWatchIntervalSec` | 4 seconds | 2–60 |
 | Desktop notifications (only while the panel is closed) | `notifications` | `drops` | `off`, `drops`, `all` |
 | Reconnect when the VPN drops | `reconnectOnDrop` | `false` | `true`, `false` |
 
@@ -168,7 +168,7 @@ bindd = SUPER ALT SHIFT, V, Proton VPN connect, exec, omarchy-shell io.github.BV
 - The plugin executes a fixed set of local commands as argument arrays. It never interpolates values into a shell. See [Commands this plugin runs](#commands-this-plugin-runs).
 - The runner caps stdout and stderr while commands execute, enforces deadlines, and reaps the complete child process group after a timeout or overflow, or when a background process the command left behind still holds its output.
 - Proton CLI runs take a lock in your runtime directory (`$XDG_RUNTIME_DIR/omarchy-protonvpn.lock`), so two shells never run the CLI at the same time. The lock file is empty.
-- A read-only `nmcli connection show --active` probe observes `proton0`-style tunnel devices. It never creates, changes, or removes NetworkManager connections.
+- A read-only `nmcli monitor` stream says when NetworkManager changes anything, and a read-only `nmcli connection show --active` probe then reads the `proton0`-style tunnel. With the stream running, the probe otherwise runs once a minute; without it, every `linkWatchIntervalSec`. Neither creates, changes, or removes NetworkManager connections.
 - It never collects, logs, stores, or passes Proton credentials. The sign-in terminal passes only your username to the CLI.
 - It never runs anything as root. Installing the CLI goes through Omarchy's installer, which asks for your password in its own terminal.
 - It never makes extra network requests such as “what is my IP” lookups, map tiles, or telemetry.
@@ -186,6 +186,10 @@ Supervised by `scripts/run_bounded.py`, which caps output, enforces a deadline, 
 - `protonvpn` subcommands: `--help`, `status`, `connect`, `disconnect`, `countries list`, `cities list`, `config list`, and `config set`
 - `/usr/bin/nmcli -t -e no -f NAME,TYPE,DEVICE,STATE connection show --active`
 - `/usr/bin/cat /sys/class/net/<device>/statistics/rx_bytes /sys/class/net/<device>/statistics/tx_bytes`, only for a `proton0`-style device and only while the panel is open
+
+Started directly and kept running while the widget is loaded, with its output read one line at a time and discarded:
+
+- `/usr/bin/nmcli monitor`, restarted with a backoff of up to a minute if it exits
 
 Started directly, only when you press the matching panel control:
 

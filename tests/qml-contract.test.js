@@ -117,7 +117,7 @@ describe("QML scheduler contract", () => {
     assert.match(panel, /readonly property var vpn: root\.sharedVpn \|\| localVpn/)
     assert.match(panel, /Service \{\s*id: localVpn\s*active: !root\.sharedVpn\s*\}/)
     assert.match(service, /property bool active: true/)
-    assert.match(service, /if \(!active \|\| !installed \|\| linkProcess\.running\) return/)
+    assert.match(service, /function watchLink\(\) \{\n\s*if \(!active \|\| !installed\) return/)
   })
 
   it("keeps CLI verdicts the live tunnel cannot explain", () => {
@@ -142,6 +142,14 @@ describe("QML scheduler contract", () => {
     assert.match(service, /id: commandProcess/)
     assert.doesNotMatch(service, /id: statusProcess/)
     assert.doesNotMatch(service, /id: actionProcess/)
+  })
+
+  it("follows NetworkManager events and keeps a slow safety poll", () => {
+    assert.match(service, /id: linkMonitor\n\s*running: false\n\s*command: \["\/usr\/bin\/nmcli", "monitor"\]/)
+    assert.match(service, /onRead: function\(line\) \{ linkSettle\.restart\(\) \}/)
+    assert.match(service, /interval: root\.linkEvents \? 60000 : root\.linkWatchIntervalSec \* 1000/)
+    assert.match(service, /monitorRestart\.interval = Model\.monitorRestartDelayMs\(_monitorFailures\)/)
+    assert.match(service, /if \(linkProcess\.running\) \{\n\s*_linkRecheck = true/)
   })
 
   it("bounds every collected command and keeps NetworkManager read-only", () => {

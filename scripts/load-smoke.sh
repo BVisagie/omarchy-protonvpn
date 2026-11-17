@@ -26,7 +26,7 @@ ShellRoot {
     interval: 9000
     running: true
     onTriggered: {
-      console.log("SMOKE state=" + svc.state + " link=" + svc.linkActive + " config=" + svc.configLoaded
+      console.log("SMOKE state=" + svc.state + " link=" + svc.linkActive + " events=" + svc.linkEvents + " config=" + svc.configLoaded
         + " panel=" + panel.view.state)
       Qt.quit()
     }

@@ -142,6 +142,12 @@ Item {
   property var _citiesCache: ({})
   property int _linkEpoch: 0
   property int _linkStartedEpoch: 0
+  // A change seen while a poll runs is read again once that poll ends.
+  property bool _linkRecheck: false
+  // `nmcli monitor` restarts with backoff; a run that lasted resets it.
+  property int _monitorFailures: 0
+  property double _monitorStartedMs: 0
+  readonly property bool linkEvents: linkMonitor.running
 
   function panelOpened() {
     openPanels = openPanels + 1
@@ -341,6 +347,7 @@ Item {
     enqueue({ type: "help", command: ["protonvpn", "--help"], timeout: 5000 })
     requestStatusRefresh()
     watchLink()
+    startLinkMonitor()
   }
 
   function handleHelp(result) {
@@ -587,7 +594,12 @@ Item {
   }
 
   function watchLink() {
-    if (!active || !installed || linkProcess.running) return
+    if (!active || !installed) return
+    if (linkProcess.running) {
+      _linkRecheck = true
+      return
+    }
+    _linkRecheck = false
     _linkStartedEpoch = _linkEpoch
     _linkOutput = ""
     _linkError = ""
@@ -595,7 +607,26 @@ Item {
     linkProcess.running = true
   }
 
+  // NetworkManager prints a line for every device, connection, or
+  // connectivity change. The text is localized, so any line only means
+  // "look again"; the snapshot below is what gets parsed.
+  function startLinkMonitor() {
+    if (!active || !installed || linkMonitor.running) return
+    _monitorStartedMs = Date.now()
+    linkMonitor.running = true
+  }
+
+  function linkMonitorExited() {
+    if (!active || !installed) return
+    if (Date.now() - _monitorStartedMs > 60000) _monitorFailures = 0
+    monitorRestart.interval = Model.monitorRestartDelayMs(_monitorFailures)
+    _monitorFailures++
+    monitorRestart.restart()
+    watchLink()
+  }
+
   function applyLinkResult(result) {
+    if (_linkRecheck) Qt.callLater(watchLink)
     if (_linkStartedEpoch !== _linkEpoch) {
       // An action finished while this poll was running; re-read the live link.
       Qt.callLater(watchLink)
@@ -1082,16 +1113,34 @@ Item {
     onRunningChanged: if (!running) root.traffic = Model.emptyTraffic()
   }
 
-  onActiveChanged: if (active) refresh()
+  onActiveChanged: {
+    if (active) refresh()
+    else linkMonitor.running = false
+  }
   Component.onCompleted: if (active) refresh()
 
+  // With NetworkManager events this is only a safety net for a missed one;
+  // without them it is the live link check.
   Timer {
     id: linkTimer
-    interval: root.linkWatchIntervalSec * 1000
+    interval: root.linkEvents ? 60000 : root.linkWatchIntervalSec * 1000
     repeat: true
     running: root.active && root.installed
     triggeredOnStart: true
     onTriggered: root.watchLink()
+  }
+
+  Timer {
+    id: linkSettle
+    interval: 300
+    repeat: false
+    onTriggered: root.watchLink()
+  }
+
+  Timer {
+    id: monitorRestart
+    repeat: false
+    onTriggered: root.startLinkMonitor()
   }
 
   Timer {
@@ -1175,6 +1224,17 @@ Item {
     onExited: function(exitCode) {
       root.applyTraffic({ exitCode: exitCode, stdout: String(trafficStdout.text || ""), timedOut: exitCode === 124 })
     }
+  }
+
+  // Read-only: `nmcli monitor` only prints what NetworkManager reports.
+  Process {
+    id: linkMonitor
+    running: false
+    command: ["/usr/bin/nmcli", "monitor"]
+    stdout: SplitParser {
+      onRead: function(line) { linkSettle.restart() }
+    }
+    onExited: function(exitCode) { root.linkMonitorExited() }
   }
 
   Process {
