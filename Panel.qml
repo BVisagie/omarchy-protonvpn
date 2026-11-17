@@ -241,6 +241,9 @@ Panel {
         if (showDnsField()) rows.push(["dns"])
         rows.push(["config:port-forwarding", "config:moderate-nat"])
         rows.push(["config:anonymous-crash-reports"])
+      }
+      // The footer line shows even when settings failed to load.
+      if (settingsOpen) {
         var footer = []
         if (signOutConfirm) footer = ["so-cancel", "so-confirm"]
         else {
