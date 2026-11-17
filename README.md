@@ -12,7 +12,7 @@ A bar widget and keyboard-driven panel for Omarchy 4.5 or later that controls Pr
 
 - Connects to the fastest server, or by country, city, server ID, Secure Core, P2P, Tor, or a random server.
 - Switches servers in place while connected, and lists recent connection targets under **RECENT** so you can return to one in a click.
-- Shows live download and upload rates and session totals while the panel is open.
+- Shows how long you have been connected, and live download and upload rates and session totals while the panel is open.
 - Changes every setting `protonvpn config` exposes, including Kill Switch while connected, after asking first.
 - Shows when Kill Switch is blocking internet traffic after a drop, so a dead connection is never a mystery.
 - Warns when the tunnel is up but nothing comes back through it, which a plain "connected" hides.
@@ -185,7 +185,7 @@ Supervised by `scripts/run_bounded.py`, which caps output, enforces a deadline, 
 
 - `/usr/bin/which protonvpn` to find the CLI
 - `protonvpn` subcommands: `--help`, `status`, `connect`, `disconnect`, `countries list`, `cities list`, `config list`, and `config set`
-- `/usr/bin/nmcli -t -e no -f NAME,TYPE,DEVICE,STATE connection show --active`
+- `/usr/bin/nmcli -t -e no -f NAME,TYPE,DEVICE,STATE,TIMESTAMP connection show --active`
 
 Read in place, without starting a process: `/sys/class/net/<device>/statistics/rx_bytes` and `tx_bytes`, only for a `proton0`-style device.
 

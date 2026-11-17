@@ -50,6 +50,8 @@ Item {
   property string linkServer: ""
   property string linkDevice: ""
   property bool linkKillSwitch: false
+  // When NetworkManager activated the tunnel; 0 when unknown.
+  property double linkSinceMs: 0
   readonly property bool killSwitchBlocking: Model.killSwitchBlocking({ known: linkKnown, available: linkAvailable, active: linkActive, killSwitch: linkKillSwitch }, state)
   property var recentTargets: []
   // Panels on every monitor share this service; count the open ones.
@@ -413,6 +415,7 @@ Item {
         linkActive = false
         linkServer = ""
         linkDevice = ""
+        linkSinceMs = 0
         applyView(disconnectedView())
         _lastSession = null
         noteLink(false, true)
@@ -609,7 +612,7 @@ Item {
     _linkStartedEpoch = _linkEpoch
     _linkOutput = ""
     _linkError = ""
-    linkProcess.command = boundedCommand(["/usr/bin/nmcli", "-t", "-e", "no", "-f", "NAME,TYPE,DEVICE,STATE", "connection", "show", "--active"], 5000)
+    linkProcess.command = boundedCommand(["/usr/bin/nmcli", "-t", "-e", "no", "-f", "NAME,TYPE,DEVICE,STATE,TIMESTAMP", "connection", "show", "--active"], 5000)
     linkProcess.running = true
   }
 
@@ -651,6 +654,7 @@ Item {
     linkServer = link.server
     linkDevice = link.device
     linkKillSwitch = link.killSwitch === true
+    linkSinceMs = link.sinceMs
     // The Kill Switch cycle owns the tunnel between its actions too.
     var owned = actionRunning || ksStep !== "idle"
     noteLink(link.active, owned)

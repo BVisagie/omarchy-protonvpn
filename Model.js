@@ -342,6 +342,10 @@ function parseActiveVpn(raw) {
     var line = String(lines[i] || "").trim()
     if (line === "") continue
     var parts = line.split(":")
+    // NAME may hold colons (-e no), so fields are read from the end; the
+    // probe asks for TIMESTAMP last, older captures end at STATE.
+    var since = 0
+    if (/^\d+$/.test(parts[parts.length - 1])) since = Number(parts.pop())
     if (parts.length < 4) continue
     var state = parts[parts.length - 1]
     var device = parts[parts.length - 2]
@@ -360,10 +364,11 @@ function parseActiveVpn(raw) {
       name: name,
       server: name.replace(/^ProtonVPN[\s:]+/i, "").trim(),
       device: device,
-      type: type
+      type: type,
+      sinceMs: since > 0 ? since * 1000 : 0
     }
   }
-  var result = tunnel || { active: false, name: "", server: "", device: "", type: "" }
+  var result = tunnel || { active: false, name: "", server: "", device: "", type: "", sinceMs: 0 }
   result.killSwitch = killSwitch
   return result
 }
@@ -1368,6 +1373,19 @@ function relativeTime(fromMs, nowMs, loc) {
   return fill(say(loc, "age.days", "%1d ago"), num(loc, Math.floor(hours / 24)))
 }
 
+// How long the tunnel has been up: "42s", "12m", "1h 12m", "3d 4h".
+function durationText(sinceMs, nowMs, loc) {
+  var since = Number(sinceMs || 0)
+  if (!isFinite(since) || since <= 0) return ""
+  var s = Math.max(0, Math.floor((Number(nowMs) - since) / 1000))
+  if (s < 60) return fill(say(loc, "duration.seconds", "%1s"), num(loc, s))
+  var m = Math.floor(s / 60)
+  if (m < 60) return fill(say(loc, "duration.minutes", "%1m"), num(loc, m))
+  var h = Math.floor(m / 60)
+  if (h < 24) return fill(say(loc, "duration.hours", "%1h %2m"), num(loc, h), num(loc, m % 60))
+  return fill(say(loc, "duration.days", "%1d %2h"), num(loc, Math.floor(h / 24)), num(loc, h % 24))
+}
+
 function lastUpdatedText(view, nowMs, loc) {
   var when = relativeTime(view && view.lastUpdatedMs, nowMs, loc)
   if (when === "") return ""
@@ -1869,6 +1887,7 @@ if (typeof module !== "undefined") {
     heroDetail: heroDetail,
     relativeTime: relativeTime,
     lastUpdatedText: lastUpdatedText,
+    durationText: durationText,
     degradedExplanation: degradedExplanation,
     degradedRemediation: degradedRemediation,
     diagnosticDetail: diagnosticDetail,

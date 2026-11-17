@@ -167,11 +167,16 @@ Panel {
     var list = []
     var status = view.status
     if (!status) return list
+    var now = Date.now() + nowTick
+    if (view.state === Model.STATES.connected && vpn.linkActive) {
+      var up = Model.durationText(vpn.linkSinceMs, now, root.loc)
+      if (up !== "") list.push({ label: tr("status.duration", "Connected for"), value: up })
+    }
     if (view.state === Model.STATES.connected || (view.stale && status.protocol !== "")) {
       list.push({ label: tr("status.load", "Load"), value: Model.displayLoad(status.load, root.loc) })
     }
     if (status.exitIp !== "") list.push({ label: tr("status.exitIp", "Exit IP"), value: status.exitIp })
-    var updated = Model.lastUpdatedText(view, Date.now() + nowTick, root.loc)
+    var updated = Model.lastUpdatedText(view, now, root.loc)
     if (updated !== "") list.push({ label: view.stale ? tr("hero.staleBadge", "Stale") : tr("status.updated", "Updated"), value: updated })
     return list
   }

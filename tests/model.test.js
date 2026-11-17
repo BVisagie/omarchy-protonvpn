@@ -811,6 +811,24 @@ describe("free plan", () => {
   })
 })
 
+describe("connection duration", () => {
+  it("reads the activation time NetworkManager reports", () => {
+    const link = Model.parseActiveVpn("ProtonVPN NL#806:wireguard:proton0:activated:1794925926\nWi:Fi:802-11-wireless:wlan0:activated:1794903424\n")
+    assert.equal(link.server, "NL#806")
+    assert.equal(link.sinceMs, 1794925926000)
+    assert.equal(Model.parseActiveVpn(fixture("nmcli-active.txt")).sinceMs, 0)
+    const colon = Model.parseActiveVpn("ProtonVPN: CH#1:wireguard:proton0:activated:5\n")
+    assert.equal(colon.server, "CH#1")
+    assert.equal(colon.sinceMs, 5000)
+  })
+
+  it("words short and long durations", () => {
+    const at = (s) => Model.durationText(1000, 1000 + s * 1000)
+    assert.deepEqual([at(42), at(720), at(4320), at(273600)], ["42s", "12m", "1h 12m", "3d 4h"])
+    assert.equal(Model.durationText(0, 5000), "")
+  })
+})
+
 describe("stalled tunnel", () => {
   function run(samples) {
     let health = Model.emptyHealth()
