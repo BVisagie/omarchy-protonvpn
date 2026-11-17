@@ -111,6 +111,29 @@ Item {
   // "login" or "wifi" while tryAutoConnect starts a connect; jobs keep it.
   property string _autoConnectKind: ""
 
+  // The CLI package. The local package database is read when a panel
+  // opens; the mirrors are asked only through checkCliUpdates(), which the
+  // user starts.
+  property string cliInstalled: ""
+  property string cliRepo: ""
+  property string cliRepoVersion: ""
+  property double cliRepoSyncedMs: 0
+  property string cliMirrorVersion: ""
+  property double cliMirrorCheckedMs: 0
+  property bool cliChecking: false
+  property string cliCheckError: ""
+  property string _pkgStep: ""
+  property double _pkgReadMs: 0
+  readonly property var cliPackage: ({
+    cliVersion: cliVersion,
+    installed: cliInstalled,
+    repo: cliRepo,
+    repoVersion: cliRepoVersion,
+    repoSyncedMs: cliRepoSyncedMs,
+    mirrorVersion: cliMirrorVersion,
+    mirrorCheckedMs: cliMirrorCheckedMs
+  })
+
   property int _setupChecks: 0
   property string portForwardingNotice: ""
 
@@ -1277,6 +1300,66 @@ Item {
     if (!processBusy) refresh()
   }
 
+  function runPackageStep(step, command, timeoutMs) {
+    _pkgStep = step
+    packageProcess.command = boundedCommand(command, timeoutMs)
+    packageProcess.running = true
+  }
+
+  // Local reads only, at most once a minute.
+  function readCliPackage() {
+    if (!active || !installed || packageProcess.running || Date.now() - _pkgReadMs < 60000) return
+    _pkgReadMs = Date.now()
+    runPackageStep("installed", ["/usr/bin/pacman", "-Q", Model.CLI_PACKAGE], 5000)
+  }
+
+  // Asks the Arch mirrors, through pacman's checkupdates, in a temporary
+  // database of its own. Only ever started by the user.
+  function checkCliUpdates() {
+    if (!active || packageProcess.running) return
+    cliChecking = true
+    cliCheckError = ""
+    runPackageStep("mirrors", ["/usr/bin/checkupdates", "--nocolor"], 90000)
+  }
+
+  function handlePackageStep(result) {
+    var step = _pkgStep
+    _pkgStep = ""
+    var ok = result.exitCode === 0 && result.timedOut !== true
+    if (step === "installed") {
+      cliInstalled = ok ? Model.parseInstalledPackage(result.stdout) : ""
+      runPackageStep("repo", ["/usr/bin/pacman", "-Sp", "--print-format", "%r %v", Model.CLI_PACKAGE], 5000)
+    } else if (step === "repo") {
+      var sync = ok ? Model.parseSyncPackage(result.stdout) : null
+      cliRepo = sync ? sync.repo : ""
+      cliRepoVersion = sync ? sync.version : ""
+      // The repo name was validated; its database's age says how fresh "latest" is.
+      if (sync) runPackageStep("synced", ["/usr/bin/stat", "-c", "%Y", "/var/lib/pacman/sync/" + sync.repo + ".db"], 5000)
+    } else if (step === "synced") {
+      var seconds = ok ? parseInt(String(result.stdout || "").trim(), 10) : 0
+      cliRepoSyncedMs = seconds > 0 ? seconds * 1000 : 0
+    } else if (step === "mirrors") {
+      cliChecking = false
+      // 2 means no updates at all; 0 lists them.
+      if (result.exitCode === 2 || result.exitCode === 0) {
+        cliMirrorVersion = result.exitCode === 0 ? (Model.parseCheckUpdates(result.stdout) || "") : ""
+        cliMirrorCheckedMs = Date.now()
+      } else {
+        cliCheckError = tr("cli.checkFailed", "Could not reach the Arch mirrors.")
+      }
+    }
+  }
+
+  // Omarchy's own updater, in its own terminal; it asks for the password there.
+  function updateSystem() {
+    Quickshell.execDetached(Model.UPDATE_LAUNCHER)
+    actionStatus = tr("cli.updating", "Updating in a terminal…")
+    actionStatusTimer.restart()
+    // Read the installed version again once the panel next opens.
+    _pkgReadMs = 0
+    cliMirrorCheckedMs = 0
+  }
+
   function configDisplayValue(key) {
     if (pendingSetting === key) return pendingValue
     return String((configValues && configValues[key]) || "")
@@ -1471,6 +1554,19 @@ Item {
       onRead: function(line) { linkSettle.restart() }
     }
     onExited: function(exitCode) { root.linkMonitorExited() }
+  }
+
+  Process {
+    id: packageProcess
+    running: false
+    command: []
+    stdout: StdioCollector {
+      id: packageStdout
+      waitForEnd: true
+    }
+    onExited: function(exitCode) {
+      root.handlePackageStep({ exitCode: exitCode, stdout: String(packageStdout.text || ""), timedOut: exitCode === 124 })
+    }
   }
 
   Process {

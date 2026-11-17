@@ -12,7 +12,7 @@ This plugin:
 - uses `nmcli` only to read active connection metadata and to follow NetworkManager's change events (`nmcli monitor`);
 - never asks for or stores Proton credentials; the sign-in terminal passes only the username, and the CLI asks for the rest;
 - never runs anything as root; installing the CLI goes through Omarchy's installer, which asks for the password in its own terminal;
-- never calls private Proton APIs, external IP services, telemetry, or map services;
+- never calls private Proton APIs, external IP services, telemetry, or map services, and reaches the network itself only through pacman's `checkupdates` when you press **Check for updates**;
 - never edits Proton, NetworkManager, keyring, or system configuration files, and writes to Omarchy's `shell.json` only its own widget entry, through Omarchy's plugin API, to save favorites, trusted Wi-Fi names, and, when `rememberRecent` is on, recent connection choices;
 - follows the current Wi-Fi network name from NetworkManager through Quickshell, in memory, and acts on it only when `autoConnectWifi` is on; and
 - keeps CLI-supplied exit IPs and traffic totals in memory only, and recent connection targets too unless `rememberRecent` is on.

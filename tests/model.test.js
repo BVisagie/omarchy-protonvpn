@@ -996,6 +996,36 @@ describe("stalled tunnel", () => {
   })
 })
 
+describe("CLI package version", () => {
+  it("reads pacman's fixed formats and refuses anything else", () => {
+    assert.equal(Model.parseInstalledPackage("proton-vpn-cli 1.0.5-1\n"), "1.0.5-1")
+    assert.equal(Model.parseInstalledPackage("error: package 'proton-vpn-cli' was not found"), "")
+    assert.equal(Model.parseInstalledPackage("other 1.0-1"), "")
+    assert.deepEqual(Model.parseSyncPackage("extra 1.0.6-1\n"), { repo: "extra", version: "1.0.6-1" })
+    assert.equal(Model.parseSyncPackage("extra 1.0.6-1; rm -rf"), null)
+    assert.equal(Model.parseSyncPackage(""), null)
+    assert.equal(Model.parseCheckUpdates("linux 6.1-1 -> 6.2-1\nproton-vpn-cli 1.0.5-1 -> 1.0.6-1\n"), "1.0.6-1")
+    assert.equal(Model.parseCheckUpdates("linux 6.1-1 -> 6.2-1\n"), null)
+  })
+
+  it("orders versions the way pacman does", () => {
+    const c = Model.comparePackageVersions
+    assert.deepEqual([c("1.0.5-1", "1.0.6-1"), c("1.0.10-1", "1.0.9-1"), c("1.0.5-1", "1.0.5-2"), c("1.0.5-1", "1.0.5-1"), c("1:1.0-1", "2.0-1")], [-1, 1, -1, 0, 1])
+  })
+
+  it("says whether an update is available, and from where", () => {
+    const now = Date.UTC(2026, 10, 17)
+    const day = 86400000
+    const repo = Model.cliVersionInfo({ installed: "1.0.5-1", repo: "extra", repoVersion: "1.0.5-1", repoSyncedMs: now - 26 * day }, now)
+    assert.deepEqual([repo.latest, repo.source, repo.newer, repo.status], ["1.0.5-1", "extra, synced 26d ago", false, "Up to date"])
+    const mirror = Model.cliVersionInfo({ installed: "1.0.5-1", repo: "extra", repoVersion: "1.0.5-1", mirrorVersion: "1.0.6-1", mirrorCheckedMs: now }, now)
+    assert.deepEqual([mirror.latest, mirror.source, mirror.newer, mirror.status], ["1.0.6-1", "mirrors, checked just now", true, "Update available"])
+    const none = Model.cliVersionInfo({ installed: "1.0.5-1", mirrorVersion: "", mirrorCheckedMs: now }, now)
+    assert.equal(none.latest, "1.0.5-1")
+    assert.equal(Model.cliVersionInfo({ cliVersion: "1.0.5" }, now).status, "")
+  })
+})
+
 describe("runner lock name", () => {
   it("matches scripts/run_bounded.py", () => {
     assert.equal(Model.runnerLockName("abc_123"), "omarchy-protonvpn-abc_123.lock")

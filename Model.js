@@ -13,6 +13,10 @@ var INSTALL_LAUNCHER = ["omarchy-install-app", "Proton VPN CLI", CLI_PACKAGE]
 var SIGNIN_SCRIPT = "read -rp 'Proton username: ' u && protonvpn signin -- \"$u\""
 var SIGNIN_LAUNCHER = ["omarchy-launch-floating-terminal-with-presentation", SIGNIN_SCRIPT]
 var SERVER_LIST_URL = "https://account.proton.me/vpn/WireGuard"
+// Omarchy's system update, as its menu and bar widget launch it. A partial
+// upgrade of one package is unsupported on Arch, so the CLI updates with
+// everything else.
+var UPDATE_LAUNCHER = ["omarchy-launch-floating-terminal-with-presentation", "omarchy-update"]
 
 // Text for people goes through `loc`, which the QML passes in:
 //   loc.tr(key, english)         -> the plugin's catalog (Commons.Translations)
@@ -1863,6 +1867,83 @@ function runnerLockName(signature) {
   return /^[A-Za-z0-9_]{1,128}$/.test(sig) ? "omarchy-protonvpn-" + sig + ".lock" : "omarchy-protonvpn.lock"
 }
 
+// The CLI package: installed, in the local package database, and on the
+// mirrors when the user asks. Formats are pacman's own, not localized:
+//   pacman -Q proton-vpn-cli                      -> "proton-vpn-cli 1.0.5-1"
+//   pacman -Sp --print-format "%r %v" proton-vpn-cli -> "extra 1.0.5-1"
+//   checkupdates                                  -> "proton-vpn-cli 1.0.5-1 -> 1.0.6-1"
+var PACKAGE_VERSION = /^(?:\d+:)?[0-9A-Za-z.+~_]+(?:-[0-9.]+)?$/
+
+function parseInstalledPackage(raw) {
+  var parts = String(raw || "").trim().split(/\s+/)
+  return parts.length === 2 && parts[0] === CLI_PACKAGE && PACKAGE_VERSION.test(parts[1]) ? parts[1] : ""
+}
+
+function parseSyncPackage(raw) {
+  var parts = String(raw || "").trim().split("\n")[0].trim().split(/\s+/)
+  if (parts.length !== 2 || !/^[a-z0-9._-]{1,32}$/.test(parts[0]) || !PACKAGE_VERSION.test(parts[1])) return null
+  return { repo: parts[0], version: parts[1] }
+}
+
+// null when checkupdates lists nothing for the CLI.
+function parseCheckUpdates(raw) {
+  var lines = String(raw || "").split("\n")
+  for (var i = 0; i < lines.length; i++) {
+    var m = lines[i].trim().match(/^(\S+)\s+(\S+)\s+->\s+(\S+)$/)
+    if (m && m[1] === CLI_PACKAGE && PACKAGE_VERSION.test(m[3])) return m[3]
+  }
+  return null
+}
+
+// pacman's order for the versions it prints: epoch, then the dotted
+// version, then the package release.
+function comparePackageVersions(left, right) {
+  function split(v) {
+    var text = String(v || "")
+    var epoch = 0
+    var colon = text.indexOf(":")
+    if (colon !== -1) { epoch = parseInt(text.substring(0, colon), 10) || 0; text = text.substring(colon + 1) }
+    var dash = text.lastIndexOf("-")
+    return { epoch: epoch, version: dash === -1 ? text : text.substring(0, dash), rel: dash === -1 ? "0" : text.substring(dash + 1) }
+  }
+  var a = split(left)
+  var b = split(right)
+  if (a.epoch !== b.epoch) return a.epoch < b.epoch ? -1 : 1
+  var parts = Math.max(a.version.split(".").length, b.version.split(".").length, 3)
+  var av = a.version.split(".")
+  var bv = b.version.split(".")
+  for (var i = 0; i < parts; i++) {
+    var x = parseInt(av[i] || "0", 10)
+    var y = parseInt(bv[i] || "0", 10)
+    if (x !== y) return x < y ? -1 : 1
+  }
+  return compareVersions(a.rel, b.rel)
+}
+
+// What the CLI row says. Latest comes from the mirrors when checked, else
+// from the local package database.
+function cliVersionInfo(pkg, nowMs, loc) {
+  var p = pkg || {}
+  var installed = String(p.installed || p.cliVersion || "")
+  var mirror = p.mirrorCheckedMs > 0
+  var latest = mirror ? String(p.mirrorVersion || installed) : String(p.repoVersion || "")
+  var newer = installed !== "" && latest !== "" && comparePackageVersions(installed, latest) < 0
+  var source = ""
+  if (mirror) source = fill(say(loc, "cli.fromMirrors", "mirrors, checked %1"), relativeTime(p.mirrorCheckedMs, nowMs, loc))
+  else if (p.repoVersion) source = p.repoSyncedMs > 0
+    ? fill(say(loc, "cli.fromRepo", "%1, synced %2"), p.repo, relativeTime(p.repoSyncedMs, nowMs, loc))
+    : String(p.repo || "")
+  return {
+    installed: installed,
+    latest: latest,
+    source: source,
+    newer: newer,
+    status: installed === "" ? "" : (latest === "" ? "" : (newer
+      ? say(loc, "cli.updateAvailable", "Update available")
+      : say(loc, "cli.upToDate", "Up to date")))
+  }
+}
+
 // `nmcli monitor` restarts after 1, 2, 4 ... seconds, at most a minute apart.
 function monitorRestartDelayMs(failures) {
   var n = Math.max(0, Math.floor(Number(failures) || 0))
@@ -2021,6 +2102,11 @@ if (typeof module !== "undefined") {
     reconnectDelayMs: reconnectDelayMs,
     monitorRestartDelayMs: monitorRestartDelayMs,
     runnerLockName: runnerLockName,
+    parseInstalledPackage: parseInstalledPackage,
+    parseSyncPackage: parseSyncPackage,
+    parseCheckUpdates: parseCheckUpdates,
+    comparePackageVersions: comparePackageVersions,
+    cliVersionInfo: cliVersionInfo,
     RECONNECT_DELAYS_MS: RECONNECT_DELAYS_MS,
     normalizeBooleanSetting: normalizeBooleanSetting,
     reconnectAbandoned: reconnectAbandoned,
@@ -2062,6 +2148,7 @@ if (typeof module !== "undefined") {
     SIGNIN_SCRIPT: SIGNIN_SCRIPT,
     SIGNIN_LAUNCHER: SIGNIN_LAUNCHER,
     INSTALL_LAUNCHER: INSTALL_LAUNCHER,
+    UPDATE_LAUNCHER: UPDATE_LAUNCHER,
     SERVER_LIST_URL: SERVER_LIST_URL,
     STATES: STATES,
     CONNECTION_MODES: CONNECTION_MODES,

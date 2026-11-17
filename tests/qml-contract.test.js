@@ -199,6 +199,19 @@ describe("QML scheduler contract", () => {
     }
   })
 
+  it("reads the CLI's package versions locally and asks the mirrors only on request", () => {
+    assert.match(service, /\["\/usr\/bin\/pacman", "-Q", Model\.CLI_PACKAGE\]/)
+    assert.match(service, /\["\/usr\/bin\/pacman", "-Sp", "--print-format", "%r %v", Model\.CLI_PACKAGE\]/)
+    assert.match(service, /\["\/usr\/bin\/stat", "-c", "%Y", "\/var\/lib\/pacman\/sync\/" \+ sync\.repo \+ "\.db"\]/)
+    // checkupdates appears once, in the function only the panel's button calls.
+    assert.equal(service.match(/checkupdates/g).length >= 1, true)
+    const check = service.indexOf('runPackageStep("mirrors", ["/usr/bin/checkupdates", "--nocolor"]')
+    assert.ok(check > service.indexOf("function checkCliUpdates()") && check < service.indexOf("function handlePackageStep("))
+    assert.equal(service.split('"/usr/bin/checkupdates"').length - 1, 1)
+    assert.match(panel, /onClicked: vpn\.checkCliUpdates\(\)/)
+    assert.match(service, /Quickshell\.execDetached\(Model\.UPDATE_LAUNCHER\)/)
+  })
+
   it("keeps the declared trust boundary in the runtime service", () => {
     assert.doesNotMatch(service, /\b(?:curl|wget)\b|settings\.json|keyring|pkill|sudo|pkexec/)
     // FileView reads only the tunnel's two byte counters, and checks that the

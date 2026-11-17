@@ -96,6 +96,7 @@ Panel {
   readonly property bool editorFocused: (serverField.visible && serverField.activeFocus) || (dnsField.visible && dnsField.activeFocus)
   readonly property var toggleSettings: toggleSettingList()
   readonly property var statusLines: statusLineList()
+  readonly property var cliInfo: Model.cliVersionInfo(vpn.cliPackage, Date.now() + nowTick, root.loc)
   // Disconnected, or connecting: the button under CONNECT starts the
   // connection; connected with edited choices, it switches.
   readonly property bool showConnectButton: offerSwitch || view.state === Model.STATES.disconnected || view.state === Model.STATES.connecting
@@ -245,6 +246,7 @@ Panel {
         rows.push(["config:moderate-nat", "config:ipv6"])
         rows.push(["config:anonymous-crash-reports", "config:custom-dns"])
         if (showDnsField()) rows.push(["dns"])
+        rows.push(cliInfo.newer ? ["cli-check", "cli-update"] : ["cli-check"])
         if (vpn.autoConnectWifi && vpn.wifiName !== "") rows.push(["trust"])
         if (view.state === Model.STATES.disconnected && !signOutConfirm) rows.push(["signout"])
         if (signOutConfirm) rows.push(["so-cancel", "so-confirm"])
@@ -329,6 +331,8 @@ Panel {
     else if (focusSection === "ks-cancel") cancelKillSwitch()
     else if (focusSection === "ks-confirm") confirmKillSwitch()
     else if (focusSection === "trust") vpn.toggleTrustedNetwork(vpn.wifiName)
+    else if (focusSection === "cli-check") vpn.checkCliUpdates()
+    else if (focusSection === "cli-update") vpn.updateSystem()
     else if (focusSection === "signout") askSignOut()
     else if (focusSection === "so-cancel") cancelSignOut()
     else if (focusSection === "so-confirm") confirmSignOut()
@@ -490,6 +494,7 @@ Panel {
   // user is about to pick; Refresh, r, and middle-click still force them.
   function refreshOnOpen() {
     vpn.refresh()
+    vpn.readCliPackage()
     if (vpn.installed && (showHealthy || view.state === Model.STATES.stale)) {
       vpn.refreshCountries()
       vpn.refreshConfig()
@@ -581,6 +586,7 @@ Panel {
     else if (focusSection === "config:custom-dns") scrollItemIntoView(customDnsToggle)
     else if (focusSection === "ks-cancel" || focusSection === "ks-confirm") scrollItemIntoView(ksConfirm)
     else if (focusSection === "trust") scrollItemIntoView(trustRow)
+    else if (focusSection === "cli-check" || focusSection === "cli-update") scrollItemIntoView(cliBlock)
     else if (focusSection === "signout") scrollItemIntoView(signOutRow)
     else if (focusSection === "so-cancel" || focusSection === "so-confirm") scrollItemIntoView(signOutConfirmRow)
     else {
@@ -1585,6 +1591,76 @@ Panel {
                     onTextChanged: root.dnsText = text
                     onAccepted: root.applyDns()
                   }
+                }
+              }
+            }
+
+            // The CLI's version, installed and latest. Latest is the local
+            // package database until the user asks the mirrors.
+            Column {
+              id: cliBlock
+              visible: vpn.installed && root.cliInfo.installed !== ""
+              width: parent.width
+              spacing: Style.spacing.rowGap
+
+              Column {
+                width: parent.width
+                spacing: Style.spacing.labelGap
+
+                Flow {
+                  width: parent.width
+                  spacing: Style.spacing.xxl
+
+                  InfoPair {
+                    label: root.tr("cli.installed", "Proton VPN CLI")
+                    value: root.cliInfo.installed
+                  }
+
+                  InfoPair {
+                    visible: root.cliInfo.latest !== ""
+                    label: root.tr("cli.latest", "Latest")
+                    value: root.cliInfo.latest
+                  }
+                }
+
+                Text {
+                  textFormat: Text.PlainText
+                  visible: text !== ""
+                  width: parent.width
+                  text: vpn.cliCheckError !== ""
+                    ? vpn.cliCheckError
+                    : [root.cliInfo.status, root.cliInfo.source].filter(function(part) { return part !== "" }).join(" · ")
+                  color: vpn.cliCheckError !== "" ? root.urgent : (root.cliInfo.newer ? root.foreground : root.dim)
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                  wrapMode: Text.WordWrap
+                }
+              }
+
+              Row {
+                spacing: Style.spacing.rowGap
+
+                Button {
+                  bordered: true
+                  text: vpn.cliChecking ? root.tr("cli.checking", "Checking…") : root.tr("cli.check", "Check for updates")
+                  tooltipText: root.tr("cli.checkTip", "Asks your Arch mirrors with checkupdates. Nothing else reaches the network.")
+                  hasCursor: root.cursorActive && root.focusSection === "cli-check"
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                  onClicked: vpn.checkCliUpdates()
+                  onHovered: function(on) { if (on) root.setFocusSection("cli-check") }
+                }
+
+                Button {
+                  visible: root.cliInfo.newer
+                  bordered: true
+                  text: root.tr("cli.update", "Update")
+                  tooltipText: root.tr("cli.updateTip", "Opens Omarchy's system update in a terminal. It updates every package, the Proton VPN CLI included.")
+                  hasCursor: root.cursorActive && root.focusSection === "cli-update"
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                  onClicked: vpn.updateSystem()
+                  onHovered: function(on) { if (on) root.setFocusSection("cli-update") }
                 }
               }
             }
