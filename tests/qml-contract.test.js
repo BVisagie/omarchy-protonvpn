@@ -393,12 +393,19 @@ describe("QML scheduler contract", () => {
     assert.match(panel, /signOutConfirm = true\n\s*cursorActive = true\n\s*focusSection = "so-cancel"/)
   })
 
+  it("never gives a function the name of a property", () => {
+    for (const file of [service, panel]) {
+      const props = new Set([...file.matchAll(/^  (?:readonly )?property \S+ (\w+)/gm)].map((m) => m[1]))
+      for (const m of file.matchAll(/^  function (\w+)\(/gm)) assert.ok(!props.has(m[1]), m[1])
+    }
+  })
+
   it("folds SETTINGS away until asked for", () => {
     assert.match(panel, /property bool settingsOpen: false/)
     assert.match(panel, /rows\.push\(\["settings"\]\)\n\s*if \(settingsOpen && vpn\.configLoaded\) \{/)
     assert.match(panel, /id: settingsBody\n\s*visible: root\.settingsOpen/)
-    assert.match(panel, /focusSection === "settings"\) toggleSettings\(\)/)
-    assert.match(panel, /\(t === "s" \|\| t === "S"\) && root\.showWrites && vpn\.installed\) root\.toggleSettings\(\)/)
+    assert.match(panel, /focusSection === "settings"\) toggleSettingsFold\(\)/)
+    assert.match(panel, /\(t === "s" \|\| t === "S"\) && root\.showWrites && vpn\.installed\) root\.toggleSettingsFold\(\)/)
   })
 
   it("moves the cursor by row and column instead of a flat list", () => {

@@ -299,7 +299,7 @@ Panel {
     else if (focusSection === "city" && selectedCountry !== "") cityDropdown.toggle()
     else if (focusSection === "server") Qt.callLater(function() { if (serverField) serverField.forceActiveFocus() })
     else if (focusSection === "switch") switchNow()
-    else if (focusSection === "settings") toggleSettings()
+    else if (focusSection === "settings") toggleSettingsFold()
     else if (focusSection.indexOf("quick:") === 0) connectQuick(parseInt(focusSection.substring(6), 10))
     else if (focusSection.indexOf("star:") === 0) starQuick(parseInt(focusSection.substring(5), 10))
     else if (focusSection === "dns") applyDns()
@@ -361,7 +361,7 @@ Panel {
     vpn.signOut()
   }
 
-  function toggleSettings() {
+  function toggleSettingsFold() {
     settingsOpen = !settingsOpen
     if (!settingsOpen) ksConfirmValue = ""
     cursorActive = true
@@ -747,7 +747,7 @@ Panel {
       onTextKey: function(t) {
         if (t === "r" || t === "R") root.refreshAll()
         else if (t === "t" || t === "T") root.tryToggle()
-        else if ((t === "s" || t === "S") && root.showWrites && vpn.installed) root.toggleSettings()
+        else if ((t === "s" || t === "S") && root.showWrites && vpn.installed) root.toggleSettingsFold()
         else if (t === "f" || t === "F") root.starCursorRow()
       }
 
@@ -1294,7 +1294,7 @@ Panel {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onEntered: root.setFocusSection("settings")
-                onClicked: root.toggleSettings()
+                onClicked: root.toggleSettingsFold()
               }
 
               SettingTip {
