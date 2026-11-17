@@ -70,10 +70,7 @@ var STATES = {
 
 var HEALTHY_TOGGLE_STATES = [STATES.connected, STATES.disconnected]
 
-function settingsSectionHelp(loc) {
-  return say(loc, "settings.help", "Most CLI settings apply without reconnecting. IPv6 and custom DNS need a new VPN connection.")
-}
-var SETTINGS_SECTION_HELP = settingsSectionHelp()
+
 var TOOLTIP_MAX_LENGTH = 90
 var OPTION_DESCRIPTION_MAX_LENGTH = 60
 
@@ -2154,8 +2151,6 @@ if (typeof module !== "undefined") {
     CONNECTION_MODES: CONNECTION_MODES,
     CONNECT_FIELDS: CONNECT_FIELDS,
     CONFIG_SETTINGS: CONFIG_SETTINGS,
-    SETTINGS_SECTION_HELP: SETTINGS_SECTION_HELP,
-    settingsSectionHelp: settingsSectionHelp,
     TOOLTIP_MAX_LENGTH: TOOLTIP_MAX_LENGTH,
     OPTION_DESCRIPTION_MAX_LENGTH: OPTION_DESCRIPTION_MAX_LENGTH,
     emptyStatus: emptyStatus,

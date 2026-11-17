@@ -92,9 +92,10 @@ Panel {
   readonly property bool needsServer: Model.modeNeedsServer(selectedMode)
   readonly property var configSettings: Model.CONFIG_SETTINGS
   readonly property string copyCommand: Model.copyCommandFor(view.state)
-  readonly property bool pickerOpen: modeDropdown.popupOpen || countryDropdown.popupOpen || cityDropdown.popupOpen || netshieldDropdown.popupOpen || killSwitchDropdown.popupOpen
+  readonly property bool pickerOpen: modeDropdown.popupOpen || countryDropdown.popupOpen || cityDropdown.popupOpen || netshieldDropdown.popupOpen
   readonly property bool editorFocused: (serverField.visible && serverField.activeFocus) || (dnsField.visible && dnsField.activeFocus)
-  readonly property var toggleSettings: toggleSettingList()
+  // The CONNECTION cluster in SETTINGS, in this order.
+  readonly property var connectionSettings: ["vpn-accelerator", "port-forwarding", "moderate-nat", "ipv6"]
   readonly property var statusLines: statusLineList()
   readonly property var cliInfo: Model.cliVersionInfo(vpn.cliPackage, Date.now() + nowTick, root.loc)
   // Disconnected, or connecting: the button under CONNECT starts the
@@ -130,14 +131,6 @@ Panel {
   }
   readonly property var focusRows: visibleFocusRows()
   readonly property var focusOrder: visibleFocusOrder()
-
-  function toggleSettingList() {
-    var list = []
-    for (var i = 0; i < Model.CONFIG_SETTINGS.length; i++) {
-      if (Model.CONFIG_SETTINGS[i].type === "toggle") list.push(Model.CONFIG_SETTINGS[i])
-    }
-    return list
-  }
 
   function countryOptionList() {
     var list = []
@@ -240,14 +233,16 @@ Panel {
       for (var q = 0; q < quickRows.length; q++) rows.push(["star:" + q, "quick:" + q])
       rows.push(["settings"])
       if (settingsOpen && vpn.configLoaded) {
-        rows.push(["config:netshield", "config:kill-switch"])
+        // One column, in the order the rows appear.
+        rows.push(["config:kill-switch"])
         if (ksConfirmValue !== "") rows.push(["ks-cancel", "ks-confirm"])
-        rows.push(["config:port-forwarding", "config:vpn-accelerator"])
-        rows.push(["config:moderate-nat", "config:ipv6"])
-        rows.push(["config:anonymous-crash-reports", "config:custom-dns"])
+        rows.push(["config:netshield"])
+        rows.push(["config:custom-dns"])
         if (showDnsField()) rows.push(["dns"])
-        rows.push(cliInfo.newer ? ["cli-check", "cli-update"] : ["cli-check"])
         if (vpn.autoConnectWifi && vpn.wifiName !== "") rows.push(["trust"])
+        for (var c = 0; c < connectionSettings.length; c++) rows.push(["config:" + connectionSettings[c]])
+        if (cliInfo.installed !== "") rows.push(cliInfo.newer ? ["cli-check", "cli-update"] : ["cli-check"])
+        rows.push(["config:anonymous-crash-reports"])
         if (view.state === Model.STATES.disconnected && !signOutConfirm) rows.push(["signout"])
         if (signOutConfirm) rows.push(["so-cancel", "so-confirm"])
       }
@@ -352,7 +347,7 @@ Panel {
       return
     }
     if (key === "netshield") netshieldDropdown.toggle()
-    else if (key === "kill-switch") killSwitchDropdown.toggle()
+    else if (key === "kill-switch") chooseKillSwitch(vpn.configDisplayValue("kill-switch") === "off" ? "standard" : "off")
     else if (key === "custom-dns") toggleCustomDns()
   }
 
@@ -581,29 +576,23 @@ Panel {
     else if (focusSection === "settings") scrollItemIntoView(settingsHeader)
     else if (focusSection.indexOf("quick:") === 0 || focusSection.indexOf("star:") === 0) scrollItemIntoView(quickList)
     else if (focusSection === "dns") scrollItemIntoView(dnsField)
-    else if (focusSection === "config:netshield") scrollItemIntoView(netshieldDropdown)
-    else if (focusSection === "config:kill-switch") scrollItemIntoView(killSwitchDropdown)
-    else if (focusSection === "config:custom-dns") scrollItemIntoView(customDnsToggle)
     else if (focusSection === "ks-cancel" || focusSection === "ks-confirm") scrollItemIntoView(ksConfirm)
     else if (focusSection === "trust") scrollItemIntoView(trustRow)
     else if (focusSection === "cli-check" || focusSection === "cli-update") scrollItemIntoView(cliBlock)
     else if (focusSection === "signout") scrollItemIntoView(signOutRow)
     else if (focusSection === "so-cancel" || focusSection === "so-confirm") scrollItemIntoView(signOutConfirmRow)
-    else {
-      var grids = [choiceGrid, toggleGrid]
-      for (var g = 0; g < grids.length; g++) {
-        var grid = grids[g]
-        if (!grid) continue
-        for (var i = 0; i < grid.children.length; i++) {
-          var child = grid.children[i]
-          if (child && child.objectName === focusSection) {
-            scrollItemIntoView(child)
-            return
-          }
-        }
-      }
-      if (toggleGrid) scrollItemIntoView(toggleGrid)
+    else if (focusSection.indexOf("config:") === 0) scrollItemIntoView(findSection(settingsBody, focusSection) || settingsBody)
+  }
+
+  // SETTINGS rows carry their cursor name as objectName.
+  function findSection(item, name) {
+    if (!item) return null
+    if (item.objectName === name) return item
+    for (var i = 0; i < item.children.length; i++) {
+      var found = findSection(item.children[i], name)
+      if (found) return found
     }
+    return null
   }
 
   implicitWidth: button.implicitWidth
@@ -1276,6 +1265,9 @@ Panel {
               visible: root.showConnectButton
               width: parent.width
               bordered: true
+              // The panel's one emphasised action, in the kit's own style.
+              active: root.view.state !== Model.STATES.connected
+              verticalPadding: Style.space(9)
               text: Model.connectButtonLabel(root.view.state, root.connectOptions(), vpn.countries, root.loc)
               tooltipText: root.view.state === Model.STATES.connected
                 ? root.tr("connect.switchTip", "Reconnect with these choices. Proton replaces the current connection.")
@@ -1375,213 +1367,145 @@ Panel {
               }
             }
 
+            // One column of borderless rows in three clusters: what protects
+            // the connection, how it connects, and the CLI itself.
             Column {
               id: settingsBody
               visible: root.settingsOpen
               width: parent.width
-              spacing: Style.spacing.rowGap
-
-            SettingHelp {
-              width: parent.width
-              text: Model.settingsSectionHelp(root.loc)
-            }
-
-            Text {
-              textFormat: Text.PlainText
-              visible: vpn.configError !== ""
-              width: parent.width
-              text: vpn.configError
-              color: root.urgent
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.bodySmall
-              wrapMode: Text.WordWrap
-            }
-
-            GridLayout {
-              id: choiceGrid
-              width: parent.width
-              columns: 2
-              columnSpacing: Style.spacing.rowGap
-              rowSpacing: Style.spacing.labelGap
-
-              FieldColumn {
-                FieldLabel { text: Model.settingLabel("netshield", root.loc) }
-                SearchableDropdown {
-                  id: netshieldDropdown
-                  Layout.fillWidth: true
-                  Layout.preferredWidth: 0
-                  showLabel: false
-                  value: vpn.configDisplayValue("netshield")
-                  options: Model.settingChoiceOptions("netshield", root.loc)
-                  foreground: root.foreground
-                  fontFamily: root.fontFamily
-                  hasCursor: root.cursorActive && root.focusSection === "config:netshield"
-                  placeholderText: Model.settingLabel("netshield", root.loc)
-                  emptyText: vpn.configUpgrade.netshield ? root.tr("config.upgrade", "Upgrade to enable") : root.tr("config.noValues", "No values")
-                  onHovered: function(on) {
-                    netshieldTip.tipHovered = on
-                    if (on) root.setFocusSection("config:netshield")
-                  }
-                  onChanged: function(value) { if (value !== vpn.configDisplayValue("netshield")) vpn.setConfig("netshield", value) }
-
-                  SettingTip {
-                    id: netshieldTip
-                    text: Model.settingTooltip("netshield", root.loc)
-                    tipCursor: root.keyboardNavigation && netshieldDropdown.hasCursor
-                    tipPopupOpen: netshieldDropdown.popupOpen
-                  }
-                }
-
-                Text {
-                  textFormat: Text.PlainText
-                  visible: vpn.configUpgrade.netshield === true
-                  Layout.fillWidth: true
-                  text: root.tr("config.upgradeHint", "Upgrade to enable. Changing it still sends the CLI command so Proton can report the restriction.")
-                  color: root.dim
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                  wrapMode: Text.WordWrap
-                }
-              }
-
-              FieldColumn {
-                FieldLabel { text: Model.settingLabel("kill-switch", root.loc) }
-                SearchableDropdown {
-                  id: killSwitchDropdown
-                  Layout.fillWidth: true
-                  Layout.preferredWidth: 0
-                  showLabel: false
-                  value: vpn.configDisplayValue("kill-switch")
-                  options: Model.settingChoiceOptions("kill-switch", root.loc)
-                  foreground: root.foreground
-                  fontFamily: root.fontFamily
-                  hasCursor: root.cursorActive && root.focusSection === "config:kill-switch"
-                  placeholderText: Model.settingLabel("kill-switch", root.loc)
-                  onHovered: function(on) {
-                    killSwitchTip.tipHovered = on
-                    if (on) root.setFocusSection("config:kill-switch")
-                  }
-                  onChanged: function(value) { root.chooseKillSwitch(value) }
-
-                  SettingTip {
-                    id: killSwitchTip
-                    text: Model.settingTooltip("kill-switch", root.loc)
-                    tipCursor: root.keyboardNavigation && killSwitchDropdown.hasCursor
-                    tipPopupOpen: killSwitchDropdown.popupOpen
-                  }
-                }
-
-                Text {
-                  textFormat: Text.PlainText
-                  visible: Model.isVpnActive(root.view) && root.ksConfirmValue === ""
-                  Layout.fillWidth: true
-                  text: root.tr("killSwitch.reconnectHint", "Changing it briefly reconnects the VPN.")
-                  color: root.dim
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                  wrapMode: Text.WordWrap
-                }
-              }
-            }
-
-            Column {
-              id: ksConfirm
-              visible: root.ksConfirmValue !== ""
-              width: parent.width
-              spacing: Style.spacing.rowGap
+              spacing: Style.spacing.panelGap
 
               Text {
                 textFormat: Text.PlainText
+                visible: vpn.configError !== ""
                 width: parent.width
-                text: Model.killSwitchConfirmText(root.ksConfirmValue, Model.returnTarget(vpn.activeTarget, root.view.status, vpn.freePlan), root.loc)
-                color: root.foreground
+                leftPadding: Style.spacing.controlPaddingX
+                text: vpn.configError
+                color: root.urgent
                 font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
+                font.pixelSize: Style.font.bodySmall
                 wrapMode: Text.WordWrap
               }
 
-              Row {
-                spacing: Style.spacing.rowGap
+              Column {
+                id: protectionCluster
+                width: parent.width
+                spacing: Style.space(2)
 
-                Button {
-                  text: root.tr("action.cancel", "Cancel")
-                  bordered: true
-                  hasCursor: root.cursorActive && root.focusSection === "ks-cancel"
-                  foreground: root.foreground
-                  fontFamily: root.fontFamily
-                  onClicked: root.cancelKillSwitch()
-                  onHovered: function(on) { if (on) root.setFocusSection("ks-cancel") }
-                }
+                SettingRow {
+                  width: parent.width
+                  section: "config:kill-switch"
+                  title: Model.settingLabel("kill-switch", root.loc)
+                  caption: Model.isVpnActive(root.view) && root.ksConfirmValue === "" ? root.tr("killSwitch.reconnectHint", "Changing it briefly reconnects the VPN.") : ""
+                  tip: Model.settingTooltip("kill-switch", root.loc)
+                  onActivated: root.activateConfig("kill-switch")
 
-                Button {
-                  text: root.tr("killSwitch.confirmButton", "Reconnect and change")
-                  bordered: true
-                  hasCursor: root.cursorActive && root.focusSection === "ks-confirm"
-                  foreground: root.foreground
-                  fontFamily: root.fontFamily
-                  onClicked: root.confirmKillSwitch()
-                  onHovered: function(on) { if (on) root.setFocusSection("ks-confirm") }
-                }
-              }
-            }
-
-            GridLayout {
-              id: toggleGrid
-              width: parent.width
-              columns: 2
-              columnSpacing: Style.spacing.rowGap
-              rowSpacing: Style.spacing.rowGap
-
-              Repeater {
-                model: root.toggleSettings
-                ToggleSettingRow {
-                  required property var modelData
-                  Layout.fillWidth: true
-                  Layout.preferredWidth: 1
-                  Layout.alignment: Qt.AlignTop | Qt.AlignLeft
-                  setting: modelData
-                }
-              }
-
-              ColumnLayout {
-                Layout.fillWidth: true
-                Layout.preferredWidth: 1
-                Layout.alignment: Qt.AlignTop | Qt.AlignLeft
-                spacing: 0
-
-                Toggle {
-                  id: customDnsToggle
-                  Layout.fillWidth: true
-                  implicitHeight: Style.spacing.controlHeight
-                  titleSize: Style.font.body
-                  label: Model.settingLabel("custom-dns", root.loc)
-                  checked: Model.parseCustomDnsValue(vpn.configDisplayValue("custom-dns")).enabled
-                  hasCursor: root.cursorActive && root.focusSection === "config:custom-dns"
-                  foreground: root.foreground
-                  fontFamily: root.fontFamily
-                  onHovered: function(on) {
-                    customDnsTip.tipHovered = on
-                    if (on) root.setFocusSection("config:custom-dns")
+                  ToggleSwitch {
+                    interactive: false
+                    checked: vpn.configDisplayValue("kill-switch") !== "" && vpn.configDisplayValue("kill-switch") !== "off"
+                    busy: vpn.pendingSetting === "kill-switch"
+                    foreground: root.foreground
                   }
-                  onClicked: root.toggleCustomDns()
+                }
 
-                  SettingTip {
-                    id: customDnsTip
-                    text: Model.settingTooltip("custom-dns", root.loc)
-                    tipCursor: root.keyboardNavigation && customDnsToggle.hasCursor
+                Column {
+                  id: ksConfirm
+                  visible: root.ksConfirmValue !== ""
+                  width: parent.width
+                  leftPadding: Style.spacing.controlPaddingX
+                  topPadding: Style.space(4)
+                  bottomPadding: Style.space(6)
+                  spacing: Style.spacing.rowGap
+
+                  Text {
+                    textFormat: Text.PlainText
+                    width: parent.width - parent.leftPadding
+                    text: Model.killSwitchConfirmText(root.ksConfirmValue, Model.returnTarget(vpn.activeTarget, root.view.status, vpn.freePlan), root.loc)
+                    color: root.foreground
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                    wrapMode: Text.WordWrap
+                  }
+
+                  Row {
+                    spacing: Style.spacing.rowGap
+
+                    Button {
+                      text: root.tr("action.cancel", "Cancel")
+                      bordered: true
+                      hasCursor: root.cursorActive && root.focusSection === "ks-cancel"
+                      foreground: root.foreground
+                      fontFamily: root.fontFamily
+                      onClicked: root.cancelKillSwitch()
+                      onHovered: function(on) { if (on) root.setFocusSection("ks-cancel") }
+                    }
+
+                    Button {
+                      text: root.tr("killSwitch.confirmButton", "Reconnect and change")
+                      bordered: true
+                      hasCursor: root.cursorActive && root.focusSection === "ks-confirm"
+                      foreground: root.foreground
+                      fontFamily: root.fontFamily
+                      onClicked: root.confirmKillSwitch()
+                      onHovered: function(on) { if (on) root.setFocusSection("ks-confirm") }
+                    }
+                  }
+                }
+
+                SettingRow {
+                  width: parent.width
+                  section: "config:netshield"
+                  title: Model.settingLabel("netshield", root.loc)
+                  caption: vpn.configUpgrade.netshield === true ? root.tr("config.upgrade", "Upgrade to enable") : ""
+                  tip: Model.settingTooltip("netshield", root.loc)
+                  tipBlocked: netshieldDropdown.popupOpen
+                  onActivated: netshieldDropdown.toggle()
+
+                  // Half width, so the open list has room for its descriptions.
+                  SearchableDropdown {
+                    id: netshieldDropdown
+                    width: Math.round(protectionCluster.width * 0.46)
+                    showLabel: false
+                    value: vpn.configDisplayValue("netshield")
+                    options: Model.settingChoiceOptions("netshield", root.loc)
+                    foreground: root.foreground
+                    fontFamily: root.fontFamily
+                    hasCursor: root.cursorActive && root.focusSection === "config:netshield"
+                    placeholderText: Model.settingLabel("netshield", root.loc)
+                    emptyText: vpn.configUpgrade.netshield ? root.tr("config.upgrade", "Upgrade to enable") : root.tr("config.noValues", "No values")
+                    onHovered: function(on) { if (on) root.setFocusSection("config:netshield") }
+                    onChanged: function(value) { if (value !== vpn.configDisplayValue("netshield")) vpn.setConfig("netshield", value) }
+                  }
+                }
+
+                SettingRow {
+                  id: customDnsRow
+                  width: parent.width
+                  section: "config:custom-dns"
+                  title: Model.settingLabel("custom-dns", root.loc)
+                  caption: root.tr("config.newConnection", "Needs a new connection")
+                  tip: Model.settingTooltip("custom-dns", root.loc)
+                  onActivated: root.toggleCustomDns()
+
+                  ToggleSwitch {
+                    interactive: false
+                    checked: Model.parseCustomDnsValue(vpn.configDisplayValue("custom-dns")).enabled
+                    busy: vpn.pendingSetting === "custom-dns"
+                    foreground: root.foreground
                   }
                 }
 
                 Item {
-                  Layout.fillWidth: true
-                  height: root.showDnsField() ? dnsField.implicitHeight + Style.space(6) : 0
+                  width: parent.width
+                  height: root.showDnsField() ? dnsField.implicitHeight + Style.space(4) : 0
                   visible: height > 0
                   clip: true
 
                   TextField {
                     id: dnsField
-                    y: Style.space(6)
-                    width: parent.width
+                    x: Style.spacing.controlPaddingX
+                    y: Style.space(2)
+                    width: parent.width - Style.spacing.controlPaddingX * 2
                     visible: root.showDnsField()
                     foreground: root.foreground
                     placeholderText: "1.1.1.1, 8.8.8.8"
@@ -1592,148 +1516,163 @@ Panel {
                     onAccepted: root.applyDns()
                   }
                 }
-              }
-            }
 
-            // The CLI's version, installed and latest. Latest is the local
-            // package database until the user asks the mirrors.
-            Column {
-              id: cliBlock
-              visible: vpn.installed && root.cliInfo.installed !== ""
-              width: parent.width
-              spacing: Style.spacing.rowGap
+                SettingRow {
+                  id: trustRow
+                  visible: vpn.autoConnectWifi && vpn.wifiName !== ""
+                  width: parent.width
+                  section: "trust"
+                  title: vpn.wifiTrusted
+                    ? root.tr("wifi.untrust", "Stop trusting %1").arg(vpn.wifiName)
+                    : root.tr("wifi.trust", "Trust %1").arg(vpn.wifiName)
+                  caption: vpn.wifiTrusted
+                    ? root.tr("wifi.untrustHint", "Proton VPN connects automatically here again.")
+                    : root.tr("wifi.trustHint", "Proton VPN connects automatically on Wi-Fi you have not trusted. Trust this network to skip it.")
+                  onActivated: vpn.toggleTrustedNetwork(vpn.wifiName)
+                }
+              }
 
               Column {
                 width: parent.width
-                spacing: Style.spacing.labelGap
+                spacing: Style.space(2)
 
-                Flow {
-                  width: parent.width
-                  spacing: Style.spacing.xxl
+                Repeater {
+                  model: root.connectionSettings
 
-                  InfoPair {
-                    label: root.tr("cli.installed", "Proton VPN CLI")
-                    value: root.cliInfo.installed
+                  SettingRow {
+                    required property string modelData
+                    width: parent.width
+                    section: "config:" + modelData
+                    title: Model.settingLabel(modelData, root.loc)
+                    caption: vpn.configUpgrade[modelData] === true
+                      ? root.tr("config.upgrade", "Upgrade to enable")
+                      : (Model.settingDef(modelData).restart ? root.tr("config.newConnection", "Needs a new connection") : "")
+                    tip: Model.settingTooltip(modelData, root.loc)
+                    onActivated: root.activateConfig(modelData)
+
+                    ToggleSwitch {
+                      interactive: false
+                      checked: vpn.configDisplayValue(modelData) === "on"
+                      busy: vpn.pendingSetting === modelData
+                      foreground: root.foreground
+                    }
                   }
-
-                  InfoPair {
-                    visible: root.cliInfo.latest !== ""
-                    label: root.tr("cli.latest", "Latest")
-                    value: root.cliInfo.latest
-                  }
-                }
-
-                Text {
-                  textFormat: Text.PlainText
-                  visible: text !== ""
-                  width: parent.width
-                  text: vpn.cliCheckError !== ""
-                    ? vpn.cliCheckError
-                    : [root.cliInfo.status, root.cliInfo.source].filter(function(part) { return part !== "" }).join(" · ")
-                  color: vpn.cliCheckError !== "" ? root.urgent : (root.cliInfo.newer ? root.foreground : root.dim)
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                  wrapMode: Text.WordWrap
                 }
               }
 
-              Row {
-                spacing: Style.spacing.rowGap
-
-                Button {
-                  bordered: true
-                  text: vpn.cliChecking ? root.tr("cli.checking", "Checking…") : root.tr("cli.check", "Check for updates")
-                  tooltipText: root.tr("cli.checkTip", "Asks your Arch mirrors with checkupdates. Nothing else reaches the network.")
-                  hasCursor: root.cursorActive && root.focusSection === "cli-check"
-                  foreground: root.foreground
-                  fontFamily: root.fontFamily
-                  onClicked: vpn.checkCliUpdates()
-                  onHovered: function(on) { if (on) root.setFocusSection("cli-check") }
-                }
-
-                Button {
-                  visible: root.cliInfo.newer
-                  bordered: true
-                  text: root.tr("cli.update", "Update")
-                  tooltipText: root.tr("cli.updateTip", "Opens Omarchy's system update in a terminal. It updates every package, the Proton VPN CLI included.")
-                  hasCursor: root.cursorActive && root.focusSection === "cli-update"
-                  foreground: root.foreground
-                  fontFamily: root.fontFamily
-                  onClicked: vpn.updateSystem()
-                  onHovered: function(on) { if (on) root.setFocusSection("cli-update") }
-                }
-              }
-            }
-
-            ActionRow {
-              id: trustRow
-              visible: vpn.autoConnectWifi && vpn.wifiName !== ""
-              width: parent.width
-              title: vpn.wifiTrusted
-                ? root.tr("wifi.untrust", "Stop trusting %1").arg(vpn.wifiName)
-                : root.tr("wifi.trust", "Trust %1").arg(vpn.wifiName)
-              subtitle: vpn.wifiTrusted
-                ? root.tr("wifi.untrustHint", "Proton VPN connects automatically here again.")
-                : root.tr("wifi.trustHint", "Proton VPN connects automatically on Wi-Fi you have not trusted. Trust this network to skip it.")
-              sectionName: "trust"
-              onActivated: vpn.toggleTrustedNetwork(vpn.wifiName)
-            }
-
-            ActionRow {
-              id: signOutRow
-              visible: root.view.state === Model.STATES.disconnected && !root.signOutConfirm
-              width: parent.width
-              title: root.tr("signout.title", "Sign out")
-              subtitle: root.tr("signout.hint", "Signs this computer out of Proton VPN and clears the CLI's settings. Favorites stay.")
-              sectionName: "signout"
-              onActivated: root.askSignOut()
-            }
-
-            Column {
-              id: signOutConfirmRow
-              visible: root.signOutConfirm
-              width: parent.width
-              spacing: Style.spacing.rowGap
-
-              Text {
-                textFormat: Text.PlainText
+              Column {
+                id: cliCluster
                 width: parent.width
-                text: root.tr("signout.confirm", "Sign out of Proton VPN on this computer? You will need your password and 2FA to sign in again.")
-                color: root.foreground
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-                wrapMode: Text.WordWrap
-              }
+                spacing: Style.space(2)
 
-              Row {
-                spacing: Style.spacing.rowGap
+                // Installed and latest version. Latest is the local package
+                // database until the user asks the mirrors.
+                SettingRow {
+                  id: cliBlock
+                  visible: vpn.installed && root.cliInfo.installed !== ""
+                  width: parent.width
+                  title: root.tr("cli.installedVersion", "Proton VPN CLI %1").arg(root.cliInfo.installed)
+                  caption: vpn.cliCheckError !== ""
+                    ? vpn.cliCheckError
+                    : [root.cliInfo.newer ? root.tr("cli.available", "%1 available").arg(root.cliInfo.latest) : root.cliInfo.status, root.cliInfo.source]
+                      .filter(function(part) { return part !== "" }).join(" · ")
+                  captionColor: vpn.cliCheckError !== "" ? root.urgent : (root.cliInfo.newer ? Color.accent : root.dim)
 
-                Button {
-                  text: root.tr("action.cancel", "Cancel")
-                  bordered: true
-                  hasCursor: root.cursorActive && root.focusSection === "so-cancel"
-                  foreground: root.foreground
-                  fontFamily: root.fontFamily
-                  onClicked: root.cancelSignOut()
-                  onHovered: function(on) { if (on) root.setFocusSection("so-cancel") }
+                  Button {
+                    bordered: true
+                    verticalPadding: Style.space(3)
+                    text: vpn.cliChecking ? root.tr("cli.checking", "Checking…") : root.tr("cli.check", "Check")
+                    tooltipText: root.tr("cli.checkTip", "Asks your Arch mirrors with checkupdates. Nothing else reaches the network.")
+                    hasCursor: root.cursorActive && root.focusSection === "cli-check"
+                    foreground: root.foreground
+                    fontFamily: root.fontFamily
+                    onClicked: vpn.checkCliUpdates()
+                    onHovered: function(on) { if (on) root.setFocusSection("cli-check") }
+                  }
+
+                  Button {
+                    visible: root.cliInfo.newer
+                    bordered: true
+                    verticalPadding: Style.space(3)
+                    text: root.tr("cli.update", "Update")
+                    tooltipText: root.tr("cli.updateTip", "Opens Omarchy's system update in a terminal. It updates every package, the Proton VPN CLI included.")
+                    hasCursor: root.cursorActive && root.focusSection === "cli-update"
+                    foreground: root.foreground
+                    fontFamily: root.fontFamily
+                    onClicked: vpn.updateSystem()
+                    onHovered: function(on) { if (on) root.setFocusSection("cli-update") }
+                  }
                 }
 
-                Button {
-                  text: root.tr("signout.title", "Sign out")
-                  bordered: true
-                  hasCursor: root.cursorActive && root.focusSection === "so-confirm"
-                  foreground: root.foreground
-                  fontFamily: root.fontFamily
-                  onClicked: root.confirmSignOut()
-                  onHovered: function(on) { if (on) root.setFocusSection("so-confirm") }
+                SettingRow {
+                  width: parent.width
+                  section: "config:anonymous-crash-reports"
+                  title: Model.settingLabel("anonymous-crash-reports", root.loc)
+                  tip: Model.settingTooltip("anonymous-crash-reports", root.loc)
+                  onActivated: root.activateConfig("anonymous-crash-reports")
+
+                  ToggleSwitch {
+                    interactive: false
+                    checked: vpn.configDisplayValue("anonymous-crash-reports") === "on"
+                    busy: vpn.pendingSetting === "anonymous-crash-reports"
+                    foreground: root.foreground
+                  }
+                }
+
+                SettingRow {
+                  id: signOutRow
+                  visible: root.view.state === Model.STATES.disconnected && !root.signOutConfirm
+                  width: parent.width
+                  section: "signout"
+                  danger: true
+                  title: root.tr("signout.title", "Sign out")
+                  caption: root.tr("signout.short", "Clears the CLI's settings. Favorites stay.")
+                  onActivated: root.askSignOut()
+                }
+
+                Column {
+                  id: signOutConfirmRow
+                  visible: root.signOutConfirm
+                  width: parent.width
+                  leftPadding: Style.spacing.controlPaddingX
+                  topPadding: Style.space(4)
+                  spacing: Style.spacing.rowGap
+
+                  Text {
+                    textFormat: Text.PlainText
+                    width: parent.width - parent.leftPadding
+                    text: root.tr("signout.confirm", "Sign out of Proton VPN on this computer? You will need your password and 2FA to sign in again.")
+                    color: root.foreground
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                    wrapMode: Text.WordWrap
+                  }
+
+                  Row {
+                    spacing: Style.spacing.rowGap
+
+                    Button {
+                      text: root.tr("action.cancel", "Cancel")
+                      bordered: true
+                      hasCursor: root.cursorActive && root.focusSection === "so-cancel"
+                      foreground: root.foreground
+                      fontFamily: root.fontFamily
+                      onClicked: root.cancelSignOut()
+                      onHovered: function(on) { if (on) root.setFocusSection("so-cancel") }
+                    }
+
+                    Button {
+                      text: root.tr("signout.title", "Sign out")
+                      bordered: true
+                      hasCursor: root.cursorActive && root.focusSection === "so-confirm"
+                      foreground: root.foreground
+                      fontFamily: root.fontFamily
+                      onClicked: root.confirmSignOut()
+                      onHovered: function(on) { if (on) root.setFocusSection("so-confirm") }
+                    }
+                  }
                 }
               }
-            }
-
-            Item {
-              width: parent.width
-              height: Style.space(6)
-            }
             }
           }
         }
@@ -1760,7 +1699,7 @@ Panel {
     hasCursor: root.cursorActive && root.focusSection === "quick:" + rowIndex
     foreground: root.foreground
     fill: root.hoverFill
-    implicitHeight: Math.max(quickName.implicitHeight, quickStar.implicitHeight) + Style.space(10)
+    implicitHeight: Math.max(Style.spacing.controlHeight, quickName.implicitHeight + Style.space(8))
 
     MouseArea {
       id: quickMouse
@@ -1783,8 +1722,10 @@ Panel {
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.verticalCenter: parent.verticalCenter
-      anchors.leftMargin: Style.space(4)
-      anchors.rightMargin: Style.space(10)
+      // The star's box is 10 wider than the star, so the star sits on the
+      // same text edge as the SETTINGS rows.
+      anchors.leftMargin: Style.spacing.controlPaddingX - Style.space(5)
+      anchors.rightMargin: Style.spacing.controlPaddingX
       spacing: Style.space(8)
 
       CursorSurface {
@@ -1853,12 +1794,13 @@ Panel {
     spacing: Style.spacing.labelGap
   }
 
+  // Labels sit quietly above the fields they name; the values are bright.
   component FieldLabel: Text {
     Layout.fillWidth: true
-    color: root.foreground
+    textFormat: Text.PlainText
+    color: root.dim
     font.family: root.fontFamily
-    font.pixelSize: Style.font.subtitle
-    font.bold: true
+    font.pixelSize: Style.font.bodySmall
   }
 
   component ActionRow: CursorSurface {
@@ -1944,16 +1886,6 @@ Panel {
     }
   }
 
-  component SettingHelp: Text {
-    Layout.fillWidth: true
-    visible: true
-    opacity: text !== "" ? 1 : 0
-    color: root.dim
-    font.family: root.fontFamily
-    font.pixelSize: Style.font.caption
-    wrapMode: Text.WordWrap
-  }
-
   component SettingTip: PanelToolTip {
     property bool tipHovered: false
     property bool tipCursor: false
@@ -1962,33 +1894,80 @@ Panel {
     fontFamily: root.fontFamily
   }
 
-  component ToggleSettingRow: Toggle {
-    id: toggleSettingRow
-    property var setting: ({})
-    property bool tipHovered: false
-    readonly property string key: String(setting.key || "")
-    readonly property string currentValue: vpn.configDisplayValue(key)
-    readonly property bool upgrade: vpn.configUpgrade && vpn.configUpgrade[key] === true
-    objectName: "config:" + key
+  // A SETTINGS row: label and an optional caption on the left, its control
+  // on the right. Borderless; the cursor and hover tint it, as Omarchy's
+  // list rows do. A row without a section is not a cursor stop itself.
+  component SettingRow: CursorSurface {
+    id: settingRow
+    property string section: ""
+    property string title: ""
+    property string caption: ""
+    property color captionColor: root.dim
+    property string tip: ""
+    property bool tipBlocked: false
+    property bool danger: false
+    default property alias controls: controlSlot.data
+    signal activated()
 
-    Layout.fillWidth: true
-    implicitHeight: Style.spacing.controlHeight
-    titleSize: Style.font.body
-    label: Model.settingLabel(key, root.loc)
-    checked: String(currentValue) === "on"
-    hasCursor: root.cursorActive && root.focusSection === "config:" + key
-    foreground: root.foreground
-    fontFamily: root.fontFamily
-    onHovered: function(on) {
-      tipHovered = on
-      if (on) root.setFocusSection("config:" + key)
+    objectName: section
+    hasCursor: section !== "" && root.cursorActive && root.focusSection === section
+    foreground: danger ? root.urgent : root.foreground
+    fill: danger ? Qt.rgba(root.urgent.r, root.urgent.g, root.urgent.b, 0.10) : root.hoverFill
+    implicitHeight: Math.max(Style.spacing.controlHeight, rowText.implicitHeight + Style.space(8), controlSlot.implicitHeight + Style.space(4))
+
+    MouseArea {
+      id: rowMouse
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: settingRow.section !== "" ? Qt.PointingHandCursor : Qt.ArrowCursor
+      onEntered: if (settingRow.section !== "") root.setFocusSection(settingRow.section)
+      onClicked: settingRow.activated()
     }
-    onClicked: vpn.setConfig(key, checked ? "off" : "on")
 
     SettingTip {
-      text: Model.settingTooltip(toggleSettingRow.key, root.loc)
-      tipHovered: toggleSettingRow.tipHovered
-      tipCursor: root.keyboardNavigation && toggleSettingRow.hasCursor
+      text: settingRow.tip
+      tipHovered: rowMouse.containsMouse
+      tipCursor: root.keyboardNavigation && settingRow.hasCursor
+      tipPopupOpen: settingRow.tipBlocked
+    }
+
+    Column {
+      id: rowText
+      anchors.left: parent.left
+      anchors.right: controlSlot.left
+      anchors.leftMargin: Style.spacing.controlPaddingX
+      anchors.rightMargin: Style.spacing.controlGap
+      anchors.verticalCenter: parent.verticalCenter
+      spacing: Style.space(1)
+
+      Text {
+        textFormat: Text.PlainText
+        width: parent.width
+        text: settingRow.title
+        color: settingRow.danger && settingRow.hasCursor ? root.urgent : root.foreground
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.body
+        elide: Text.ElideRight
+      }
+
+      Text {
+        textFormat: Text.PlainText
+        visible: settingRow.caption !== ""
+        width: parent.width
+        text: settingRow.caption
+        color: settingRow.captionColor
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+        wrapMode: Text.WordWrap
+      }
+    }
+
+    Row {
+      id: controlSlot
+      anchors.right: parent.right
+      anchors.rightMargin: Style.spacing.controlPaddingX
+      anchors.verticalCenter: parent.verticalCenter
+      spacing: Style.spacing.rowGap
     }
   }
 }

@@ -605,7 +605,6 @@ describe("Proton-sourced help copy", () => {
     assert.doesNotMatch(Model.settingDescription("custom-dns"), /help them fix bugs|third-party resolvers/i)
     assert.match(Model.settingDescription("custom-dns"), /NetShield/i)
     assert.match(Model.settingDescription("port-forwarding", { upgrade: true }), /Upgrade to enable/)
-    assert.match(Model.SETTINGS_SECTION_HELP, /IPv6 and custom DNS/i)
   })
 
   it("title-cases setting names that were sentence-cased", () => {
