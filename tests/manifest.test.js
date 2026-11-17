@@ -34,6 +34,13 @@ describe("plugin manifest", () => {
     assert.equal(entry.defaultValue, "drops")
   })
 
+  it("publishes the bar label and remembered recents as opt-ins", () => {
+    const label = manifest.barWidget.schema.find((item) => item.key === "barLabel")
+    assert.deepEqual(label.options.map((o) => o.value), require("../Model.js").BAR_LABELS)
+    assert.equal(manifest.barWidget.defaults.barLabel, "none")
+    assert.equal(manifest.barWidget.defaults.rememberRecent, false)
+  })
+
   it("publishes reconnect on drop as an opt-in boolean", () => {
     assert.equal(manifest.barWidget.defaults.reconnectOnDrop, false)
     const entry = manifest.barWidget.schema.find((item) => item.key === "reconnectOnDrop")

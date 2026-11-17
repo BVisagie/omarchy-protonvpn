@@ -844,6 +844,20 @@ describe("quick connect", () => {
   })
 })
 
+describe("bar label", () => {
+  const view = { state: "connected", status: { server: "IS-CH#1", location: "Reykjavik, via Switzerland" } }
+  it("names the connection beside the icon only when asked and connected", () => {
+    assert.equal(Model.barLabelText("country", view), "IS")
+    assert.equal(Model.barLabelText("server", view), "IS-CH#1")
+    assert.equal(Model.barLabelText("city", view), "Reykjavik")
+    assert.equal(Model.barLabelText("country", { state: "connected", status: { server: "NL#806" } }), "NL")
+    assert.equal(Model.barLabelText("none", view), "")
+    assert.equal(Model.barLabelText("bogus", view), "")
+    assert.equal(Model.barLabelText("server", { state: "disconnected", status: {} }), "")
+    assert.equal(Model.barLabelText("city", { state: "connected", status: { location: "A very long city name indeed" } }).length, 16)
+  })
+})
+
 describe("connection duration", () => {
   it("reads the activation time NetworkManager reports", () => {
     const link = Model.parseActiveVpn("ProtonVPN NL#806:wireguard:proton0:activated:1794925926\nWi:Fi:802-11-wireless:wlan0:activated:1794903424\n")

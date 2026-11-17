@@ -144,6 +144,7 @@ After changing a string in the code, run `node tests/tools/build_catalog.js` to 
 | Desktop notifications (only while the panel is closed) | `notifications` | `drops` | `off`, `drops`, `all` |
 | Reconnect when the VPN drops | `reconnectOnDrop` | `false` | `true`, `false` |
 | Remember recent connections and the last target across restarts | `rememberRecent` | `false` | `true`, `false` |
+| Text beside the bar icon while connected | `barLabel` | `none` | `none`, `country` (NL), `server` (NL#806), `city` (Amsterdam) |
 
 Change a setting with `omarchy bar set`. Numbers and booleans need `--json`:
 
@@ -151,7 +152,10 @@ Change a setting with `omarchy bar set`. Numbers and booleans need `--json`:
 omarchy bar set io.github.BVisagie.protonvpn notifications all
 omarchy bar set io.github.BVisagie.protonvpn refreshIntervalSec 60 --json
 omarchy bar set io.github.BVisagie.protonvpn reconnectOnDrop true --json
+omarchy bar set io.github.BVisagie.protonvpn barLabel country
 ```
+
+The bar label shows only while connected, and only on horizontal bars.
 
 A drop is any tunnel loss the widget did not start itself, including one from another terminal. `all` also notifies when the tunnel connects. Notifications go through `omarchy-notification-send`; clicking one opens the panel.
 

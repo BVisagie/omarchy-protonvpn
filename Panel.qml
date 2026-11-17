@@ -629,6 +629,8 @@ Panel {
     anchors.fill: parent
     bar: root.bar
     tooltipText: Model.tooltipText(root.view, root.loc)
+    // Vertical bars stay icon-only, like Omarchy's battery percentage.
+    labelText: root.bar && root.bar.vertical ? "" : Model.barLabelText(root.setting("barLabel", "none"), root.view)
     iconComponent: Component {
       Item {
         ProtonVpnIcon {

@@ -24,7 +24,8 @@
       "linkWatchIntervalSec": 4,
       "notifications": "drops",
       "reconnectOnDrop": false,
-      "rememberRecent": false
+      "rememberRecent": false,
+      "barLabel": "none"
     },
     "schema": [
       {
@@ -67,6 +68,18 @@
         "type": "boolean",
         "label": "Remember recent connections and the last target across restarts",
         "defaultValue": false
+      },
+      {
+        "key": "barLabel",
+        "type": "enum",
+        "label": "Text beside the bar icon while connected",
+        "options": [
+          { "value": "none", "label": "None" },
+          { "value": "country", "label": "Country code" },
+          { "value": "server", "label": "Server" },
+          { "value": "city", "label": "City" }
+        ],
+        "defaultValue": "none"
       }
     ]
   }

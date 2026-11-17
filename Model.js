@@ -1422,6 +1422,26 @@ function tooltipText(view, loc) {
   return view && view.message ? view.message : say(loc, "tooltip.error", "Proton VPN error.")
 }
 
+// Text beside the bar icon while connected: "NL", "NL#806", or "Amsterdam".
+// Server IDs start with the exit country ("IS-CH#1" exits in Iceland).
+var BAR_LABELS = ["none", "country", "server", "city"]
+
+function normalizeBarLabel(value) {
+  var v = String(value === undefined || value === null ? "" : value)
+  return BAR_LABELS.indexOf(v) !== -1 ? v : "none"
+}
+
+function barLabelText(setting, view) {
+  var mode = normalizeBarLabel(setting)
+  if (mode === "none" || !view || view.state !== STATES.connected || !view.status) return ""
+  var server = String(view.status.server || "")
+  var text = ""
+  if (mode === "server") text = server
+  else if (mode === "country") text = (server.match(/^([A-Za-z]{2,3})[-#]/) || ["", ""])[1].toUpperCase()
+  else text = String(view.status.location || "").split(",")[0].trim()
+  return capOutput(text, 16)
+}
+
 function heroTitle(view) {
   var state = view && view.state ? view.state : STATES.checking
   if (state === STATES.connected && view.status && view.status.server) return view.status.server
@@ -1982,6 +2002,9 @@ if (typeof module !== "undefined") {
     connectedSummary: connectedSummary,
     tooltipText: tooltipText,
     heroTitle: heroTitle,
+    BAR_LABELS: BAR_LABELS,
+    normalizeBarLabel: normalizeBarLabel,
+    barLabelText: barLabelText,
     heroMeta: heroMeta,
     heroDetail: heroDetail,
     relativeTime: relativeTime,
