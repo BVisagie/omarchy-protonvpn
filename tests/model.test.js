@@ -861,17 +861,32 @@ describe("sign-out", () => {
   })
 })
 
-describe("protections line", () => {
+describe("status pairs", () => {
   it("states Kill Switch, NetShield, and Secure Core as facts", () => {
     const connected = { state: "connected", status: { server: "IS-CH#1" } }
-    assert.equal(Model.protectionsText({ "kill-switch": "standard", netshield: "malware-ads-trackers" }, connected),
-      "Kill Switch on · NetShield: Malware, ads, and trackers · Secure Core")
-    assert.equal(Model.protectionsText({ "kill-switch": "off", netshield: "off" }, { state: "connected", status: { server: "NL#1" } }),
-      "Kill Switch off · NetShield off")
-    assert.equal(Model.protectionsText({ "kill-switch": "standard", netshield: "" }, null), "Kill Switch on")
-    assert.equal(Model.protectionsText({}, connected), "")
-    assert.equal(Model.protectionsText({ "kill-switch": "off", netshield: "malware-only", "custom-dns": "on [1.1.1.1]" }, null), "Kill Switch off · NetShield off (custom DNS)")
-    assert.equal(Model.protectionsText({ "kill-switch": "off", netshield: "malware-only", "custom-dns": "off" }, null), "Kill Switch off · NetShield: Malware only")
+    const flat = (pairs) => pairs.map((p) => p.label + " " + p.value).join(" · ")
+    assert.equal(flat(Model.protectionPairs({ "kill-switch": "standard", netshield: "malware-ads-trackers" }, connected)),
+      "Kill Switch On · NetShield Malware, ads, and trackers · Secure Core On")
+    assert.equal(flat(Model.protectionPairs({ "kill-switch": "off", netshield: "off" }, { state: "connected", status: { server: "NL#1" } })),
+      "Kill Switch Off · NetShield Off")
+    assert.equal(flat(Model.protectionPairs({ "kill-switch": "off", netshield: "malware-only", "custom-dns": "on [1.1.1.1]" }, null)),
+      "Kill Switch Off · NetShield Off (custom DNS)")
+    assert.deepEqual(Model.protectionPairs({}, connected), [])
+  })
+
+  it("puts traffic in the same pairs once it is known", () => {
+    assert.deepEqual(Model.trafficPairs(Model.emptyTraffic()), [])
+    assert.deepEqual(Model.trafficPairs({ known: true, rxRate: 1500, txRate: 20, sessionRx: 2000000, sessionTx: 500000 }).map((p) => p.value),
+      ["1.5 KB/s", "20 B/s", "2.5 MB"])
+  })
+
+  it("labels the CONNECT button with full place names", () => {
+    const countries = [{ code: "DO", name: "Dominican Republic" }]
+    const city = { mode: "city", country: "DO", city: "Santo Domingo" }
+    assert.equal(Model.connectButtonLabel("disconnected", city, countries), "Connect to Santo Domingo · Dominican Republic")
+    assert.equal(Model.connectButtonLabel("connected", { mode: "country", country: "DO" }, countries), "Switch to Dominican Republic")
+    assert.equal(Model.connectButtonLabel("connecting", city, countries), "Connecting…")
+    assert.equal(Model.connectButtonLabel("disconnected", { mode: "fastest" }, []), "Connect to Fastest server")
   })
 })
 

@@ -308,11 +308,12 @@ describe("QML scheduler contract", () => {
 
   it("offers an in-place switch for changed CONNECT choices while connected", () => {
     assert.match(panel, /readonly property bool offerSwitch: Model\.shouldOfferSwitch\(/)
-    assert.match(panel, /id: switchButton\s*visible: root\.offerSwitch/)
-    assert.match(panel, /text: Model\.switchLabel\(root\.connectOptions\(\), root\.loc\)/)
-    assert.match(panel, /onClicked: root\.switchNow\(\)/)
-    assert.match(panel, /if \(offerSwitch\) rows\.push\(\["switch"\]\)/)
-    assert.match(panel, /focusSection === "switch"\) switchNow\(\)/)
+    assert.match(panel, /readonly property bool showConnectButton: offerSwitch \|\| view\.state === Model\.STATES\.disconnected \|\| view\.state === Model\.STATES\.connecting/)
+    assert.match(panel, /id: switchButton\s*visible: root\.showConnectButton/)
+    assert.match(panel, /text: Model\.connectButtonLabel\(root\.view\.state, root\.connectOptions\(\), vpn\.countries, root\.loc\)/)
+    assert.match(panel, /onClicked: root\.primaryConnect\(\)/)
+    assert.match(panel, /if \(showConnectButton\) rows\.push\(\["switch"\]\)/)
+    assert.match(panel, /focusSection === "switch"\) primaryConnect\(\)/)
     assert.match(panel, /onAccepted: root\.offerSwitch \? root\.switchNow\(\) : root\.tryToggle\(\)/)
     assert.doesNotMatch(panel, /function applyConnectDraft\(draft\) \{[^}]*connectDraftDirty/)
     assert.match(service, /activeTarget = target/)
@@ -322,12 +323,13 @@ describe("QML scheduler contract", () => {
   it("centers the protocol pill with the power toggle and keeps status on one line", () => {
     assert.match(panel, /detail: ""/)
     assert.match(panel, /id: detailPill\s*visible: root\.heroDetailText !== ""\s*anchors\.verticalCenter: parent\.verticalCenter/)
-    // A parent bound to a child's `visible` can hide itself permanently.
-    assert.match(panel, /visible: root\.heroDetailText !== "" \|\| root\.powerSwitchShown/)
+    // Refresh lives in the hero row in every state, beside the pill and switch.
+    assert.match(panel, /id: refreshAction[\s\S]{0,400}hasCursor: root\.cursorActive && root\.focusSection === "refresh"/)
+    assert.match(panel, /rows\.push\(powerSwitchShown \? \["refresh", "header"\] : \["refresh"\]\)/)
     assert.match(panel, /id: powerSwitch\s*anchors\.verticalCenter: parent\.verticalCenter\s*visible: root\.powerSwitchShown/)
     assert.doesNotMatch(panel, /visible:[^\n]*\b(?:detailPill|powerSwitch)\.visible/)
     assert.match(panel, /id: powerSwitch\s*anchors\.verticalCenter: parent\.verticalCenter/)
-    assert.match(panel, /Flow \{\s*id: statusGrid/)
+    assert.match(panel, /Flow \{\s*id: statusLine/)
   })
 
   it("gets city lists to the user ahead of background refreshes", () => {
@@ -352,14 +354,13 @@ describe("QML scheduler contract", () => {
     assert.doesNotMatch(panel, /fittedContentWidth\(Style\.space\(560\)\)/)
     assert.doesNotMatch(panel, /Style\.space\(420\)/)
     assert.doesNotMatch(panel, /Style\.space\(760\)/)
-    assert.match(panel, /id: statusGrid/)
+    assert.match(panel, /id: statusBlock/)
     assert.match(panel, /id: connectRow/)
     assert.match(panel, /id: choiceGrid/)
     assert.match(panel, /id: toggleGrid/)
     assert.doesNotMatch(panel, /id: configGrid/)
     assert.match(panel, /component FieldColumn: ColumnLayout/)
     assert.match(panel, /columns: 2/)
-    assert.match(panel, /id: refreshRow/)
     assert.match(panel, /Button \{/)
     assert.doesNotMatch(panel, /Layout\.fillHeight: true/)
     assert.match(panel, /implicitHeight: Style\.spacing\.controlHeight/)
@@ -412,6 +413,21 @@ describe("QML scheduler contract", () => {
     assert.match(panel, /id: settingsBody\n\s*visible: root\.settingsOpen/)
     assert.match(panel, /focusSection === "settings"\) toggleSettingsFold\(\)/)
     assert.match(panel, /\(t === "s" \|\| t === "S"\) && root\.showWrites && vpn\.installed\) root\.toggleSettingsFold\(\)/)
+  })
+
+  it("gives every cursor stop an action and a scroll target", () => {
+    const rows = panel.slice(panel.indexOf("function visibleFocusRows()"), panel.indexOf("function visibleFocusOrder()"))
+    const names = new Set([...rows.matchAll(/"([a-z-]+(?::[a-z-]+)?)"/g)].map((m) => m[1]))
+    names.add("star:"); names.add("quick:")
+    const activate = panel.slice(panel.indexOf("function activateCursor()"), panel.indexOf("function activateConfig("))
+    const scroll = panel.slice(panel.indexOf("function scrollCursorIntoView()"), panel.indexOf("component QuickRow"))
+    for (const name of names) {
+      if (name.startsWith("config:")) continue
+      const quoted = name.endsWith(":") ? `"${name}") === 0` : `"${name}"`
+      assert.ok(activate.includes(quoted), `${name} has no action`)
+      assert.ok(scroll.includes(quoted), `${name} has no scroll target`)
+    }
+    assert.match(activate, /focusSection\.indexOf\("config:"\) === 0/)
   })
 
   it("moves the cursor by row and column instead of a flat list", () => {

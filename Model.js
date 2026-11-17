@@ -1508,26 +1508,49 @@ function tooltipText(view, loc) {
 }
 
 // What protects the connection, from values the plugin already has: the
-// CLI's settings and the server name. Facts only, never a score.
-function protectionsText(configValues, view, loc) {
+// CLI's settings and the server name. Facts only, never a score. Label and
+// value pairs, in the same style as the status line above them.
+function protectionPairs(configValues, view, loc) {
   var values = configValues || {}
-  if (values["kill-switch"] === undefined && values.netshield === undefined) return ""
-  var parts = []
+  // Until the settings load, say nothing rather than half the story.
+  if (values["kill-switch"] === undefined && values.netshield === undefined) return []
+  var on = say(loc, "value.on", "On")
+  var off = say(loc, "value.off", "Off")
+  var pairs = []
   if (values["kill-switch"] !== undefined) {
-    parts.push(values["kill-switch"] === "off"
-      ? say(loc, "protect.killSwitchOff", "Kill Switch off")
-      : say(loc, "protect.killSwitchOn", "Kill Switch on"))
+    pairs.push({ label: settingLabel("kill-switch", loc), value: values["kill-switch"] === "off" ? off : on })
   }
   if (values.netshield !== undefined && values.netshield !== "") {
     // Custom DNS sends queries past Proton, so NetShield cannot filter them.
-    if (values.netshield !== "off" && parseCustomDnsValue(values["custom-dns"]).enabled) parts.push(say(loc, "protect.netShieldBypassed", "NetShield off (custom DNS)"))
-    else parts.push(values.netshield === "off"
-      ? say(loc, "protect.netShieldOff", "NetShield off")
-      : fill(say(loc, "protect.netShield", "NetShield: %1"), configValueLabel("netshield", values.netshield, loc)))
+    var bypassed = values.netshield !== "off" && parseCustomDnsValue(values["custom-dns"]).enabled
+    pairs.push({
+      label: settingLabel("netshield", loc),
+      value: bypassed ? say(loc, "protect.netShieldBypassed", "Off (custom DNS)") : configValueLabel("netshield", values.netshield, loc)
+    })
   }
   var server = view && view.state === STATES.connected && view.status ? String(view.status.server || "") : ""
-  if (/^[A-Za-z]{2,3}-[A-Za-z]{2,3}#\d+$/.test(server)) parts.push(say(loc, "protect.secureCore", "Secure Core"))
-  return parts.join(" · ")
+  if (/^[A-Za-z]{2,3}-[A-Za-z]{2,3}#\d+$/.test(server)) pairs.push({ label: modeLabel("securecore", loc), value: on })
+  return pairs
+}
+
+// Live rates and the session total, once two samples exist.
+function trafficPairs(traffic, loc) {
+  if (!traffic || traffic.known !== true) return []
+  return [
+    { label: say(loc, "traffic.down", "Down"), value: formatRate(traffic.rxRate, loc) },
+    { label: say(loc, "traffic.up", "Up"), value: formatRate(traffic.txRate, loc) },
+    { label: say(loc, "traffic.session", "Session"), value: formatBytes(traffic.sessionRx + traffic.sessionTx, loc) }
+  ]
+}
+
+// The button under CONNECT: "Connect to Netherlands" while disconnected,
+// "Switch to Zurich · Switzerland" while connected.
+function connectButtonLabel(state, options, countries, loc) {
+  if (state === STATES.connecting) return say(loc, "action.connecting", "Connecting…")
+  var name = targetName(options, countries, loc)
+  return state === STATES.connected
+    ? fill(say(loc, "connect.switchTo", "Switch to %1"), name)
+    : fill(say(loc, "connect.connectTo", "Connect to %1"), name)
 }
 
 // Text beside the bar icon while connected: "NL", "NL#806", or "Amsterdam".
@@ -2128,7 +2151,9 @@ if (typeof module !== "undefined") {
     BAR_LABELS: BAR_LABELS,
     normalizeBarLabel: normalizeBarLabel,
     barLabelText: barLabelText,
-    protectionsText: protectionsText,
+    protectionPairs: protectionPairs,
+    trafficPairs: trafficPairs,
+    connectButtonLabel: connectButtonLabel,
     heroMeta: heroMeta,
     heroDetail: heroDetail,
     relativeTime: relativeTime,

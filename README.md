@@ -114,7 +114,7 @@ Inside the panel:
 - `Tab` / `Shift+Tab` switches to the next bar panel
 - `Esc` closes
 
-While connected, changing the CONNECT choices shows a **Switch to …** button (for example **Switch to Zurich**). It reconnects in place with the new choices, and `Enter` in the Server ID field does the same. The header toggle and `t` still disconnect. City lists are cached for the shell session, so picking a country again shows its cities immediately; **Refresh** reloads them.
+CONNECT has Mode on its own row and the place, Country and City or a Server ID, on the row below. While disconnected, a button under them names where it connects (**Connect to Santo Domingo · Dominican Republic**). While connected, changing the choices turns it into **Switch to …**, which reconnects in place with the new choices; `Enter` in the Server ID field does the same. The header toggle and `t` still disconnect. City lists are cached for the shell session, so picking a country again shows its cities immediately; the refresh icon beside the toggle reloads them, and its tooltip says when status was last updated.
 
 **QUICK CONNECT** lists, by full name ("Zurich · Switzerland"), the current connection, your favorites, and the last three places you connected to. Click a row, or press `Enter` on it, to connect there. Click its star, or press `f` on the row, to keep it as a favorite or remove it. Favorites, up to eight, are saved in this widget's entry in `~/.config/omarchy/shell.json`. Recent places stay in memory for the shell session unless you turn on `rememberRecent`, which also saves them there and starts CONNECT on the last one; turning it off removes them again. When the CLI supplies a new exit IP after connecting, the panel shows it until the tunnel disconnects or changes.
 
