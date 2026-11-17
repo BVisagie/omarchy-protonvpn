@@ -24,6 +24,7 @@
   "blocked.stale": "Refresh Proton VPN status before making changes. The last result may be outdated.",
   "cli.check": "Check",
   "cli.checkFailed": "Could not reach the Arch mirrors.",
+  "cli.checkFailedShort": "check failed",
   "cli.checkTip": "Asks your Arch mirrors with checkupdates. Nothing else reaches the network.",
   "cli.checking": "Checking…",
   "cli.fromMirrors": "mirrors, checked %1",

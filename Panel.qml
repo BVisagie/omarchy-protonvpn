@@ -99,7 +99,7 @@ Panel {
   readonly property var cliInfo: Model.cliVersionInfo(vpn.cliPackage, Date.now() + nowTick, root.loc)
   // Disconnected, or connecting: the button under CONNECT starts the
   // connection; connected with edited choices, it switches.
-  readonly property bool showConnectButton: offerSwitch || view.state === Model.STATES.disconnected || view.state === Model.STATES.connecting
+  readonly property bool showConnectButton: offerSwitch || view.state === Model.STATES.disconnected
   readonly property string refreshTip: {
     if (vpn.refreshing) return tr("refresh.runningTip", "Checking Proton VPN…")
     var updated = Model.relativeTime(view.lastUpdatedMs, Date.now() + nowTick, root.loc)
@@ -1435,10 +1435,11 @@ Panel {
                 tipBlocked: netshieldDropdown.popupOpen
                 onActivated: netshieldDropdown.toggle()
 
-                // Half width, so the open list has room for its descriptions.
+                // The open list is as wide as this field; 62% leaves room for
+                // the longest option description beside the NetShield label.
                 SearchableDropdown {
                   id: netshieldDropdown
-                  width: Math.round(settingsBody.width * 0.46)
+                  width: Math.round(settingsBody.width * 0.62)
                   showLabel: false
                   value: vpn.configDisplayValue("netshield")
                   options: Model.settingChoiceOptions("netshield", root.loc)
@@ -1576,7 +1577,7 @@ Panel {
                         : (vpn.cliCheckError !== "" ? root.urgent : (root.cliInfo.newer ? Color.accent : root.dim))
                       text: root.signOutConfirm
                         ? root.tr("signout.favoritesStay", "Favorites stay.")
-                        : (vpn.cliCheckError !== "" ? "· " + vpn.cliCheckError
+                        : (vpn.cliCheckError !== "" ? "· " + root.tr("cli.checkFailedShort", "check failed")
                           : (root.cliInfo.newer ? "→ " + root.cliInfo.latest
                             : (root.cliInfo.status !== "" ? "· " + root.cliInfo.status : "")))
                     }
@@ -1587,7 +1588,8 @@ Panel {
                     bordered: true
                     verticalPadding: Style.space(3)
                     text: vpn.cliChecking ? root.tr("cli.checking", "Checking…") : root.tr("cli.check", "Check")
-                    tooltipText: (root.cliInfo.source !== "" ? root.tr("cli.latestFrom", "Latest from %1.").arg(root.cliInfo.source) + " " : "")
+                    tooltipText: (vpn.cliCheckError !== "" ? vpn.cliCheckError + " " : "")
+                      + (root.cliInfo.source !== "" ? root.tr("cli.latestFrom", "Latest from %1.").arg(root.cliInfo.source) + " " : "")
                       + root.tr("cli.checkTip", "Asks your Arch mirrors with checkupdates. Nothing else reaches the network.")
                     hasCursor: root.cursorActive && root.focusSection === "cli-check"
                     foreground: root.foreground
@@ -1613,14 +1615,14 @@ Panel {
                   // destructive action here.
                   Button {
                     id: signOutRow
-                    readonly property bool hot: root.cursorActive && root.focusSection === "signout"
+                    readonly property bool armed: root.cursorActive && root.focusSection === "signout"
                     visible: !root.signOutConfirm && root.signOutAvailable
-                    bordered: hot
+                    bordered: armed
                     verticalPadding: Style.space(3)
                     text: root.tr("signout.title", "Sign out")
                     tooltipText: root.tr("signout.tip", "Clears the CLI's settings; signing in again needs your password and 2FA. Favorites stay.")
-                    hasCursor: hot
-                    foreground: hot ? root.urgent : root.foreground
+                    hasCursor: armed
+                    foreground: armed ? root.urgent : root.foreground
                     fontFamily: root.fontFamily
                     onClicked: root.askSignOut()
                     onHovered: function(on) { if (on) root.setFocusSection("signout") }

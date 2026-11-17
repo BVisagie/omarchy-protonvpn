@@ -1547,7 +1547,6 @@ function trafficPairs(traffic, loc) {
 // The button under CONNECT: "Connect to Netherlands" while disconnected,
 // "Switch to Zurich · Switzerland" while connected.
 function connectButtonLabel(state, options, countries, loc) {
-  if (state === STATES.connecting) return say(loc, "action.connecting", "Connecting…")
   // Until the choices name a place the CLI accepts, say only what it does.
   if (!buildConnectCommand(options).ok) {
     return state === STATES.connected ? say(loc, "connect.switch", "Switch") : say(loc, "connect.connect", "Connect")

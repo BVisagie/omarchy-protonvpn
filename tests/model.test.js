@@ -884,7 +884,6 @@ describe("status pairs", () => {
     const city = { mode: "city", country: "DO", city: "Santo Domingo" }
     assert.equal(Model.connectButtonLabel("disconnected", city, countries), "Connect to Santo Domingo · Dominican Republic")
     assert.equal(Model.connectButtonLabel("connected", { mode: "country", country: "DO" }, countries), "Switch to Dominican Republic")
-    assert.equal(Model.connectButtonLabel("connecting", city, countries), "Connecting…")
     assert.equal(Model.connectButtonLabel("disconnected", { mode: "fastest" }, []), "Connect to Fastest server")
     assert.equal(Model.connectButtonLabel("disconnected", { mode: "city", country: "DO", city: "" }, countries), "Connect")
     assert.equal(Model.connectButtonLabel("disconnected", { mode: "country", country: "" }, countries), "Connect")

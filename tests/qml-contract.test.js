@@ -325,7 +325,7 @@ describe("QML scheduler contract", () => {
 
   it("offers an in-place switch for changed CONNECT choices while connected", () => {
     assert.match(panel, /readonly property bool offerSwitch: Model\.shouldOfferSwitch\(/)
-    assert.match(panel, /readonly property bool showConnectButton: offerSwitch \|\| view\.state === Model\.STATES\.disconnected \|\| view\.state === Model\.STATES\.connecting/)
+    assert.match(panel, /readonly property bool showConnectButton: offerSwitch \|\| view\.state === Model\.STATES\.disconnected\n/)
     assert.match(panel, /id: switchButton\s*visible: root\.showConnectButton/)
     assert.match(panel, /text: Model\.connectButtonLabel\(root\.view\.state, root\.connectOptions\(\), vpn\.countries, root\.loc\)/)
     assert.match(panel, /onClicked: root\.primaryConnect\(\)/)
