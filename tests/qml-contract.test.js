@@ -107,7 +107,8 @@ describe("QML scheduler contract", () => {
 
   it("asks before a Kill Switch change drops a live tunnel", () => {
     assert.match(panel, /else if \(key === "kill-switch"\) chooseKillSwitch\(vpn\.configDisplayValue\("kill-switch"\) === "off" \? "standard" : "off"\)/)
-    assert.match(panel, /section: "config:kill-switch"[\s\S]{0,400}onActivated: root\.activateConfig\("kill-switch"\)/)
+    assert.match(panel, /SwitchPair \{ leftKey: "kill-switch"; rightKey: "vpn-accelerator" \}/)
+    assert.match(panel, /component SwitchCell: SettingRow \{[\s\S]{0,300}onActivated: root\.activateConfig\(key\)/)
     assert.match(panel, /ksConfirmValue = value\n\s*cursorActive = true\n\s*focusSection = "ks-cancel"/)
     assert.match(service, /ksStep === "idle" \|\| _ksInternal/)
   })
@@ -278,7 +279,7 @@ describe("QML scheduler contract", () => {
     assert.match(panel, /view\.state === Model\.STATES\.stale/)
     assert.match(panel, /readonly property bool showWrites: showHealthy && vpn\.canChangeSettings/)
     assert.match(panel, /emptyText: root\.countryEmptyText\(\)/)
-    assert.match(panel, /onActivated: root\.toggleCustomDns\(\)/)
+    assert.match(panel, /else if \(key === "custom-dns"\) toggleCustomDns\(\)/)
   })
 
   it("shows Proton setting help as hover and keyboard-focus tooltips", () => {
@@ -289,10 +290,9 @@ describe("QML scheduler contract", () => {
     assert.match(panel, /Model\.connectFieldTooltip\("country", root\.loc\)/)
     assert.match(panel, /Model\.connectFieldTooltip\("city", root\.loc\)/)
     assert.match(panel, /Model\.connectFieldTooltip\("server", root\.loc\)/)
-    assert.match(panel, /Model\.settingTooltip\("netshield", root\.loc\)/)
-    assert.match(panel, /Model\.settingTooltip\("kill-switch", root\.loc\)/)
-    assert.match(panel, /Model\.settingTooltip\("custom-dns", root\.loc\)/)
-    assert.match(panel, /Model\.settingTooltip\(modelData, root\.loc\)/)
+    assert.match(panel, /tip: root\.settingTip\("netshield"\)/)
+    assert.match(panel, /tip: key !== "" \? root\.settingTip\(key\) : ""/)
+    assert.match(panel, /var tip = Model\.settingTooltip\(key, root\.loc\)/)
     assert.doesNotMatch(panel, /Model\.modeSummary\(/)
     assert.doesNotMatch(panel, /Model\.settingSummary\(/)
     assert.doesNotMatch(panel, /Model\.connectFieldSummary\(/)
@@ -305,7 +305,7 @@ describe("QML scheduler contract", () => {
     assert.doesNotMatch(connectGrid[0], /SettingHelp/)
     assert.doesNotMatch(panel, /SettingHelp/)
     assert.match(panel, /title: Model\.settingLabel\("netshield", root\.loc\)[\s\S]{0,600}id: netshieldDropdown/)
-    assert.match(panel, /title: Model\.settingLabel\("kill-switch", root\.loc\)/)
+    assert.match(panel, /title: key !== "" \? Model\.settingLabel\(key, root\.loc\) : ""/)
     assert.equal(require("../Model.js").settingLabel("kill-switch"), "Kill Switch")
   })
 
@@ -361,7 +361,7 @@ describe("QML scheduler contract", () => {
   it("scrolls each SETTINGS row itself into view", () => {
     assert.match(panel, /focusSection\.indexOf\("config:"\) === 0\) scrollItemIntoView\(findSection\(settingsBody, focusSection\) \|\| settingsBody\)/)
     assert.match(panel, /objectName: section/)
-    assert.match(panel, /id: customDnsRow/)
+    assert.match(panel, /SwitchPair \{ leftKey: "custom-dns"; rightKey: "ipv6" \}/)
   })
 
   it("uses a compact card with stacked CONNECT fields and split SETTINGS grids", () => {
@@ -373,10 +373,13 @@ describe("QML scheduler contract", () => {
     assert.match(panel, /id: connectRow/)
     assert.doesNotMatch(panel, /id: (?:choiceGrid|toggleGrid|configGrid)/)
     assert.match(panel, /id: settingsBody/)
-    assert.match(panel, /readonly property var connectionSettings: \["vpn-accelerator", "port-forwarding", "moderate-nat", "ipv6"\]/)
+    assert.match(panel, /component SwitchPair: RowLayout/)
+    assert.match(panel, /id: cliFooter/)
     assert.match(panel, /component FieldColumn: ColumnLayout/)
     assert.match(panel, /Button \{/)
-    assert.doesNotMatch(panel, /Layout\.fillHeight: true/)
+    // Only the hairline between switch columns stretches to its row's height.
+    assert.equal(panel.split("Layout.fillHeight: true").length - 1, 1)
+    assert.match(panel, /Rectangle \{\n\s*Layout\.fillHeight: true\n\s*Layout\.preferredWidth: 1/)
     assert.match(panel, /Math\.max\(Style\.spacing\.controlHeight/)
     assert.doesNotMatch(panel, /implicitHeight: Style\.space\(40\)/)
   })
@@ -445,8 +448,9 @@ describe("QML scheduler contract", () => {
 
   it("moves the cursor by row and column instead of a flat list", () => {
     assert.match(panel, /function visibleFocusRows\(\)/)
-    assert.match(panel, /rows\.push\(\["config:kill-switch"\]\)/)
-    assert.match(panel, /for \(var c = 0; c < connectionSettings\.length; c\+\+\) rows\.push\(\["config:" \+ connectionSettings\[c\]\]\)/)
+    assert.match(panel, /rows\.push\(\["config:kill-switch", "config:vpn-accelerator"\]\)/)
+    assert.match(panel, /rows\.push\(\["config:custom-dns", "config:ipv6"\]\)/)
+    assert.match(panel, /if \(signOutConfirm\) footer = \["so-cancel", "so-confirm"\]/)
     assert.match(panel, /if \(dx === 0 && dy === 0\) return/)
     assert.doesNotMatch(panel, /if \(dy === 0\) return/)
     assert.match(panel, /var nextCol = Math\.max\(0, Math\.min\(rows\[row\]\.length - 1, col \+ dx\)\)/)
@@ -471,7 +475,7 @@ describe("QML scheduler contract", () => {
   it("does not reveal the DNS field merely by hovering Custom DNS", () => {
     assert.match(panel, /property bool dnsEditorOpen: false/)
     assert.match(panel, /function showDnsField\(\)/)
-    assert.match(panel, /height: root\.showDnsField\(\) \? dnsField\.implicitHeight \+ Style\.space\(4\) : 0/)
+    assert.match(panel, /height: root\.showDnsField\(\) \? dnsField\.implicitHeight \+ Style\.space\(6\) : 0/)
     assert.match(panel, /visible: root\.showDnsField\(\)/)
     assert.doesNotMatch(panel, /dnsEnabled\(\) \|\| root\.focusSection === "dns"/)
   })

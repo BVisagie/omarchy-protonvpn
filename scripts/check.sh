@@ -60,8 +60,15 @@ if [[ -n "$qmlint_bin" ]]; then
   # Fail only on syntax/parse errors, not the import-resolution warning flood.
   report="$(mktemp)"
   set +e
-  "$qmlint_bin" "${include[@]}" Panel.qml Service.qml ProtonVpnIcon.qml >"$report" 2>&1
+  # qmllint can loop on some valid QML (two inline components with the same
+  # id name did); a hang must fail the check, not stall it.
+  timeout 120 "$qmlint_bin" "${include[@]}" Panel.qml Service.qml ProtonVpnIcon.qml >"$report" 2>&1
+  lint_status=$?
   set -e
+  if [[ $lint_status -eq 124 ]]; then
+    rm -f "$report"
+    fail "qmllint did not finish in two minutes"
+  fi
   if grep -Ei 'syntax error|invalid token|unexpected token|Expected token' "$report" >/dev/null; then
     echo "qmllint reported syntax errors:" >&2
     grep -Ei 'syntax error|invalid token|unexpected token|Expected token' "$report" >&2
