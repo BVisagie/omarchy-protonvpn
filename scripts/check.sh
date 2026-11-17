@@ -15,9 +15,23 @@ node --test tests/*.test.js
 echo "==> Python tests"
 python3 -m unittest discover -s tests -p 'test_*.py' -v
 
+echo "==> Shipped files"
+# Omarchy refuses a plugin folder with a symlink anywhere in it.
+if git ls-files -s | awk '$1 == "120000"' | grep -q .; then
+  fail "a tracked symlink would make omarchy plugin add refuse the plugin"
+fi
+
 echo "==> Manifest validation"
 if command -v omarchy >/dev/null 2>&1; then
-  omarchy plugin validate .
+  # Validate what a clone would contain, not local leftovers.
+  shipped="$(mktemp -d)"
+  trap 'rm -rf "$shipped"' EXIT
+  git ls-files -z --cached --others --exclude-standard | while IFS= read -r -d '' file; do
+    [[ -e $file ]] || continue
+    mkdir -p "$shipped/$(dirname "$file")"
+    cp -P "$file" "$shipped/$file"
+  done
+  omarchy plugin validate "$shipped"
 else
   echo "omarchy is not on PATH; manifest covered by portable tests"
 fi
