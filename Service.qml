@@ -1168,7 +1168,11 @@ Item {
     }
   }
 
-  onOpenPanelsChanged: if (openPanels === 0) traffic = Model.emptyTraffic()
+  // Opening a panel starts its rates at once instead of at the next tick.
+  onOpenPanelsChanged: {
+    if (openPanels === 0) traffic = Model.emptyTraffic()
+    else if (openPanels === 1) sampleTraffic()
+  }
 
   onActiveChanged: {
     if (active) refresh()
