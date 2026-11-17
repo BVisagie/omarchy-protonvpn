@@ -14,7 +14,8 @@ describe("QML scheduler contract", () => {
   it("uses one Omarchy service instead of constructing a service per monitor", () => {
     assert.match(panel, /root\.bar\.shell\.serviceFor\(root\.moduleName\)/)
     assert.match(panel, /onVpnChanged: \{[\s\S]{0,200}pushSettings\(\)/)
-    assert.match(panel, /if \(vpn && root\.settings && Object\.keys\(root\.settings\)\.length > 0\) vpn\.setSettings\(root\.settings\)/)
+    assert.match(panel, /if \(vpn && settingsInjected\) vpn\.setSettings\(root\.settings\)/)
+    assert.match(panel, /onSettingsChanged: \{\n\s*settingsInjected = true/)
     assert.doesNotMatch(panel, /Service\s*\{\s*id:\s*vpn/)
     assert.match(service, /running: root\.active && root\.installed/)
   })
@@ -109,7 +110,7 @@ describe("QML scheduler contract", () => {
     const reconnect = service.indexOf('if (ksStep === "setting" && job.setting === "kill-switch") advanceKillSwitch(')
     const listAfter = service.indexOf("refreshConfig()", reconnect)
     assert.ok(reconnect !== -1 && listAfter !== -1 && listAfter - reconnect < 200)
-    assert.match(service, /var owned = actionRunning \|\| ksStep !== "idle"\n\s*noteLink\(link\.active, owned\)/)
+    assert.match(service, /var owned = actionRunning \|\| ksStep !== "idle"\n\s*noteLink\(link\.active, owned\)\n(?:\s*\/\/[^\n]*\n)*\s*owned = actionRunning \|\| ksStep !== "idle"/)
     assert.match(service, /if \(owned\) return\n\s*if \(!Model\.linkMayClaimConnected\(state\)\)/)
     assert.match(service, /disconnected && linkConfirmed\(\) && ksStep === "idle"/)
     assert.match(service, /readonly property bool actionBusy: actionRunning \|\| ksStep !== "idle"/)

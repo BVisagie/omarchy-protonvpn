@@ -727,6 +727,8 @@ Item {
     // The Kill Switch cycle owns the tunnel between its actions too.
     var owned = actionRunning || ksStep !== "idle"
     noteLink(link.active, owned)
+    // noteLink can drop a queued automatic connect, which no longer owns it.
+    owned = actionRunning || ksStep !== "idle"
     // NetworkManager can briefly continue reporting the old tunnel while a
     // connect, server change, or disconnect is in flight. Keep the live facts,
     // but let the action result own the transitional UI state.
@@ -1176,6 +1178,7 @@ Item {
     var snapshotView = dropped.removed[0].snapshot
     if (snapshotView && state === Model.STATES.connecting) applyView(snapshotView)
     actionStatus = ""
+    delayedRefresh.restart()
   }
 
   function toggleTrustedNetwork(name) {

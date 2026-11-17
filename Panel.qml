@@ -416,17 +416,19 @@ Panel {
     else if (name.indexOf("star:") === 0) starQuick(parseInt(name.substring(5), 10))
   }
 
-  // Omarchy gives a panel its bar before its settings; an empty object in
-  // between would briefly switch every opt-in off in the shared service.
+  // Omarchy gives a panel its bar before its settings. Until the bar has
+  // injected them, the empty default would switch every opt-in off in the
+  // shared service; after that, even an empty entry is the user's choice.
+  property bool settingsInjected: false
   function pushSettings() {
-    if (vpn && root.settings && Object.keys(root.settings).length > 0) vpn.setSettings(root.settings)
+    if (vpn && settingsInjected) vpn.setSettings(root.settings)
   }
 
   // With rememberRecent on, CONNECT starts where the last connection went.
   // Once, when the bar's settings first arrive; they come after load.
   property bool draftRestored: false
   function restoreDraft() {
-    if (draftRestored || !root.settings || Object.keys(root.settings).length === 0) return
+    if (draftRestored || !settingsInjected) return
     draftRestored = true
     if (connectDraftDirty || !vpn.rememberRecent || vpn.recentTargets.length === 0) return
     var target = vpn.recentTargets[0]
@@ -610,10 +612,12 @@ Panel {
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
   onSettingsChanged: {
+    settingsInjected = true
     pushSettings()
     restoreDraft()
   }
   Component.onCompleted: {
+    if (root.settings && Object.keys(root.settings).length > 0) settingsInjected = true
     pushSettings()
     restoreDraft()
   }
