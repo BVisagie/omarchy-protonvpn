@@ -226,6 +226,8 @@ describe("QML scheduler contract", () => {
     assert.match(panel, /function connectVpn\(\): string \{ root\.connectNow\(\); return "ok" \}/)
     assert.match(panel, /function disconnectVpn\(\): string \{ root\.disconnectNow\(\); return "ok" \}/)
     assert.doesNotMatch(panel, /function connectVpn\(\): string \{ root\.tryToggle\(\)/)
+    assert.match(panel, /function connectTo\(target: string\): string \{\n\s*var parsed = Model\.parseTargetSpec\(target\)/)
+    assert.match(panel, /function statusJson\(\): string \{ return Model\.statusJson\(/)
   })
 
   it("includes stale in degraded UX and gates writes", () => {

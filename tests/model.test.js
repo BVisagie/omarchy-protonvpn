@@ -887,6 +887,33 @@ describe("bar label", () => {
   })
 })
 
+describe("IPC", () => {
+  it("parses connectTo targets and refuses anything else", () => {
+    const t = (spec) => Model.parseTargetSpec(spec)
+    assert.deepEqual(t("nl"), { mode: "country", country: "NL", city: "", serverId: "" })
+    assert.deepEqual(t("ch#242"), { mode: "server", country: "", city: "", serverId: "CH#242" })
+    assert.deepEqual(t("US  New York"), { mode: "city", country: "US", city: "New York", serverId: "" })
+    assert.deepEqual(t("p2p NL"), { mode: "p2p", country: "NL", city: "", serverId: "" })
+    assert.deepEqual(t("SecureCore"), { mode: "securecore", country: "", city: "", serverId: "" })
+    assert.deepEqual(t("fastest"), { mode: "fastest", country: "", city: "", serverId: "" })
+    for (const bad of ["", "fastest NL", "p2p Netherlands", "tor NL x", "Netherlands", "CH#", "; rm -rf ~", "x".repeat(90)]) {
+      assert.equal(t(bad), null, bad)
+    }
+  })
+
+  it("prints status as JSON with only what the panel shows", () => {
+    const json = JSON.parse(Model.statusJson(
+      { state: "connected", status: { server: "NL#806", location: "Amsterdam, Netherlands", load: 38, protocol: "wireguard", exitIp: "" }, blocking: false, stalled: false },
+      { sinceMs: Date.UTC(2026, 10, 17, 9, 0), config: { "kill-switch": "standard", netshield: "malware-only" } }))
+    assert.deepEqual(json, {
+      state: "connected", connected: true, server: "NL#806", location: "Amsterdam, Netherlands", load: 38, protocol: "WireGuard",
+      exitIp: "", connectedSince: "2026-11-17T09:00:00.000Z", killSwitch: "standard", netshield: "malware-only",
+      killSwitchBlocking: false, stalled: false, message: ""
+    })
+    assert.equal(JSON.parse(Model.statusJson({ state: "disconnected", status: { server: "old" } })).server, "")
+  })
+})
+
 describe("trusted Wi-Fi", () => {
   it("keeps names as given, bounded, and toggles them", () => {
     assert.deepEqual(Model.normalizeNetworks(["Home", "Home", "", 7, "x".repeat(33), "Café <b>"]), ["Home", "Café <b>"])

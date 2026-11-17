@@ -654,7 +654,15 @@ Panel {
     function refresh(): string { root.refreshAll(); return "ok" }
     function connectVpn(): string { root.connectNow(); return "ok" }
     function disconnectVpn(): string { root.disconnectNow(); return "ok" }
+    function toggleVpn(): string { root.tryToggle(); return "ok" }
+    function connectFastest(): string { return vpn.connectWith({ mode: "fastest" }) ? "ok" : vpn.lastError }
+    function connectTo(target: string): string {
+      var parsed = Model.parseTargetSpec(target)
+      if (!parsed) return root.tr("ipc.badTarget", "Use a country code (NL), a server ID (CH#242), a country and city (US New York), or p2p, securecore, tor, random, or fastest with an optional country code.")
+      return vpn.connectWith(parsed) ? "ok" : vpn.lastError
+    }
     function status(): string { return Model.tooltipText(root.view, root.loc) }
+    function statusJson(): string { return Model.statusJson(root.view, { sinceMs: vpn.linkSinceMs, config: vpn.configValues }) }
   }
 
   BarIconButton {

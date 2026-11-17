@@ -109,6 +109,7 @@
   "hero.signedOut": "Sign-in required",
   "hero.stale": "Status may be outdated",
   "hero.staleBadge": "Stale",
+  "ipc.badTarget": "Use a country code (NL), a server ID (CH#242), a country and city (US New York), or p2p, securecore, tor, random, or fastest with an optional country code.",
   "killSwitch.alsoFailed": "Reconnecting also failed. Connect again.",
   "killSwitch.blocking": "The VPN dropped and Kill Switch is blocking internet traffic, so nothing leaks. Connect again to restore access, or set Kill Switch to Off.",
   "killSwitch.changing": "Changing Kill Switch…",

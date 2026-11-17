@@ -172,11 +172,32 @@ With `reconnectOnDrop` on, a drop starts a reconnect to the same target after 3 
 
 ### Keybindings
 
-The panel answers Omarchy shell IPC on the target `io.github.BVisagie.protonvpn`. The functions are `open`, `close`, `toggle`, `refresh`, `connectVpn`, `disconnectVpn`, and `status`. `connectVpn` connects with the panel's current CONNECT choices. Both it and `disconnectVpn` do nothing while a command is running or status is not healthy. For example, in `~/.config/hypr/bindings.conf`, using a key that is free in your setup:
+The panel answers Omarchy shell IPC on the target `io.github.BVisagie.protonvpn`:
+
+| Function | What it does |
+|---|---|
+| `open`, `close`, `toggle` | Show or hide the panel |
+| `refresh` | Re-read status, locations, and settings |
+| `connectVpn` | Connect with the panel's current CONNECT choices |
+| `connectFastest` | Connect to the fastest server |
+| `connectTo <place>` | Connect to `NL`, `CH#242`, `US New York`, or `p2p`, `securecore`, `tor`, `random`, or `fastest`, with an optional country code (`p2p NL`) |
+| `disconnectVpn` | Disconnect |
+| `toggleVpn` | Connect or disconnect, like right-click |
+| `status` | The tooltip text |
+| `statusJson` | State, server, location, load, protocol, exit IP, connection start, Kill Switch, NetShield, and warnings as JSON |
+
+The connect and disconnect functions do nothing while a command is running or status is not healthy; `connectFastest` and `connectTo` print why. For example, in `~/.config/hypr/bindings.conf`, using keys that are free in your setup:
 
 ```
 bindd = SUPER ALT, V, Proton VPN panel, exec, omarchy-shell io.github.BVisagie.protonvpn toggle
 bindd = SUPER ALT SHIFT, V, Proton VPN connect, exec, omarchy-shell io.github.BVisagie.protonvpn connectVpn
+bindd = SUPER ALT CTRL, V, Proton VPN to Switzerland, exec, omarchy-shell io.github.BVisagie.protonvpn connectTo CH
+```
+
+`statusJson` suits scripts and status lines:
+
+```sh
+omarchy-shell io.github.BVisagie.protonvpn statusJson | jq -r .server
 ```
 
 ## Privacy

@@ -1341,6 +1341,52 @@ function toggleNetwork(list, name) {
   return clean.length < MAX_TRUSTED_NETWORKS ? clean.concat([value]) : clean
 }
 
+// `connectTo` over IPC: "NL", "CH#242", "US New York", "p2p", "p2p NL",
+// "securecore IS", "tor", "random", or "fastest". Returns a target the CLI
+// accepts, or null.
+function parseTargetSpec(spec) {
+  var text = String(spec || "").trim().replace(/\s+/g, " ")
+  if (text === "" || text.length > 80) return null
+  var words = text.split(" ")
+  var head = words[0].toLowerCase()
+  var target = null
+  if (["fastest", "random", "p2p", "securecore", "tor"].indexOf(head) !== -1) {
+    if (words.length > 2 || ((head === "fastest" || head === "random") && words.length > 1)) return null
+    target = { mode: head, country: words.length === 2 ? words[1].toUpperCase() : "" }
+    if (target.country !== "" && !/^[A-Z]{2}$/.test(target.country)) return null
+  } else if (/#/.test(text)) {
+    target = { mode: "server", serverId: text.toUpperCase() }
+  } else if (/^[A-Za-z]{2}$/.test(words[0])) {
+    target = words.length === 1
+      ? { mode: "country", country: words[0].toUpperCase() }
+      : { mode: "city", country: words[0].toUpperCase(), city: words.slice(1).join(" ") }
+  }
+  return cleanTarget(target)
+}
+
+// What `statusJson` prints over IPC. Only what the panel already shows.
+function statusJson(view, extra) {
+  var v = view || defaultView()
+  var x = extra || {}
+  var status = v.status || emptyStatus()
+  var connected = v.state === STATES.connected
+  return JSON.stringify({
+    state: String(v.state || ""),
+    connected: connected,
+    server: connected ? String(status.server || "") : "",
+    location: connected ? String(status.location || "") : "",
+    load: connected && status.load !== null && status.load !== undefined ? Number(status.load) : null,
+    protocol: connected ? protocolName(status.protocol) : "",
+    exitIp: connected ? String(status.exitIp || "") : "",
+    connectedSince: connected && Number(x.sinceMs) > 0 ? new Date(Number(x.sinceMs)).toISOString() : null,
+    killSwitch: String((x.config || {})["kill-switch"] || ""),
+    netshield: String((x.config || {}).netshield || ""),
+    killSwitchBlocking: v.blocking === true,
+    stalled: v.stalled === true,
+    message: String(v.message || "")
+  })
+}
+
 function switchLabel(options, loc) {
   return fill(say(loc, "connect.switchTo", "Switch to %1"), recentTarget(options, null, loc).label)
 }
@@ -2057,6 +2103,8 @@ if (typeof module !== "undefined") {
     countryName: countryName,
     targetName: targetName,
     quickConnectRows: quickConnectRows,
+    parseTargetSpec: parseTargetSpec,
+    statusJson: statusJson,
     normalizeNetworks: normalizeNetworks,
     isTrustedNetwork: isTrustedNetwork,
     toggleNetwork: toggleNetwork,
