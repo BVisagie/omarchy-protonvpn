@@ -981,6 +981,17 @@ describe("stalled tunnel", () => {
   })
 })
 
+describe("runner lock name", () => {
+  it("matches scripts/run_bounded.py", () => {
+    assert.equal(Model.runnerLockName("abc_123"), "omarchy-protonvpn-abc_123.lock")
+    assert.equal(Model.runnerLockName("../evil"), "omarchy-protonvpn.lock")
+    assert.equal(Model.runnerLockName(""), "omarchy-protonvpn.lock")
+    const runner = fs.readFileSync(path.join(__dirname, "..", "scripts", "run_bounded.py"), "utf8")
+    assert.match(runner, /re\.fullmatch\(r"\[A-Za-z0-9_\]\{1,128\}", signature\)/)
+    assert.match(runner, /f"omarchy-protonvpn-\{signature\}\.lock"/)
+  })
+})
+
 describe("NetworkManager monitor", () => {
   it("restarts with a capped backoff", () => {
     assert.deepEqual([0, 1, 2, 5, 6, 20].map(Model.monitorRestartDelayMs), [1000, 2000, 4000, 32000, 60000, 60000])

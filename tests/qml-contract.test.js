@@ -29,6 +29,11 @@ describe("QML scheduler contract", () => {
     assert.match(panel, /Component\.onDestruction: trackOpen\(false\)/)
   })
 
+  it("waits for each sysfs read instead of taking the previous one", () => {
+    assert.match(service, /rxFile\.reload\(\)\n\s*txFile\.reload\(\)\n\s*rxFile\.waitForJob\(\)\n\s*txFile\.waitForJob\(\)/)
+    assert.match(service, /loginMarker\.reload\(\)\n\s*loginMarker\.waitForJob\(\)/)
+  })
+
   it("samples traffic and notifies only through fixed, bounded commands", () => {
     assert.match(service, /id: trafficTimer\n\s*interval: root\.openPanels > 0 \? 2000 : 5000\n\s*repeat: true\n\s*running: root\.active && root\.linkActive/)
     assert.match(service, /if \(openPanels > 0\) traffic = Model\.trafficSample\(traffic, counters, now\)/)
@@ -200,7 +205,7 @@ describe("QML scheduler contract", () => {
     // runner's lock file exists.
     const views = [...service.matchAll(/FileView \{[\s\S]*?\n  \}/g)].map((m) => m[0])
     assert.equal(views.length, 3)
-    assert.match(views[0], /path: root\._runtimeDir !== "" \? root\._runtimeDir \+ "\/omarchy-protonvpn\.lock" : ""/)
+    assert.match(views[0], /path: root\._runtimeDir !== "" \? root\._runtimeDir \+ "\/" \+ Model\.runnerLockName\(Quickshell\.env\("HYPRLAND_INSTANCE_SIGNATURE"\)\) : ""/)
     assert.doesNotMatch(views[0], /watchChanges|setText|atomicWrites/)
     for (const view of views.slice(1)) {
       assert.match(view, /path: root\._statsDir !== "" \? root\._statsDir \+ "(?:rx|tx)_bytes" : ""/)

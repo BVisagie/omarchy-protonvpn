@@ -85,8 +85,8 @@ Item {
   readonly property bool reconnectPending: _reconnectTarget !== null
 
   // Connect at login: once, at the first shell start after logging in. The
-  // runner's lock file in XDG_RUNTIME_DIR (cleared at logout) already
-  // exists when the shell merely reloaded, as it does for a theme change.
+  // runner's lock file for this Hyprland session already exists when the
+  // shell merely reloaded, as it does for a theme change.
   readonly property bool connectOnLogin: Model.normalizeBooleanSetting(setting("connectOnLogin", false))
   readonly property string _runtimeDir: Quickshell.env("XDG_RUNTIME_DIR") || ""
   property bool _loginConnectPending: false
@@ -471,7 +471,8 @@ Item {
     }
     if (classified.ok) {
       lastError = ""
-      actionStatus = classified.message || (job.action === "disconnect" ? tr("action.disconnected", "Disconnected.") : tr("action.connected", "Connected."))
+      actionStatus = classified.message || (job.action === "disconnect" ? tr("action.disconnected", "Disconnected.")
+        : (job.action === "signout" ? tr("signout.done", "Signed out.") : tr("action.connected", "Connected.")))
       if (job.action === "signout") {
         applyView(Model.signedOutView(loc))
       } else if (job.action === "disconnect") {
@@ -495,6 +496,8 @@ Item {
         if (outcome.location !== "") nextStatus.location = outcome.location
         nextStatus.exitIp = outcome.exitIp
         applyView(connectedView(nextStatus))
+        // A new tunnel, even to the same server: take its own TIMESTAMP.
+        linkSinceMs = 0
         var target = Model.recentTarget(job.options || {}, outcome, loc)
         activeTarget = target
         recentTargets = Model.recordRecentTarget(recentTargets, target, Model.MAX_RECENTS)
@@ -1220,9 +1223,11 @@ Item {
       _trafficDevice = linkDevice
       _trafficServer = linkServer
     }
+    // reload() reads in the background; wait, or text() is the last sample.
     rxFile.reload()
     txFile.reload()
-    // text() performs the blocking read; loaded is only true after it.
+    rxFile.waitForJob()
+    txFile.waitForJob()
     var raw = rxFile.text() + " " + txFile.text()
     if (!rxFile.loaded || !txFile.loaded) return
     var counters = Model.parseInterfaceCounters(raw)
@@ -1307,12 +1312,16 @@ Item {
   }
 
   onActiveChanged: {
-    if (active) refresh()
-    else linkMonitor.running = false
+    if (active) {
+      refresh()
+      startLinkMonitor()
+    } else {
+      linkMonitor.running = false
+    }
   }
   Component.onCompleted: {
     loginMarker.reload()
-    loginMarker.text()
+    loginMarker.waitForJob()
     _shellReloaded = _runtimeDir === "" || loginMarker.loaded
     _loginConnectPending = !_shellReloaded
     _startedMs = Date.now()
@@ -1425,7 +1434,7 @@ Item {
   // Only asks whether the runner's lock file exists; never reads or writes it.
   FileView {
     id: loginMarker
-    path: root._runtimeDir !== "" ? root._runtimeDir + "/omarchy-protonvpn.lock" : ""
+    path: root._runtimeDir !== "" ? root._runtimeDir + "/" + Model.runnerLockName(Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE")) : ""
     blockLoading: true
     printErrors: false
   }

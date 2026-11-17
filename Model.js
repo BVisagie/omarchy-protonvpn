@@ -1833,6 +1833,13 @@ function reconnectDelayMs(attempt) {
   return RECONNECT_DELAYS_MS[Math.floor(n)]
 }
 
+// The runner's lock file, one per Hyprland session (scripts/run_bounded.py
+// names it the same way). Its absence means the first shell start since login.
+function runnerLockName(signature) {
+  var sig = String(signature || "")
+  return /^[A-Za-z0-9_]{1,128}$/.test(sig) ? "omarchy-protonvpn-" + sig + ".lock" : "omarchy-protonvpn.lock"
+}
+
 // `nmcli monitor` restarts after 1, 2, 4 ... seconds, at most a minute apart.
 function monitorRestartDelayMs(failures) {
   var n = Math.max(0, Math.floor(Number(failures) || 0))
@@ -1990,6 +1997,7 @@ if (typeof module !== "undefined") {
     returnTargetLabel: returnTargetLabel,
     reconnectDelayMs: reconnectDelayMs,
     monitorRestartDelayMs: monitorRestartDelayMs,
+    runnerLockName: runnerLockName,
     RECONNECT_DELAYS_MS: RECONNECT_DELAYS_MS,
     normalizeBooleanSetting: normalizeBooleanSetting,
     reconnectAbandoned: reconnectAbandoned,

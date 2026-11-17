@@ -46,6 +46,7 @@ def bounded(
 def env_with_runtime(runtime: str | None) -> dict[str, str]:
     env = os.environ.copy()
     env.pop("XDG_RUNTIME_DIR", None)
+    env.pop("HYPRLAND_INSTANCE_SIGNATURE", None)
     if runtime is not None:
         env["XDG_RUNTIME_DIR"] = runtime
     return env
@@ -136,6 +137,15 @@ class BoundedRunnerTests(unittest.TestCase):
         self.assertEqual(second.wait(timeout=8), 0)
         self.assertEqual(log.read_text(), "start\nend\nstart\nend\n")
         self.assertEqual(os.stat(Path(runtime) / "omarchy-protonvpn.lock").st_mode & 0o777, 0o600)
+
+    def test_lock_is_named_for_the_hyprland_session(self) -> None:
+        runtime = tempfile.mkdtemp()
+        for signature, name in (("abc_123", "omarchy-protonvpn-abc_123.lock"), ("../evil", "omarchy-protonvpn.lock")):
+            env = env_with_runtime(runtime)
+            env["HYPRLAND_INSTANCE_SIGNATURE"] = signature
+            result = bounded("true", lock=True, env=env)
+            self.assertEqual(result.returncode, 0)
+            self.assertTrue((Path(runtime) / name).exists(), name)
 
     def test_lock_wait_counts_toward_the_deadline(self) -> None:
         runtime = tempfile.mkdtemp()

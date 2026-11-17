@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import fcntl
 import os
+import re
 import selectors
 import signal
 import subprocess
@@ -69,6 +70,19 @@ def terminate_group(pgid: int) -> None:
         pass
 
 
+def lock_name() -> str:
+    """One lock per Hyprland session, so a new login finds none yet.
+
+    The widget reads its absence as "first shell start since login". With
+    lingering, XDG_RUNTIME_DIR survives a logout, but the instance signature
+    does not.
+    """
+    signature = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE", "")
+    if re.fullmatch(r"[A-Za-z0-9_]{1,128}", signature):
+        return f"omarchy-protonvpn-{signature}.lock"
+    return LOCK_NAME
+
+
 def acquire_lock(deadline: float) -> tuple[int | None, bool]:
     """Take the per-user lock; return (fd, timed_out).
 
@@ -80,7 +94,7 @@ def acquire_lock(deadline: float) -> tuple[int | None, bool]:
         return None, False
     try:
         fd = os.open(
-            os.path.join(runtime, LOCK_NAME),
+            os.path.join(runtime, lock_name()),
             os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC,
             0o600,
         )

@@ -223,7 +223,7 @@ Panel {
         rows.push(["config:anonymous-crash-reports", "config:custom-dns"])
         if (showDnsField()) rows.push(["dns"])
         if (vpn.autoConnectWifi && vpn.wifiName !== "") rows.push(["trust"])
-        if (view.state === Model.STATES.disconnected) rows.push(["signout"])
+        if (view.state === Model.STATES.disconnected && !signOutConfirm) rows.push(["signout"])
         if (signOutConfirm) rows.push(["so-cancel", "so-confirm"])
       }
     }
@@ -684,7 +684,7 @@ Panel {
     function connectFastest(): string { return vpn.connectWith({ mode: "fastest" }) ? "ok" : vpn.lastError }
     function connectTo(target: string): string {
       var parsed = Model.parseTargetSpec(target)
-      if (!parsed) return root.tr("ipc.badTarget", "Use a country code (NL), a server ID (CH#242), a country and city (US New York), or p2p, securecore, tor, random, or fastest with an optional country code.")
+      if (!parsed) return root.tr("ipc.badTarget", "Use a country code (NL), a server ID (CH#242), a country and city (US New York), p2p, securecore, or tor with an optional country code, or random or fastest alone.")
       return vpn.connectWith(parsed) ? "ok" : vpn.lastError
     }
     function status(): string { return Model.tooltipText(root.view, root.loc) }

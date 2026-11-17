@@ -162,7 +162,7 @@ omarchy bar set io.github.BVisagie.protonvpn barLabel country
 
 The bar label shows only while connected, and only on horizontal bars.
 
-With `connectOnLogin` on, the first shell start after you log in connects to the fastest server, or to your last place with `rememberRecent` on. It does not connect when the shell merely reloads, for example after a theme change: the plugin's lock file in `$XDG_RUNTIME_DIR`, which logging out clears, tells the two apart. It waits for Proton to report Disconnected, checking every 10 seconds for up to 3 minutes while the network and Proton's services come up, and tries at most 3 times. Connecting or disconnecting yourself in that time cancels it, and it never runs while you are signed out. With Kill Switch on, a network that needs a sign-in page (a captive portal) may not let it through until you disconnect.
+With `connectOnLogin` on, the first shell start after you log in connects to the fastest server, or to your last place with `rememberRecent` on. It does not connect when the shell merely reloads, for example after a theme change: the plugin's lock file for the current Hyprland session tells the two apart. It waits for Proton to report Disconnected, checking every 10 seconds for up to 3 minutes while the network and Proton's services come up, and tries at most 3 times. Connecting or disconnecting yourself in that time cancels it, and it never runs while you are signed out. With Kill Switch on, a network that needs a sign-in page (a captive portal) may not let it through until you disconnect.
 
 With `autoConnectWifi` on, joining a Wi-Fi network you have not trusted connects the same way, once per join, with the same waiting, limits, and cancelling. SETTINGS then shows **Trust** for the current network, which skips it from then on, or **Stop trusting**. Trusted names are saved as `trustedNetworks` in this widget's entry in `~/.config/omarchy/shell.json`. The plugin reads the current network from NetworkManager over D-Bus, through Quickshell, without starting a process. It never disconnects on a trusted network, a shell reload never counts as joining one, and a network whose name NetworkManager does not report counts as trusted. Sign in to a captive portal before you join it with Kill Switch on, or trust it.
 
@@ -180,7 +180,7 @@ The panel answers Omarchy shell IPC on the target `io.github.BVisagie.protonvpn`
 | `refresh` | Re-read status, locations, and settings |
 | `connectVpn` | Connect with the panel's current CONNECT choices |
 | `connectFastest` | Connect to the fastest server |
-| `connectTo <place>` | Connect to `NL`, `CH#242`, `US New York`, or `p2p`, `securecore`, `tor`, `random`, or `fastest`, with an optional country code (`p2p NL`) |
+| `connectTo <place>` | Connect to `NL`, `CH#242`, `US New York`, `p2p`, `securecore`, or `tor` with an optional country code (`p2p NL`), or `random` or `fastest` |
 | `disconnectVpn` | Disconnect |
 | `toggleVpn` | Connect or disconnect, like right-click |
 | `status` | The tooltip text |
@@ -204,7 +204,7 @@ omarchy-shell io.github.BVisagie.protonvpn statusJson | jq -r .server
 
 - The plugin executes a fixed set of local commands as argument arrays. It never interpolates values into a shell. See [Commands this plugin runs](#commands-this-plugin-runs).
 - The runner caps stdout and stderr while commands execute, enforces deadlines, and reaps the complete child process group after a timeout or overflow, or when a background process the command left behind still holds its output.
-- Proton CLI runs take a lock in your runtime directory (`$XDG_RUNTIME_DIR/omarchy-protonvpn.lock`), so two shells never run the CLI at the same time. The lock file is empty.
+- Proton CLI runs take a lock in your runtime directory (`$XDG_RUNTIME_DIR/omarchy-protonvpn-<Hyprland session>.lock`, or `omarchy-protonvpn.lock` outside Hyprland), so two shells never run the CLI at the same time. The lock file is empty, and a new one per login also tells the widget a login from a shell reload.
 - A read-only `nmcli monitor` stream says when NetworkManager changes anything, and a read-only `nmcli connection show --active` probe then reads the `proton0`-style tunnel. With the stream running, the probe otherwise runs once a minute; without it, every `linkWatchIntervalSec`. Neither creates, changes, or removes NetworkManager connections.
 - It never collects, logs, stores, or passes Proton credentials. The sign-in terminal passes only your username to the CLI.
 - It never runs anything as root. Installing the CLI goes through Omarchy's installer, which asks for your password in its own terminal.
