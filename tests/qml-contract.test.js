@@ -201,8 +201,9 @@ describe("QML scheduler contract", () => {
     assert.match(panel, /if \(row && !row\.active\) vpn\.connectWith\(row\.target\)/)
     assert.match(service, /readonly property var favorites: Model\.normalizeTargets\(setting\("favorites", \[\]\), Model\.MAX_FAVORITES\)/)
     // Recents reach shell.json only when the user opts in, and leave it when they opt out.
+    assert.match(service, /if \(recentTargets\.length === 0\) recentTargets = Model\.normalizeTargets\(setting\("recent", \[\]\), Model\.MAX_RECENTS\)\n\s*else saveSettings/)
     assert.match(service, /if \(rememberRecent\) saveSettings\(\{ recent: Model\.normalizeTargets\(recentTargets, Model\.MAX_RECENTS\) \}\)\n/)
-    assert.match(service, /else if \(setting\("recent", undefined\) !== undefined\) saveSettings\(\{ recent: undefined \}\)/)
+    assert.match(service, /\} else if \(setting\("recent", undefined\) !== undefined\) \{\n\s*saveSettings\(\{ recent: undefined \}\)/)
     assert.match(service, /for \(var key in settings\) if \(key !== "id"\) entry\[key\] = settings\[key\]/)
     assert.match(service, /shell\.updateEntryInline\(Model\.PLUGIN_ID, entry\)/)
     assert.match(panel, /function onActiveTargetChanged\(\) \{ root\.connectDraftDirty = false \}/)

@@ -197,7 +197,6 @@ Item {
 
   function setSettings(next) {
     settings = next || ({})
-    if (rememberRecent && recentTargets.length === 0) recentTargets = Model.normalizeTargets(setting("recent", []), Model.MAX_RECENTS)
   }
 
   // The whole entry is replaced, so start from the live settings. Applied
@@ -217,9 +216,15 @@ Item {
     saveSettings({ favorites: Model.toggleFavorite(favorites, target) })
   }
 
+  // Turned on, including when settings first arrive: a session with no
+  // recents yet reads the saved ones; one that has some saves them.
   onRememberRecentChanged: {
-    if (rememberRecent) saveSettings({ recent: Model.normalizeTargets(recentTargets, Model.MAX_RECENTS) })
-    else if (setting("recent", undefined) !== undefined) saveSettings({ recent: undefined })
+    if (rememberRecent) {
+      if (recentTargets.length === 0) recentTargets = Model.normalizeTargets(setting("recent", []), Model.MAX_RECENTS)
+      else saveSettings({ recent: Model.normalizeTargets(recentTargets, Model.MAX_RECENTS) })
+    } else if (setting("recent", undefined) !== undefined) {
+      saveSettings({ recent: undefined })
+    }
   }
 
   function setting(name, fallback) {
