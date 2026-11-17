@@ -1389,6 +1389,14 @@ function buildConfigSetCommand(setting, value, context, loc) {
   }
 }
 
+// The CLI prints protocols in lowercase ("wireguard", "openvpn-udp").
+var PROTOCOL_NAMES = { wireguard: "WireGuard", "openvpn-udp": "OpenVPN UDP", "openvpn-tcp": "OpenVPN TCP", openvpn: "OpenVPN", stealth: "Stealth" }
+
+function protocolName(value) {
+  var raw = String(value || "").trim()
+  return PROTOCOL_NAMES[raw.toLowerCase()] || raw
+}
+
 function displayLoad(load, loc) {
   if (load === null || load === undefined || !isFinite(Number(load))) return say(loc, "status.loadUnknown", "Unknown")
   return num(loc, Math.round(Number(load))) + "%"
@@ -1400,7 +1408,7 @@ function connectedSummary(status, loc) {
   if (item.server) parts.push(item.server)
   if (item.location) parts.push(item.location)
   if (item.load !== null && item.load !== undefined && isFinite(Number(item.load))) parts.push(fill(say(loc, "status.loadSummary", "Load %1"), displayLoad(item.load, loc)))
-  if (item.protocol) parts.push(item.protocol)
+  if (item.protocol) parts.push(protocolName(item.protocol))
   return parts.join(" · ")
 }
 
@@ -1491,7 +1499,7 @@ function heroMeta(view, loc) {
 
 function heroDetail(view, loc) {
   var state = view && view.state ? view.state : ""
-  if (state === STATES.connected && view.status && view.status.protocol) return view.status.protocol
+  if (state === STATES.connected && view.status && view.status.protocol) return protocolName(view.status.protocol)
   if (state === STATES.stale) return say(loc, "hero.staleBadge", "Stale")
   return ""
 }
@@ -2026,6 +2034,7 @@ if (typeof module !== "undefined") {
     buildConnectCommand: buildConnectCommand,
     buildConfigSetCommand: buildConfigSetCommand,
     displayLoad: displayLoad,
+    protocolName: protocolName,
     connectedSummary: connectedSummary,
     tooltipText: tooltipText,
     heroTitle: heroTitle,

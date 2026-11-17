@@ -844,6 +844,14 @@ describe("quick connect", () => {
   })
 })
 
+describe("protocol names", () => {
+  it("names the CLI's lowercase protocols properly", () => {
+    assert.deepEqual(["wireguard", "openvpn-udp", "OpenVPN-TCP", "WireGuard", "something-new", ""].map(Model.protocolName),
+      ["WireGuard", "OpenVPN UDP", "OpenVPN TCP", "WireGuard", "something-new", ""])
+    assert.equal(Model.heroDetail({ state: "connected", status: { protocol: "wireguard" } }), "WireGuard")
+  })
+})
+
 describe("sign-out", () => {
   it("answers as signed out and blocks writes", () => {
     const view = Model.signedOutView()
