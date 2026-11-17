@@ -101,8 +101,9 @@ Item {
   readonly property string wifiName: currentWifiName()
   readonly property bool wifiTrusted: Model.isTrustedNetwork(trustedNetworks, wifiName)
   property bool _wifiConnectPending: false
-  property bool _wifiSeen: false
   property bool _started: false
+  property double _startedMs: 0
+  readonly property bool autoConnectArmed: (connectOnLogin && _loginConnectPending) || (autoConnectWifi && _wifiConnectPending)
 
   // Shared by both: ticks and attempts of the current automatic connect.
   property int _autoTicks: 0
@@ -455,8 +456,9 @@ Item {
   function handleAction(result, job) {
     // Any nmcli poll that started before this result may describe the old tunnel.
     _linkEpoch++
-    var disconnectAfter = job.auto === true && _disconnectAfterReconnect
-    if (job.auto === true) _disconnectAfterReconnect = false
+    var automatic = job.auto === true || job.autoConnect === true
+    var disconnectAfter = automatic && _disconnectAfterReconnect
+    if (automatic) _disconnectAfterReconnect = false
     var classified = Model.classifyCommandResult(result, job.snapshot || snapshot(), loc)
     if (classified.stateHint === Model.STATES.guiConflict || classified.stateHint === Model.STATES.signedOut) {
       applyView(Model.classifyProbe(result, job.snapshot || snapshot(), loc))
@@ -502,6 +504,8 @@ Item {
           cancelReconnect()
           actionStatus = tr("action.reconnected", "Reconnected after the drop.")
           if (disconnectAfter) Qt.callLater(disconnect)
+        } else if (disconnectAfter) {
+          Qt.callLater(disconnect)
         }
       }
     } else {
@@ -715,7 +719,10 @@ Item {
     linkServer = link.server
     linkDevice = link.device
     linkKillSwitch = link.killSwitch === true
-    linkSinceMs = link.sinceMs
+    // NetworkManager may refresh TIMESTAMP while a connection stays up;
+    // the same tunnel keeps its first one.
+    var sameTunnel = previousActive && link.active && previousServer === link.server && linkSinceMs > 0
+    linkSinceMs = !link.active ? 0 : (sameTunnel && link.sinceMs > 0 ? Math.min(linkSinceMs, link.sinceMs) : link.sinceMs)
     // The Kill Switch cycle owns the tunnel between its actions too.
     var owned = actionRunning || ksStep !== "idle"
     noteLink(link.active, owned)
@@ -819,9 +826,10 @@ Item {
     // Asking to disconnect while a reconnect waits means staying disconnected,
     // even though there is no tunnel to take down yet.
     var stoppedReconnect = false
-    if (!_ksInternal && reconnectPending) {
-      if (_currentJob && _currentJob.auto === true) _disconnectAfterReconnect = true
+    if (!_ksInternal && (reconnectPending || autoConnectArmed)) {
+      if (_currentJob && (_currentJob.auto === true || _currentJob.autoConnect === true)) _disconnectAfterReconnect = true
       cancelReconnect()
+      cancelAutoConnect()
       stoppedReconnect = true
     }
     if (!canToggle) {
@@ -850,7 +858,7 @@ Item {
   function noteReconnectStopped() {
     actionStatus = _disconnectAfterReconnect
       ? tr("reconnect.disconnectAfter", "Disconnecting once the current reconnect attempt finishes…")
-      : tr("reconnect.cancelled", "Automatic reconnect cancelled.")
+      : tr("reconnect.cancelled", "Automatic connection cancelled.")
     actionStatusTimer.restart()
     return true
   }
@@ -881,10 +889,7 @@ Item {
     if (!enqueue(job)) return false
     if (job.auto !== true) cancelReconnect()
     // Anything the user does wins over the login connect.
-    if (job.autoConnect !== true) {
-      _loginConnectPending = false
-      _wifiConnectPending = false
-    }
+    if (job.autoConnect !== true) cancelAutoConnect()
     lastError = ""
     actionStatus = label || ""
     if (action === "connect") state = Model.STATES.connecting
@@ -1130,19 +1135,30 @@ Item {
     return ""
   }
 
-  // A reload sees the current network for the first time too; only a real
-  // join counts, so a VPN you turned off stays off.
+  // A reload discovers the current network a moment after start; that is
+  // not a join, so a VPN you turned off stays off. A join later still counts.
   onWifiNameChanged: {
-    var first = !_wifiSeen
-    if (wifiName !== "") _wifiSeen = true
     _wifiConnectPending = false
-    if (!_started || wifiName === "" || !autoConnectWifi || wifiTrusted || (first && _shellReloaded)) return
+    if (!_started || wifiName === "" || !autoConnectWifi || wifiTrusted) return
+    if (_shellReloaded && Date.now() - _startedMs < 10000) return
     _autoTicks = 0
     _autoAttempts = 0
     _wifiConnectPending = true
   }
 
   onWifiTrustedChanged: if (wifiTrusted) _wifiConnectPending = false
+
+  // Like dropQueuedReconnect, for the login and Wi-Fi connects.
+  function cancelAutoConnect() {
+    _loginConnectPending = false
+    _wifiConnectPending = false
+    var dropped = Scheduler.removeQueued(_queueState, function(job) { return job.autoConnect === true })
+    if (dropped.removed.length === 0) return
+    _queueState = dropped.queue
+    var snapshotView = dropped.removed[0].snapshot
+    if (snapshotView && state === Model.STATES.connecting) applyView(snapshotView)
+    actionStatus = ""
+  }
 
   function toggleTrustedNetwork(name) {
     saveSettings({ trustedNetworks: Model.toggleNetwork(trustedNetworks, name) })
@@ -1278,7 +1294,7 @@ Item {
     loginMarker.text()
     _shellReloaded = _runtimeDir === "" || loginMarker.loaded
     _loginConnectPending = !_shellReloaded
-    _wifiSeen = wifiName !== ""
+    _startedMs = Date.now()
     _started = true
     if (active) refresh()
   }
@@ -1311,7 +1327,7 @@ Item {
     id: autoConnectTimer
     interval: 10000
     repeat: true
-    running: root.active && ((root.connectOnLogin && root._loginConnectPending) || (root.autoConnectWifi && root._wifiConnectPending))
+    running: root.active && root.autoConnectArmed
     onTriggered: root.tryAutoConnect()
   }
 

@@ -172,7 +172,7 @@
   "quick.star": "Keep in favorites (f)",
   "quick.tip": "Connect to %1",
   "quick.unstar": "Remove from favorites (f)",
-  "reconnect.cancelled": "Automatic reconnect cancelled.",
+  "reconnect.cancelled": "Automatic connection cancelled.",
   "reconnect.disconnectAfter": "Disconnecting once the current reconnect attempt finishes…",
   "reconnect.gaveUp": "Could not reconnect after the VPN dropped. Connect again.",
   "reconnect.pending": "Reconnect when the VPN drops is on; the next attempt runs shortly. Connecting or disconnecting yourself cancels it.",

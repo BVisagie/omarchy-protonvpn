@@ -408,7 +408,11 @@ Panel {
   }
 
   // With rememberRecent on, CONNECT starts where the last connection went.
+  // Once, when the bar's settings first arrive; they come after load.
+  property bool draftRestored: false
   function restoreDraft() {
+    if (draftRestored || !root.settings || Object.keys(root.settings).length === 0) return
+    draftRestored = true
     if (connectDraftDirty || !vpn.rememberRecent || vpn.recentTargets.length === 0) return
     var target = vpn.recentTargets[0]
     selectedMode = target.mode
@@ -590,7 +594,10 @@ Panel {
     refreshOnOpen()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
-  onSettingsChanged: if (vpn) vpn.setSettings(root.settings)
+  onSettingsChanged: {
+    if (vpn) vpn.setSettings(root.settings)
+    restoreDraft()
+  }
   Component.onCompleted: {
     if (vpn) vpn.setSettings(root.settings)
     restoreDraft()

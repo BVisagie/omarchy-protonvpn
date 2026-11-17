@@ -146,6 +146,11 @@ describe("QML scheduler contract", () => {
     assert.doesNotMatch(service, /id: actionProcess/)
   })
 
+  it("keeps the first activation time for the same tunnel", () => {
+    assert.match(service, /var sameTunnel = previousActive && link\.active && previousServer === link\.server && linkSinceMs > 0/)
+    assert.match(service, /Math\.min\(linkSinceMs, link\.sinceMs\)/)
+  })
+
   it("follows NetworkManager events and keeps a slow safety poll", () => {
     assert.match(service, /id: linkMonitor\n\s*running: false\n\s*command: \["\/usr\/bin\/nmcli", "monitor"\]/)
     assert.match(service, /onRead: function\(line\) \{ linkSettle\.restart\(\) \}/)
@@ -343,14 +348,20 @@ describe("QML scheduler contract", () => {
     const refresh = service.indexOf("if (active) refresh()", completed)
     assert.ok(completed !== -1 && refresh > completed, "the marker is read before the first CLI run creates it")
     assert.match(service, /_shellReloaded = _runtimeDir === "" \|\| loginMarker\.loaded\n\s*_loginConnectPending = !_shellReloaded/)
-    assert.match(service, /running: root\.active && \(\(root\.connectOnLogin && root\._loginConnectPending\) \|\| \(root\.autoConnectWifi && root\._wifiConnectPending\)\)/)
-    assert.match(service, /if \(job\.autoConnect !== true\) \{\n\s*_loginConnectPending = false\n\s*_wifiConnectPending = false/)
+    assert.match(service, /readonly property bool autoConnectArmed: \(connectOnLogin && _loginConnectPending\) \|\| \(autoConnectWifi && _wifiConnectPending\)/)
+    assert.match(service, /running: root\.active && root\.autoConnectArmed/)
+    assert.match(service, /if \(job\.autoConnect !== true\) cancelAutoConnect\(\)/)
+    // Disconnect wins even when there is nothing to disconnect yet.
+    const disconnect = service.indexOf("function disconnect()")
+    const cancel = service.indexOf("cancelAutoConnect()", disconnect)
+    const gate = service.indexOf("if (!canToggle) {", disconnect)
+    assert.ok(disconnect !== -1 && cancel !== -1 && cancel < gate)
     assert.match(service, /_autoTicks > 18 \|\| _autoAttempts >= 3/)
   })
 
   it("connects on untrusted Wi-Fi only when a network is really joined", () => {
     assert.match(service, /import Quickshell\.Networking/)
-    assert.match(service, /if \(!_started \|\| wifiName === "" \|\| !autoConnectWifi \|\| wifiTrusted \|\| \(first && _shellReloaded\)\) return/)
+    assert.match(service, /if \(!_started \|\| wifiName === "" \|\| !autoConnectWifi \|\| wifiTrusted\) return\n\s*if \(_shellReloaded && Date\.now\(\) - _startedMs < 10000\) return/)
     assert.match(service, /onWifiTrustedChanged: if \(wifiTrusted\) _wifiConnectPending = false/)
     assert.match(service, /readonly property var trustedNetworks: Model\.normalizeNetworks\(setting\("trustedNetworks", \[\]\)\)/)
     assert.match(panel, /focusSection === "trust"\) vpn\.toggleTrustedNetwork\(vpn\.wifiName\)/)
