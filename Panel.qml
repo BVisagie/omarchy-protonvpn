@@ -131,7 +131,7 @@ Panel {
   function countryOptionList() {
     var list = []
     for (var i = 0; i < vpn.countries.length; i++) {
-      list.push({ value: vpn.countries[i].code, label: vpn.countries[i].label })
+      list.push({ value: vpn.countries[i].code, label: vpn.countries[i].name, description: vpn.countries[i].code })
     }
     return list
   }
@@ -139,7 +139,8 @@ Panel {
   function cityOptionList() {
     var list = []
     for (var i = 0; i < vpn.cities.length; i++) {
-      list.push({ value: vpn.cities[i].name, label: vpn.cities[i].label })
+      var city = vpn.cities[i]
+      list.push(city.features !== "" ? { value: city.name, label: city.name, description: city.features } : { value: city.name, label: city.name })
     }
     return list
   }
@@ -207,11 +208,12 @@ Panel {
     rows.push(["refresh"])
     if (vpn.countriesError !== "" || vpn.citiesError !== "") rows.push(["retry-locations"])
     if (showWrites && vpn.installed) {
-      var connect = ["mode"]
-      if (needsCountry) connect.push("country")
-      if (needsCity) connect.push("city")
-      if (needsServer) connect.push("server")
-      rows.push(connect)
+      rows.push(["mode"])
+      var place = []
+      if (needsCountry) place.push("country")
+      if (needsCity) place.push("city")
+      if (needsServer) place.push("server")
+      if (place.length > 0) rows.push(place)
       if (offerSwitch) rows.push(["switch"])
       for (var q = 0; q < quickRows.length; q++) rows.push(["star:" + q, "quick:" + q])
       rows.push(["settings"])
@@ -574,6 +576,10 @@ Panel {
 
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
+
+  // A dropdown keeps keyboard focus after its list closes, and with it a
+  // focus ring beside the cursor's; hand focus back to the panel.
+  onPickerOpenChanged: if (!pickerOpen && opened) Qt.callLater(function() { keyCatcher.forceActiveFocus() })
 
   onOpenedChanged: {
     trackOpen(opened)
@@ -1085,41 +1091,45 @@ Panel {
               fontFamily: root.fontFamily
             }
 
-            RowLayout {
-              id: connectRow
+            // Mode has the full width in every mode so nothing jumps; where to
+            // connect goes on the row below, at most two fields wide.
+            FieldColumn {
               width: parent.width
-              spacing: Style.spacing.rowGap
+              FieldLabel { text: root.tr("field.mode", "Mode") }
+              SearchableDropdown {
+                id: modeDropdown
+                Layout.fillWidth: true
+                Layout.preferredWidth: 0
+                showLabel: false
+                value: root.selectedMode
+                options: root.modeOptions
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+                hasCursor: root.cursorActive && root.focusSection === "mode"
+                placeholderText: root.tr("field.searchModes", "Search modes")
+                onHovered: function(on) {
+                  modeTip.tipHovered = on
+                  if (on) root.setFocusSection("mode")
+                }
+                onChanged: function(value) {
+                  root.connectDraftDirty = true
+                  root.selectedMode = value
+                }
 
-              FieldColumn {
-                FieldLabel { text: root.tr("field.mode", "Mode") }
-                SearchableDropdown {
-                  id: modeDropdown
-                  Layout.fillWidth: true
-                  Layout.preferredWidth: 0
-                  showLabel: false
-                  value: root.selectedMode
-                  options: root.modeOptions
-                  foreground: root.foreground
-                  fontFamily: root.fontFamily
-                  hasCursor: root.cursorActive && root.focusSection === "mode"
-                  placeholderText: root.tr("field.searchModes", "Search modes")
-                  onHovered: function(on) {
-                    modeTip.tipHovered = on
-                    if (on) root.setFocusSection("mode")
-                  }
-                  onChanged: function(value) {
-                    root.connectDraftDirty = true
-                    root.selectedMode = value
-                  }
-
-                  SettingTip {
-                    id: modeTip
-                    text: Model.modeTooltip(root.selectedMode, root.loc)
-                    tipCursor: root.keyboardNavigation && modeDropdown.hasCursor
-                    tipPopupOpen: modeDropdown.popupOpen
-                  }
+                SettingTip {
+                  id: modeTip
+                  text: Model.modeTooltip(root.selectedMode, root.loc)
+                  tipCursor: root.keyboardNavigation && modeDropdown.hasCursor
+                  tipPopupOpen: modeDropdown.popupOpen
                 }
               }
+            }
+
+            RowLayout {
+              id: connectRow
+              visible: root.needsCountry || root.needsServer
+              width: parent.width
+              spacing: Style.spacing.rowGap
 
               FieldColumn {
                 fieldVisible: root.needsCountry
