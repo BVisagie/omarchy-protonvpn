@@ -39,6 +39,7 @@ describe("plugin manifest", () => {
     assert.deepEqual(label.options.map((o) => o.value), require("../Model.js").BAR_LABELS)
     assert.equal(manifest.barWidget.defaults.barLabel, "none")
     assert.equal(manifest.barWidget.defaults.rememberRecent, false)
+    assert.equal(manifest.barWidget.defaults.connectOnLogin, false)
   })
 
   it("publishes reconnect on drop as an opt-in boolean", () => {

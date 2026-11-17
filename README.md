@@ -17,7 +17,7 @@ A bar widget and keyboard-driven panel for Omarchy 4.5 or later that controls Pr
 - Says under the status what protects you: Kill Switch, NetShield, and Secure Core, as Proton reports them.
 - Shows when Kill Switch is blocking internet traffic after a drop, so a dead connection is never a mystery.
 - Warns when the tunnel is up but nothing comes back through it, which a plain "connected" hides.
-- Sends a desktop notification when the VPN drops while the panel is closed; clicking it opens the panel. It can also reconnect for you.
+- Sends a desktop notification when the VPN drops while the panel is closed; clicking it opens the panel. It can also reconnect for you, and connect when you log in.
 - Installs the CLI and signs you in from the panel, through Omarchy's own terminal windows, and signs you out again after asking.
 - Follows your Omarchy theme and language, and the panel works entirely from the keyboard.
 
@@ -147,6 +147,7 @@ After changing a string in the code, run `node tests/tools/build_catalog.js` to 
 | Desktop notifications (only while the panel is closed) | `notifications` | `drops` | `off`, `drops`, `all` |
 | Reconnect when the VPN drops | `reconnectOnDrop` | `false` | `true`, `false` |
 | Remember recent connections and the last target across restarts | `rememberRecent` | `false` | `true`, `false` |
+| Connect when you log in | `connectOnLogin` | `false` | `true`, `false` |
 | Text beside the bar icon while connected | `barLabel` | `none` | `none`, `country` (NL), `server` (NL#806), `city` (Amsterdam) |
 
 Change a setting with `omarchy bar set`. Numbers and booleans need `--json`:
@@ -159,6 +160,8 @@ omarchy bar set io.github.BVisagie.protonvpn barLabel country
 ```
 
 The bar label shows only while connected, and only on horizontal bars.
+
+With `connectOnLogin` on, the first shell start after you log in connects to the fastest server, or to your last place with `rememberRecent` on. It does not connect when the shell merely reloads, for example after a theme change: the plugin's lock file in `$XDG_RUNTIME_DIR`, which logging out clears, tells the two apart. It waits for Proton to report Disconnected, checking every 10 seconds for up to 3 minutes while the network and Proton's services come up, and tries at most 3 times. Connecting or disconnecting yourself in that time cancels it, and it never runs while you are signed out. With Kill Switch on, a network that needs a sign-in page (a captive portal) may not let it through until you disconnect.
 
 A drop is any tunnel loss the widget did not start itself, including one from another terminal. `all` also notifies when the tunnel connects. Notifications go through `omarchy-notification-send`; clicking one opens the panel.
 

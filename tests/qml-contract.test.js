@@ -21,7 +21,7 @@ describe("QML scheduler contract", () => {
   it("polls protonvpn status on a timer only while a panel is open", () => {
     assert.match(service, /id: refreshTimer[\s\S]{0,120}running: root\.active && \(root\.openPanels > 0 \|\| !root\.linkAvailable\)\n/)
     assert.doesNotMatch(service, /id: refreshTimer[\s\S]{0,200}triggeredOnStart/)
-    assert.match(service, /Component\.onCompleted: if \(active\) refresh\(\)/)
+    assert.match(service, /Component\.onCompleted: \{[\s\S]{0,160}if \(active\) refresh\(\)\n  \}/)
     assert.match(service, /openPanels = Math\.max\(0, openPanels - 1\)/)
     assert.match(panel, /onOpenedChanged: \{\n\s*trackOpen\(opened\)/)
     assert.match(panel, /Component\.onDestruction: trackOpen\(false\)/)
@@ -172,10 +172,13 @@ describe("QML scheduler contract", () => {
 
   it("keeps the declared trust boundary in the runtime service", () => {
     assert.doesNotMatch(service, /\b(?:curl|wget)\b|settings\.json|keyring|pkill|sudo|pkexec/)
-    // FileView reads only the tunnel's two byte counters.
+    // FileView reads only the tunnel's two byte counters, and checks that the
+    // runner's lock file exists.
     const views = [...service.matchAll(/FileView \{[\s\S]*?\n  \}/g)].map((m) => m[0])
-    assert.equal(views.length, 2)
-    for (const view of views) {
+    assert.equal(views.length, 3)
+    assert.match(views[0], /path: root\._runtimeDir !== "" \? root\._runtimeDir \+ "\/omarchy-protonvpn\.lock" : ""/)
+    assert.doesNotMatch(views[0], /watchChanges|setText|atomicWrites/)
+    for (const view of views.slice(1)) {
       assert.match(view, /path: root\._statsDir !== "" \? root\._statsDir \+ "(?:rx|tx)_bytes" : ""/)
       assert.doesNotMatch(view, /watchChanges|setText|atomicWrites/)
     }
@@ -330,6 +333,16 @@ describe("QML scheduler contract", () => {
     assert.match(panel, /implicitHeight: Style\.spacing\.controlHeight/)
     assert.match(panel, /titleSize: Style\.font\.body/)
     assert.doesNotMatch(panel, /implicitHeight: Style\.space\(40\)/)
+  })
+
+  it("connects at login once, and never against the user", () => {
+    const completed = service.indexOf("loginMarker.reload()")
+    const refresh = service.indexOf("if (active) refresh()", completed)
+    assert.ok(completed !== -1 && refresh > completed, "the marker is read before the first CLI run creates it")
+    assert.match(service, /_loginConnectPending = _runtimeDir !== "" && !loginMarker\.loaded/)
+    assert.match(service, /running: root\.active && root\.connectOnLogin && root\._loginConnectPending/)
+    assert.match(service, /if \(job\.login !== true\) _loginConnectPending = false/)
+    assert.match(service, /_loginTicks > 18 \|\| _loginAttempts >= 3/)
   })
 
   it("signs out only from Disconnected, after asking", () => {

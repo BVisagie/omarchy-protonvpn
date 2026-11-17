@@ -25,7 +25,8 @@
       "notifications": "drops",
       "reconnectOnDrop": false,
       "rememberRecent": false,
-      "barLabel": "none"
+      "barLabel": "none",
+      "connectOnLogin": false
     },
     "schema": [
       {
@@ -80,6 +81,12 @@
           { "value": "city", "label": "City" }
         ],
         "defaultValue": "none"
+      },
+      {
+        "key": "connectOnLogin",
+        "type": "boolean",
+        "label": "Connect when you log in",
+        "defaultValue": false
       }
     ]
   }

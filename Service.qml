@@ -83,6 +83,16 @@ Item {
   property var _lastSession: null
   readonly property bool reconnectPending: _reconnectTarget !== null
 
+  // Connect at login: once, at the first shell start after logging in. The
+  // runner's lock file in XDG_RUNTIME_DIR (cleared at logout) already
+  // exists when the shell merely reloaded, as it does for a theme change.
+  readonly property bool connectOnLogin: Model.normalizeBooleanSetting(setting("connectOnLogin", false))
+  readonly property string _runtimeDir: Quickshell.env("XDG_RUNTIME_DIR") || ""
+  property bool _loginConnectPending: false
+  property int _loginTicks: 0
+  property int _loginAttempts: 0
+  property bool _loginInternal: false
+
   property int _setupChecks: 0
   property string portForwardingNotice: ""
 
@@ -844,10 +854,13 @@ Item {
       priority: true,
       snapshot: snapshot(),
       options: options || ({}),
-      auto: _autoInternal === true
+      auto: _autoInternal === true,
+      login: _loginInternal === true
     }
     if (!enqueue(job)) return false
     if (job.auto !== true) cancelReconnect()
+    // Anything the user does wins over the login connect.
+    if (job.login !== true) _loginConnectPending = false
     lastError = ""
     actionStatus = label || ""
     if (action === "connect") state = Model.STATES.connecting
@@ -1080,6 +1093,28 @@ Item {
 
   onReconnectOnDropChanged: if (!reconnectOnDrop) cancelReconnect()
 
+  // Every 10 seconds for up to 3 minutes, while the network and Proton's
+  // services come up: connect once Proton says Disconnected, at most 3 times.
+  // Signed out, not installed, or already connected ends it.
+  function tryLoginConnect() {
+    _loginTicks++
+    var done = state === Model.STATES.connected || linkActive || state === Model.STATES.signedOut || state === Model.STATES.cliMissing
+    if (done || _loginTicks > 18 || _loginAttempts >= 3) {
+      _loginConnectPending = false
+      return
+    }
+    if (state !== Model.STATES.disconnected || !canToggle) {
+      if (!processBusy) requestStatusRefresh()
+      return
+    }
+    _loginAttempts++
+    var last = rememberRecent && recentTargets.length > 0 ? recentTargets[0] : null
+    _loginInternal = true
+    var started = connectWith(Model.returnTarget(last, null, freePlan))
+    _loginInternal = false
+    if (started) actionStatus = tr("login.connecting", "Connecting at login…")
+  }
+
   // Two small kernel files, read in place: no process starts for a sample.
   // Rates are shown only in an open panel; the stall check runs regardless.
   function sampleTraffic() {
@@ -1092,8 +1127,10 @@ Item {
     }
     rxFile.reload()
     txFile.reload()
+    // text() performs the blocking read; loaded is only true after it.
+    var raw = rxFile.text() + " " + txFile.text()
     if (!rxFile.loaded || !txFile.loaded) return
-    var counters = Model.parseInterfaceCounters(rxFile.text() + " " + txFile.text())
+    var counters = Model.parseInterfaceCounters(raw)
     var now = Date.now()
     health = Model.tunnelHealth(health, counters, now)
     if (openPanels > 0) traffic = Model.trafficSample(traffic, counters, now)
@@ -1178,7 +1215,12 @@ Item {
     if (active) refresh()
     else linkMonitor.running = false
   }
-  Component.onCompleted: if (active) refresh()
+  Component.onCompleted: {
+    loginMarker.reload()
+    loginMarker.text()
+    _loginConnectPending = _runtimeDir !== "" && !loginMarker.loaded
+    if (active) refresh()
+  }
 
   // With NetworkManager events this is only a safety net for a missed one;
   // without them it is the live link check.
@@ -1202,6 +1244,14 @@ Item {
     id: monitorRestart
     repeat: false
     onTriggered: root.startLinkMonitor()
+  }
+
+  Timer {
+    id: loginConnectTimer
+    interval: 10000
+    repeat: true
+    running: root.active && root.connectOnLogin && root._loginConnectPending
+    onTriggered: root.tryLoginConnect()
   }
 
   Timer {
@@ -1272,6 +1322,14 @@ Item {
       // else wakes the queue after that late exit, so resume it here.
       if (!root._currentJob) Qt.callLater(root.pump)
     }
+  }
+
+  // Only asks whether the runner's lock file exists; never reads or writes it.
+  FileView {
+    id: loginMarker
+    path: root._runtimeDir !== "" ? root._runtimeDir + "/omarchy-protonvpn.lock" : ""
+    blockLoading: true
+    printErrors: false
   }
 
   FileView {

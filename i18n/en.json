@@ -122,6 +122,7 @@
   "killSwitch.rejected": "Proton VPN rejected the change.",
   "killSwitch.stopped": "Proton VPN stopped responding.",
   "killSwitch.unchanged": "Kill Switch unchanged: %1",
+  "login.connecting": "Connecting at login…",
   "mode.city.description": "A city in the selected country",
   "mode.city.label": "City",
   "mode.city.tooltip": "Connects to a server in the selected city.",
