@@ -23,7 +23,8 @@
       "refreshIntervalSec": 30,
       "linkWatchIntervalSec": 4,
       "notifications": "drops",
-      "reconnectOnDrop": false
+      "reconnectOnDrop": false,
+      "rememberRecent": false
     },
     "schema": [
       {
@@ -59,6 +60,12 @@
         "key": "reconnectOnDrop",
         "type": "boolean",
         "label": "Reconnect when the VPN drops",
+        "defaultValue": false
+      },
+      {
+        "key": "rememberRecent",
+        "type": "boolean",
+        "label": "Remember recent connections and the last target across restarts",
         "defaultValue": false
       }
     ]

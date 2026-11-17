@@ -54,6 +54,10 @@ Item {
   property double linkSinceMs: 0
   readonly property bool killSwitchBlocking: Model.killSwitchBlocking({ known: linkKnown, available: linkAvailable, active: linkActive, killSwitch: linkKillSwitch }, state)
   property var recentTargets: []
+  // Starred targets live in the widget's shell.json entry. Recents stay in
+  // memory unless rememberRecent is on, which also keeps the last target.
+  readonly property var favorites: Model.normalizeTargets(setting("favorites", []), Model.MAX_FAVORITES)
+  readonly property bool rememberRecent: Model.normalizeBooleanSetting(setting("rememberRecent", false))
   // Panels on every monitor share this service; count the open ones.
   property int openPanels: 0
   readonly property string notificationSetting: Model.normalizeNotificationSetting(setting("notifications", "drops"))
@@ -167,6 +171,29 @@ Item {
 
   function setSettings(next) {
     settings = next || ({})
+    if (rememberRecent && recentTargets.length === 0) recentTargets = Model.normalizeTargets(setting("recent", []), Model.MAX_RECENTS)
+  }
+
+  // The whole entry is replaced, so start from the live settings. Applied
+  // locally first; the shell.json write comes back as the same value.
+  function saveSettings(patch) {
+    var entry = ({})
+    for (var key in settings) if (key !== "id") entry[key] = settings[key]
+    for (var name in patch) {
+      if (patch[name] === undefined) delete entry[name]
+      else entry[name] = patch[name]
+    }
+    settings = entry
+    if (shell && typeof shell.updateEntryInline === "function") shell.updateEntryInline(Model.PLUGIN_ID, entry)
+  }
+
+  function toggleFavorite(target) {
+    saveSettings({ favorites: Model.toggleFavorite(favorites, target) })
+  }
+
+  onRememberRecentChanged: {
+    if (rememberRecent) saveSettings({ recent: Model.normalizeTargets(recentTargets, Model.MAX_RECENTS) })
+    else if (setting("recent", undefined) !== undefined) saveSettings({ recent: undefined })
   }
 
   function setting(name, fallback) {
@@ -434,7 +461,8 @@ Item {
         applyView(connectedView(nextStatus))
         var target = Model.recentTarget(job.options || {}, outcome, loc)
         activeTarget = target
-        recentTargets = Model.recordRecentTarget(recentTargets, target, 3)
+        recentTargets = Model.recordRecentTarget(recentTargets, target, Model.MAX_RECENTS)
+        if (rememberRecent) saveSettings({ recent: Model.normalizeTargets(recentTargets, Model.MAX_RECENTS) })
         portForwardingNotice = Model.portForwardingNotice(outcome.portForwarding, loc)
         noteLink(true, true)
         if (job.auto === true) {

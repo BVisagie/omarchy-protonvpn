@@ -11,7 +11,7 @@ A bar widget and keyboard-driven panel for Omarchy 4.5 or later that controls Pr
 ## What it does
 
 - Connects to the fastest server, or by country, city, server ID, Secure Core, P2P, Tor, or a random server.
-- Switches servers in place while connected, and lists recent connection targets under **RECENT** so you can return to one in a click.
+- Switches servers in place while connected. **QUICK CONNECT** lists your starred favorites and recent places by name, so you can return to one in a click.
 - Shows how long you have been connected, and live download and upload rates and session totals while the panel is open.
 - Changes every setting `protonvpn config` exposes, including Kill Switch while connected, after asking first.
 - Shows when Kill Switch is blocking internet traffic after a drop, so a dead connection is never a mystery.
@@ -115,7 +115,7 @@ Inside the panel:
 
 While connected, changing the CONNECT choices shows a **Switch to …** button (for example **Switch to Zurich**). It reconnects in place with the new choices, and `Enter` in the Server ID field does the same. The header toggle and `t` still disconnect. City lists are cached for the shell session, so picking a country again shows its cities immediately; **Refresh** reloads them.
 
-The last three successful connection targets are kept for the shell session and never written to disk. **RECENT** lists them without the current connection, so it shows only places you can switch to. When the CLI supplies a new exit IP after connecting, the panel shows it until the tunnel disconnects or changes.
+**QUICK CONNECT** lists, by full name ("Zurich · Switzerland"), the current connection, your favorites, and the last three places you connected to. Click a row, or press `Enter` on it, to connect there. Click its star, or press `f` on the row, to keep it as a favorite or remove it. Favorites, up to eight, are saved in this widget's entry in `~/.config/omarchy/shell.json`. Recent places stay in memory for the shell session unless you turn on `rememberRecent`, which also saves them there and starts CONNECT on the last one; turning it off removes them again. When the CLI supplies a new exit IP after connecting, the panel shows it until the tunnel disconnects or changes.
 
 Country and city lists come from `protonvpn countries list` and `protonvpn cities list`. Server IDs are entered as text because the CLI does not expose a machine-readable server list; Proton publishes IDs at [the account WireGuard server list](https://account.proton.me/vpn/WireGuard).
 
@@ -143,6 +143,7 @@ After changing a string in the code, run `node tests/tools/build_catalog.js` to 
 | Link check interval when NetworkManager events are unavailable | `linkWatchIntervalSec` | 4 seconds | 2–60 |
 | Desktop notifications (only while the panel is closed) | `notifications` | `drops` | `off`, `drops`, `all` |
 | Reconnect when the VPN drops | `reconnectOnDrop` | `false` | `true`, `false` |
+| Remember recent connections and the last target across restarts | `rememberRecent` | `false` | `true`, `false` |
 
 Change a setting with `omarchy bar set`. Numbers and booleans need `--json`:
 
@@ -174,7 +175,8 @@ bindd = SUPER ALT SHIFT, V, Proton VPN connect, exec, omarchy-shell io.github.BV
 - It never collects, logs, stores, or passes Proton credentials. The sign-in terminal passes only your username to the CLI.
 - It never runs anything as root. Installing the CLI goes through Omarchy's installer, which asks for your password in its own terminal.
 - It never makes extra network requests such as “what is my IP” lookups, map tiles, or telemetry.
-- The exit IP is shown only when the Proton CLI itself returns it after connecting. Exit IP, recent targets, and traffic totals stay in memory and disappear when `omarchy-shell` exits.
+- The exit IP is shown only when the Proton CLI itself returns it after connecting. Exit IP and traffic totals stay in memory and disappear when `omarchy-shell` exits.
+- Favorites, and recent places only with `rememberRecent` on, are saved as connection choices (mode, country code, city, server ID) in this widget's own entry in `~/.config/omarchy/shell.json`, through Omarchy's plugin API. If you keep your dotfiles in a public repository, that file shows where you connect.
 - Traffic rates come from the tunnel's own kernel counters under `/sys/class/net/`. While the tunnel is up they are read every two seconds with the panel open and every five seconds with it closed, for the stall warning; rates are shown only in the open panel. Reading them starts no process. Captured test fixtures are synthetic or redacted.
 - Raw CLI diagnostics are capped before they are shown.
 

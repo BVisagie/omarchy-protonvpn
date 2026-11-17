@@ -13,8 +13,8 @@ This plugin:
 - never asks for or stores Proton credentials; the sign-in terminal passes only the username, and the CLI asks for the rest;
 - never runs anything as root; installing the CLI goes through Omarchy's installer, which asks for the password in its own terminal;
 - never calls private Proton APIs, external IP services, telemetry, or map services;
-- never edits Proton, NetworkManager, keyring, Omarchy, or system configuration files; and
-- keeps CLI-supplied exit IPs, recent connection targets, and traffic totals in memory only.
+- never edits Proton, NetworkManager, keyring, or system configuration files, and writes to Omarchy's `shell.json` only its own widget entry, through Omarchy's plugin API, to save favorites and, when `rememberRecent` is on, recent connection choices; and
+- keeps CLI-supplied exit IPs and traffic totals in memory only, and recent connection targets too unless `rememberRecent` is on.
 
 Parser failures and failed status probes retain the last known state as stale and disable VPN or configuration writes until a healthy probe succeeds.
 

@@ -101,7 +101,11 @@ Panel {
     activeTarget: vpn.activeTarget,
     draftDirty: connectDraftDirty
   })
-  readonly property var recentChoices: Model.recentChoices(vpn.recentTargets, vpn.activeTarget)
+  // The connection to star: what this session connected to, or else the
+  // server the tunnel is on.
+  readonly property var currentTarget: view.state === Model.STATES.connected
+    ? (vpn.activeTarget || Model.cleanTarget({ mode: "server", serverId: view.status.server || "" })) : null
+  readonly property var quickRows: Model.quickConnectRows(vpn.favorites, vpn.recentTargets, currentTarget)
   readonly property var focusRows: visibleFocusRows()
   readonly property var focusOrder: visibleFocusOrder()
 
@@ -198,11 +202,7 @@ Panel {
       if (needsServer) connect.push("server")
       rows.push(connect)
       if (offerSwitch) rows.push(["switch"])
-      if (recentChoices.length > 0) {
-        var recent = []
-        for (var r = 0; r < recentChoices.length; r++) recent.push("recent:" + r)
-        rows.push(recent)
-      }
+      for (var q = 0; q < quickRows.length; q++) rows.push(["star:" + q, "quick:" + q])
       rows.push(["settings"])
       if (settingsOpen && vpn.configLoaded) {
         rows.push(["config:netshield", "config:kill-switch"])
@@ -286,7 +286,8 @@ Panel {
     else if (focusSection === "server") Qt.callLater(function() { if (serverField) serverField.forceActiveFocus() })
     else if (focusSection === "switch") switchNow()
     else if (focusSection === "settings") toggleSettings()
-    else if (focusSection.indexOf("recent:") === 0) connectRecent(parseInt(focusSection.substring(7), 10))
+    else if (focusSection.indexOf("quick:") === 0) connectQuick(parseInt(focusSection.substring(6), 10))
+    else if (focusSection.indexOf("star:") === 0) starQuick(parseInt(focusSection.substring(5), 10))
     else if (focusSection === "dns") applyDns()
     else if (focusSection === "ks-cancel") cancelKillSwitch()
     else if (focusSection === "ks-confirm") confirmKillSwitch()
@@ -362,9 +363,33 @@ Panel {
     vpn.connectWith(connectOptions())
   }
 
-  function connectRecent(index) {
-    var target = recentChoices[index]
-    if (target) vpn.connectWith(target)
+  function connectQuick(index) {
+    var row = quickRows[index]
+    if (row && !row.active) vpn.connectWith(row.target)
+  }
+
+  function starQuick(index) {
+    var row = quickRows[index]
+    if (row) vpn.toggleFavorite(row.target)
+  }
+
+  // f on a Quick connect row stars or unstars it.
+  function starCursorRow() {
+    var name = focusSection
+    if (name.indexOf("quick:") === 0) starQuick(parseInt(name.substring(6), 10))
+    else if (name.indexOf("star:") === 0) starQuick(parseInt(name.substring(5), 10))
+  }
+
+  // With rememberRecent on, CONNECT starts where the last connection went.
+  function restoreDraft() {
+    if (connectDraftDirty || !vpn.rememberRecent || vpn.recentTargets.length === 0) return
+    var target = vpn.recentTargets[0]
+    selectedMode = target.mode
+    selectedCountry = target.country
+    selectedCity = target.city
+    serverIdText = target.serverId
+    if (countryDropdown) countryDropdown.value = selectedCountry
+    if (cityDropdown) cityDropdown.value = selectedCity
   }
 
   function switchNow() {
@@ -473,7 +498,7 @@ Panel {
     else if (focusSection === "server") scrollItemIntoView(serverField)
     else if (focusSection === "switch") scrollItemIntoView(switchButton)
     else if (focusSection === "settings") scrollItemIntoView(settingsHeader)
-    else if (focusSection.indexOf("recent:") === 0) scrollItemIntoView(recentGrid)
+    else if (focusSection.indexOf("quick:") === 0 || focusSection.indexOf("star:") === 0) scrollItemIntoView(quickList)
     else if (focusSection === "dns") scrollItemIntoView(dnsField)
     else if (focusSection === "config:netshield") scrollItemIntoView(netshieldDropdown)
     else if (focusSection === "config:kill-switch") scrollItemIntoView(killSwitchDropdown)
@@ -533,7 +558,10 @@ Panel {
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
   onSettingsChanged: if (vpn) vpn.setSettings(root.settings)
-  Component.onCompleted: if (vpn) vpn.setSettings(root.settings)
+  Component.onCompleted: {
+    if (vpn) vpn.setSettings(root.settings)
+    restoreDraft()
+  }
   onSelectedModeChanged: {
     var draft = Model.connectDraftForModeChange(lastMode, selectedMode, {
       country: selectedCountry,
@@ -562,12 +590,14 @@ Panel {
   Service {
     id: localVpn
     active: !root.sharedVpn
+    // Replacement bars have no shared service; save settings through the bar.
+    shell: root.bar && root.bar.shell ? root.bar.shell : null
   }
 
   Connections {
     target: vpn
     function onStateChanged() { root.ensureCursor() }
-    // Any new connection (Switch, RECENT, toggle, IPC) settles the draft.
+    // Any new connection (Switch, Quick connect, toggle, IPC) settles the draft.
     function onActiveTargetChanged() { root.connectDraftDirty = false }
     function onConfigLoadedChanged() {
       if (vpn.configLoaded) {
@@ -647,6 +677,7 @@ Panel {
         if (t === "r" || t === "R") root.refreshAll()
         else if (t === "t" || t === "T") root.tryToggle()
         else if ((t === "s" || t === "S") && root.showWrites && vpn.installed) root.toggleSettings()
+        else if (t === "f" || t === "F") root.starCursorRow()
       }
 
       Flickable {
@@ -1134,35 +1165,27 @@ Panel {
             }
 
             PanelSectionHeader {
-              visible: root.recentChoices.length > 0
-              text: root.tr("section.recent", "RECENT")
+              visible: root.quickRows.length > 0
+              text: root.tr("section.quick", "QUICK CONNECT")
               foreground: root.foreground
               fontFamily: root.fontFamily
             }
 
-            GridLayout {
-              id: recentGrid
-              visible: root.recentChoices.length > 0
+            Column {
+              id: quickList
+              visible: root.quickRows.length > 0
               width: parent.width
-              columns: Math.max(1, Math.min(3, root.recentChoices.length))
-              columnSpacing: Style.spacing.rowGap
-              rowSpacing: Style.spacing.labelGap
+              spacing: Style.space(2)
 
               Repeater {
-                model: root.recentChoices
+                model: root.quickRows
 
-                Button {
+                QuickRow {
                   required property var modelData
                   required property int index
-                  Layout.fillWidth: true
-                  Layout.preferredWidth: 1
-                  text: modelData.label
-                  tooltipText: modelData.detail ? root.tr("recent.tipDetail", "Reconnect using %1 · last used %2").arg(modelData.label).arg(modelData.detail) : root.tr("recent.tip", "Reconnect using %1").arg(modelData.label)
-                  hasCursor: root.cursorActive && root.focusSection === "recent:" + index
-                  foreground: root.foreground
-                  fontFamily: root.fontFamily
-                  onClicked: root.connectRecent(index)
-                  onHovered: function(on) { if (on) root.setFocusSection("recent:" + index) }
+                  width: quickList.width
+                  row: modelData
+                  rowIndex: index
                 }
               }
             }
@@ -1462,6 +1485,101 @@ Panel {
     running: root.opened
     repeat: true
     onTriggered: root.nowTick += 1
+  }
+
+  // One Quick connect target: a star to keep it, then its name. The row
+  // connects; the current connection only says so.
+  component QuickRow: CursorSurface {
+    id: quickRow
+    property var row: ({})
+    property int rowIndex: 0
+    readonly property string rowName: Model.targetName(row.target, vpn.countries, root.loc)
+    readonly property bool starCursor: root.cursorActive && root.focusSection === "star:" + rowIndex
+
+    hasCursor: root.cursorActive && root.focusSection === "quick:" + rowIndex
+    foreground: root.foreground
+    fill: root.hoverFill
+    implicitHeight: Math.max(quickName.implicitHeight, quickStar.implicitHeight) + Style.space(10)
+
+    MouseArea {
+      id: quickMouse
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: quickRow.row.active ? Qt.ArrowCursor : Qt.PointingHandCursor
+      onEntered: root.setFocusSection("quick:" + quickRow.rowIndex)
+      onClicked: root.connectQuick(quickRow.rowIndex)
+    }
+
+    SettingTip {
+      text: quickRow.row.active
+        ? root.tr("quick.activeTip", "You are connected here. Press f to star or unstar it.")
+        : root.tr("quick.tip", "Connect to %1").arg(quickRow.rowName)
+      tipHovered: quickMouse.containsMouse && !starMouse.containsMouse
+      tipCursor: root.keyboardNavigation && quickRow.hasCursor
+    }
+
+    RowLayout {
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      anchors.leftMargin: Style.space(4)
+      anchors.rightMargin: Style.space(10)
+      spacing: Style.space(8)
+
+      CursorSurface {
+        Layout.preferredWidth: quickStar.implicitWidth + Style.space(10)
+        Layout.preferredHeight: quickStar.implicitHeight + Style.space(4)
+        hasCursor: quickRow.starCursor
+        foreground: root.foreground
+        fill: root.hoverFill
+
+        Text {
+          id: quickStar
+          anchors.centerIn: parent
+          textFormat: Text.PlainText
+          // Nerd Font star, filled when kept.
+          text: quickRow.row.favorite ? "\uf005" : "\uf006"
+          color: quickRow.row.favorite ? root.foreground : root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.body
+        }
+
+        MouseArea {
+          id: starMouse
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onEntered: root.setFocusSection("star:" + quickRow.rowIndex)
+          onClicked: root.starQuick(quickRow.rowIndex)
+        }
+
+        SettingTip {
+          text: quickRow.row.favorite ? root.tr("quick.unstar", "Remove from favorites (f)") : root.tr("quick.star", "Keep in favorites (f)")
+          tipHovered: starMouse.containsMouse
+          tipCursor: root.keyboardNavigation && quickRow.starCursor
+        }
+      }
+
+      Text {
+        id: quickName
+        Layout.fillWidth: true
+        textFormat: Text.PlainText
+        text: quickRow.rowName
+        color: root.foreground
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.body
+        elide: Text.ElideRight
+      }
+
+      Text {
+        visible: quickRow.row.active === true
+        textFormat: Text.PlainText
+        text: root.tr("quick.connected", "Connected")
+        color: root.dim
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+      }
+    }
   }
 
   component FieldColumn: ColumnLayout {

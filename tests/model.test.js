@@ -655,15 +655,6 @@ describe("switching while connected", () => {
     assert.equal(Model.shouldOfferSwitch(null), false)
   })
 
-  it("leaves the current connection out of RECENT", () => {
-    const tirana = Model.recentTarget({ mode: "city", country: "AL", city: "Tirana" })
-    const zurichTarget = Model.recentTarget(zurich)
-    assert.deepEqual(Model.recentChoices([tirana], tirana), [])
-    assert.deepEqual(Model.recentChoices([zurichTarget, tirana], zurichTarget).map((item) => item.label), ["Tirana"])
-    assert.deepEqual(Model.recentChoices([zurichTarget, tirana], null).map((item) => item.label), ["Zurich", "Tirana"])
-    assert.deepEqual(Model.recentChoices(null, null), [])
-  })
-
   it("labels the switch like the RECENT buttons", () => {
     assert.equal(Model.switchLabel(zurich), "Switch to Zurich")
     assert.equal(Model.switchLabel(fastest), "Switch to Fastest server")
@@ -808,6 +799,48 @@ describe("free plan", () => {
     assert.equal(Model.fill("%1 of %2", "a", "b"), "a of b")
     assert.equal(Model.formatBytes(1500), "1.5 KB")
     assert.equal(Model.formatBytes(1500, { num: (value, places) => value.toFixed(places).replace(".", ",") }), "1,5 KB")
+  })
+})
+
+describe("quick connect", () => {
+  const countries = [{ code: "CH", name: "Switzerland" }, { code: "NL", name: "Netherlands" }]
+  const zurich = { mode: "city", country: "CH", city: "Zurich", serverId: "" }
+  const nl = { mode: "country", country: "NL", city: "", serverId: "" }
+
+  it("reads saved targets back as untrusted", () => {
+    assert.deepEqual(Model.normalizeTargets([zurich, zurich, nl, { mode: "country" }, { mode: "evil" },
+      { mode: "server", serverId: "rm -rf" }, { mode: "country", country: 7 }, "x", null, { mode: "country", country: "x".repeat(65) }], 8), [zurich, nl])
+    assert.deepEqual(Model.normalizeTargets("nope", 8), [])
+    assert.deepEqual(Model.normalizeTargets([nl, zurich], 1), [nl])
+    assert.deepEqual(Model.cleanTarget({ mode: "fastest", label: "<b>x</b>", extra: 1 }), { mode: "fastest", country: "", city: "", serverId: "" })
+  })
+
+  it("stars and unstars a target", () => {
+    const one = Model.toggleFavorite([], Object.assign({ label: "Zurich" }, zurich))
+    assert.deepEqual(one, [zurich])
+    assert.equal(Model.isFavorite(one, zurich), true)
+    assert.deepEqual(Model.toggleFavorite(one, zurich), [])
+    const full = Array.from({ length: 8 }, (_, i) => ({ mode: "server", serverId: "CH#" + (i + 1) }))
+    assert.equal(Model.toggleFavorite(full, nl).length, 8)
+  })
+
+  it("names targets in full", () => {
+    assert.equal(Model.targetName(zurich, countries), "Zurich · Switzerland")
+    assert.equal(Model.targetName(nl, countries), "Netherlands")
+    assert.equal(Model.targetName(nl, []), "NL")
+    assert.equal(Model.targetName({ mode: "p2p", country: "NL" }, countries), "P2P · Netherlands")
+    assert.equal(Model.targetName({ mode: "server", serverId: "CH#242" }, countries), "CH#242")
+    assert.equal(Model.targetName({ mode: "fastest" }, countries), "Fastest server")
+  })
+
+  it("lists favorites, then the current connection, then other recents", () => {
+    const rows = Model.quickConnectRows([zurich], [nl, zurich, { mode: "fastest" }], nl)
+    assert.deepEqual(rows.map((r) => [Model.targetName(r.target, countries), r.favorite, r.active]), [
+      ["Netherlands", false, true],
+      ["Zurich · Switzerland", true, false],
+      ["Fastest server", false, false]
+    ])
+    assert.deepEqual(Model.quickConnectRows([nl], [], nl).map((r) => [r.favorite, r.active]), [[true, true]])
   })
 })
 

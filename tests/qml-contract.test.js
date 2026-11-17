@@ -117,7 +117,7 @@ describe("QML scheduler contract", () => {
 
   it("falls back to an idle-until-needed local service when the shared one is missing", () => {
     assert.match(panel, /readonly property var vpn: root\.sharedVpn \|\| localVpn/)
-    assert.match(panel, /Service \{\s*id: localVpn\s*active: !root\.sharedVpn\s*\}/)
+    assert.match(panel, /Service \{\s*id: localVpn\s*active: !root\.sharedVpn\b/)
     assert.match(service, /property bool active: true/)
     assert.match(service, /function watchLink\(\) \{\n\s*if \(!active \|\| !installed\) return/)
   })
@@ -193,10 +193,15 @@ describe("QML scheduler contract", () => {
   it("shows compatibility warnings, CLI exit IP, and session recents", () => {
     assert.match(panel, /status\.exitIp/)
     assert.match(panel, /vpn\.compatibilityWarning/)
-    assert.match(panel, /id: recentGrid/)
-    assert.match(panel, /onClicked: root\.connectRecent\(index\)/)
-    assert.match(panel, /readonly property var recentChoices: Model\.recentChoices\(vpn\.recentTargets, vpn\.activeTarget\)/)
-    assert.match(panel, /model: root\.recentChoices/)
+    assert.match(panel, /readonly property var quickRows: Model\.quickConnectRows\(vpn\.favorites, vpn\.recentTargets, currentTarget\)/)
+    assert.match(panel, /model: root\.quickRows/)
+    assert.match(panel, /if \(row && !row\.active\) vpn\.connectWith\(row\.target\)/)
+    assert.match(service, /readonly property var favorites: Model\.normalizeTargets\(setting\("favorites", \[\]\), Model\.MAX_FAVORITES\)/)
+    // Recents reach shell.json only when the user opts in, and leave it when they opt out.
+    assert.match(service, /if \(rememberRecent\) saveSettings\(\{ recent: Model\.normalizeTargets\(recentTargets, Model\.MAX_RECENTS\) \}\)\n/)
+    assert.match(service, /else if \(setting\("recent", undefined\) !== undefined\) saveSettings\(\{ recent: undefined \}\)/)
+    assert.match(service, /for \(var key in settings\) if \(key !== "id"\) entry\[key\] = settings\[key\]/)
+    assert.match(service, /shell\.updateEntryInline\(Model\.PLUGIN_ID, entry\)/)
     assert.match(panel, /function onActiveTargetChanged\(\) \{ root\.connectDraftDirty = false \}/)
   })
 

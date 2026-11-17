@@ -1197,7 +1197,7 @@ function connectTargetKey(options) {
 
 function shouldOfferSwitch(ctx) {
   if (!ctx || ctx.state !== STATES.connected || ctx.busy === true) return false
-  // Only after the user edits CONNECT: a recreated panel or a RECENT reconnect
+  // Only after the user edits CONNECT: a recreated panel or a Quick connect reconnect
   // leaves an untouched draft that differs from the connection.
   if (ctx.draftDirty !== true) return false
   var draftKey = connectTargetKey(ctx.draft)
@@ -1207,16 +1207,107 @@ function shouldOfferSwitch(ctx) {
   return connectTargetKey(ctx.activeTarget) !== draftKey
 }
 
-// Reconnecting to where you already are is pointless, so RECENT hides it.
-function recentChoices(list, activeTarget) {
-  var source = list || []
-  var activeKey = activeTarget ? connectTargetKey(activeTarget) : ""
-  var result = []
-  for (var i = 0; i < source.length; i++) {
-    if (activeKey !== "" && connectTargetKey(source[i]) === activeKey) continue
-    result.push(source[i])
+// Favorites and remembered recents live in the widget's shell.json entry,
+// which the user can edit, so read them back as untrusted: only the four
+// connection fields, short strings, and targets the CLI would accept.
+var MAX_FAVORITES = 8
+var MAX_RECENTS = 3
+var TARGET_FIELD_MAX = 64
+
+function cleanTarget(raw) {
+  if (!raw || typeof raw !== "object") return null
+  var target = { mode: "fastest", country: "", city: "", serverId: "" }
+  var fields = ["mode", "country", "city", "serverId"]
+  for (var i = 0; i < fields.length; i++) {
+    var value = raw[fields[i]]
+    if (value === undefined || value === null) continue
+    if (typeof value !== "string" || value.length > TARGET_FIELD_MAX) return null
+    target[fields[i]] = value.trim()
   }
-  return result
+  if (!modeDef(target.mode) || !buildConnectCommand(target).ok) return null
+  return target
+}
+
+function normalizeTargets(list, max) {
+  var out = []
+  var seen = {}
+  var source = Array.isArray(list) ? list : []
+  for (var i = 0; i < source.length && out.length < max; i++) {
+    var target = cleanTarget(source[i])
+    if (!target) continue
+    var key = connectTargetKey(target)
+    if (seen[key]) continue
+    seen[key] = true
+    out.push(target)
+  }
+  return out
+}
+
+function isFavorite(favorites, target) {
+  var key = target ? connectTargetKey(target) : ""
+  if (key === "") return false
+  for (var i = 0; i < (favorites || []).length; i++) {
+    if (connectTargetKey(favorites[i]) === key) return true
+  }
+  return false
+}
+
+// Starring adds to the end; starring again removes it.
+function toggleFavorite(favorites, target) {
+  var clean = cleanTarget(target)
+  var list = normalizeTargets(favorites, MAX_FAVORITES)
+  if (!clean) return list
+  var key = connectTargetKey(clean)
+  var kept = list.filter(function(item) { return connectTargetKey(item) !== key })
+  if (kept.length !== list.length) return kept
+  return list.length < MAX_FAVORITES ? list.concat([clean]) : list
+}
+
+function countryName(code, countries) {
+  var value = String(code || "").trim()
+  var list = countries || []
+  for (var i = 0; i < list.length; i++) {
+    if (String(list[i].code || "").toUpperCase() === value.toUpperCase()) return String(list[i].name || value)
+  }
+  return value
+}
+
+// "Netherlands", "Zurich · Switzerland", "P2P · Iceland", "CH#242".
+function targetName(target, countries, loc) {
+  var t = target || {}
+  var mode = String(t.mode || "fastest")
+  var country = countryName(t.country, countries)
+  if (mode === "country") return country
+  if (mode === "city") return country !== "" ? t.city + " · " + country : String(t.city || "")
+  if (mode === "server") return String(t.serverId || "")
+  return modeLabel(mode, loc) + (country !== "" ? " · " + country : "")
+}
+
+// Favorites first, the current connection marked; then recents that are
+// neither. Each row says what it is so the panel can draw and act on it.
+function quickConnectRows(favorites, recents, activeTarget) {
+  var activeKey = activeTarget ? connectTargetKey(activeTarget) : ""
+  var rows = []
+  var seen = {}
+  var favs = favorites || []
+  for (var i = 0; i < favs.length; i++) {
+    var key = connectTargetKey(favs[i])
+    if (key === "" || seen[key]) continue
+    seen[key] = true
+    rows.push({ target: favs[i], favorite: true, active: key === activeKey })
+  }
+  if (activeKey !== "" && !seen[activeKey]) {
+    seen[activeKey] = true
+    rows.unshift({ target: activeTarget, favorite: false, active: true })
+  }
+  var recent = recents || []
+  for (var j = 0; j < recent.length; j++) {
+    var rkey = connectTargetKey(recent[j])
+    if (rkey === "" || seen[rkey]) continue
+    seen[rkey] = true
+    rows.push({ target: recent[j], favorite: false, active: false })
+  }
+  return rows
 }
 
 function switchLabel(options, loc) {
@@ -1875,8 +1966,16 @@ if (typeof module !== "undefined") {
     connectFieldTriggerLabel: connectFieldTriggerLabel,
     connectTargetKey: connectTargetKey,
     shouldOfferSwitch: shouldOfferSwitch,
-    recentChoices: recentChoices,
     switchLabel: switchLabel,
+    MAX_FAVORITES: MAX_FAVORITES,
+    MAX_RECENTS: MAX_RECENTS,
+    cleanTarget: cleanTarget,
+    normalizeTargets: normalizeTargets,
+    isFavorite: isFavorite,
+    toggleFavorite: toggleFavorite,
+    countryName: countryName,
+    targetName: targetName,
+    quickConnectRows: quickConnectRows,
     buildConnectCommand: buildConnectCommand,
     buildConfigSetCommand: buildConfigSetCommand,
     displayLoad: displayLoad,
