@@ -1353,6 +1353,15 @@ Item {
     onTriggered: root.startLinkMonitor()
   }
 
+  // The login window closes 3 minutes after start-up, so switching
+  // connectOnLogin on later in the session never counts as a login.
+  Timer {
+    id: loginWindow
+    interval: 180000
+    running: root._loginConnectPending
+    onTriggered: root._loginConnectPending = false
+  }
+
   Timer {
     id: autoConnectTimer
     interval: 10000

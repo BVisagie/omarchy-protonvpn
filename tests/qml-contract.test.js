@@ -381,6 +381,7 @@ describe("QML scheduler contract", () => {
     const gate = service.indexOf("if (!canToggle) {", disconnect)
     assert.ok(disconnect !== -1 && cancel !== -1 && cancel < gate)
     assert.match(service, /_autoTicks > 18 \|\| _autoAttempts >= 3/)
+    assert.match(service, /id: loginWindow\n\s*interval: 180000\n\s*running: root\._loginConnectPending\n\s*onTriggered: root\._loginConnectPending = false/)
   })
 
   it("connects on untrusted Wi-Fi only when a network is really joined", () => {

@@ -14,7 +14,7 @@ This plugin:
 - never runs anything as root; installing the CLI goes through Omarchy's installer, which asks for the password in its own terminal;
 - never calls private Proton APIs, external IP services, telemetry, or map services;
 - never edits Proton, NetworkManager, keyring, or system configuration files, and writes to Omarchy's `shell.json` only its own widget entry, through Omarchy's plugin API, to save favorites, trusted Wi-Fi names, and, when `rememberRecent` is on, recent connection choices;
-- reads the current Wi-Fi network name from NetworkManager through Quickshell only to decide whether to connect, when `autoConnectWifi` is on; and
+- follows the current Wi-Fi network name from NetworkManager through Quickshell, in memory, and acts on it only when `autoConnectWifi` is on; and
 - keeps CLI-supplied exit IPs and traffic totals in memory only, and recent connection targets too unless `rememberRecent` is on.
 
 Parser failures and failed status probes retain the last known state as stale and disable VPN or configuration writes until a healthy probe succeeds.

@@ -210,7 +210,7 @@ omarchy-shell io.github.BVisagie.protonvpn statusJson | jq -r .server
 - It never runs anything as root. Installing the CLI goes through Omarchy's installer, which asks for your password in its own terminal.
 - It never makes extra network requests such as “what is my IP” lookups, map tiles, or telemetry.
 - The exit IP is shown only when the Proton CLI itself returns it after connecting. Exit IP and traffic totals stay in memory and disappear when `omarchy-shell` exits.
-- With `autoConnectWifi` on, the plugin reads the name of the Wi-Fi network you are on from NetworkManager, and saves the names you trust in its `shell.json` entry.
+- Quickshell keeps the name of the Wi-Fi network you are on in memory, from NetworkManager. The plugin acts on it only with `autoConnectWifi` on, and saves the names you trust in its `shell.json` entry.
 - Favorites, and recent places only with `rememberRecent` on, are saved as connection choices (mode, country code, city, server ID) in this widget's own entry in `~/.config/omarchy/shell.json`, through Omarchy's plugin API. If you keep your dotfiles in a public repository, that file shows where you connect.
 - Traffic rates come from the tunnel's own kernel counters under `/sys/class/net/`. While the tunnel is up they are read every two seconds with the panel open and every five seconds with it closed, for the stall warning; rates are shown only in the open panel. Reading them starts no process. Captured test fixtures are synthetic or redacted.
 - Raw CLI diagnostics are capped before they are shown.
