@@ -143,6 +143,16 @@ Item {
   // Data going out with nothing coming back; read even with every panel closed.
   property var health: Model.emptyHealth()
   readonly property bool tunnelStalled: linkActive && state === Model.STATES.connected && health.stalled === true
+  // Where IPv4, IPv6, and DNS really go while connected; local reads only.
+  property var routing: Model.emptyRouting()
+  readonly property bool tunnelLeaking: linkActive && state === Model.STATES.connected && routing.shown.length > 0
+  property var _routingResults: ({})
+  property string _routingStep: ""
+  property string _routingDevice: ""
+  property bool _routingAgain: false
+  property double _routingStartedMs: 0
+  property int _routingEpoch: 0
+  property int _routingStartedEpoch: 0
   // Only a validated proton0-style device ever reaches a sysfs path.
   readonly property string _statsDir: Model.isTunnelDevice(linkDevice) ? "/sys/class/net/" + linkDevice + "/statistics/" : ""
   readonly property string trafficText: Model.trafficText(traffic, loc)
@@ -185,7 +195,8 @@ Item {
     lastUpdatedMs: root.lastUpdatedMs,
     connectedSnapshot: root.connectedSnapshot,
     blocking: root.killSwitchBlocking,
-    stalled: root.tunnelStalled
+    stalled: root.tunnelStalled,
+    leaking: root.tunnelLeaking
   })
   // A Kill Switch cycle owns the connection until it finishes; only its own
   // steps may write while it runs.
@@ -742,6 +753,9 @@ Item {
     var previousActive = linkActive
     var previousServer = linkServer
     var link = Model.parseActiveVpn(result.stdout)
+    // A new or ended tunnel starts the routing check over.
+    if (!link.active || (previousActive && previousServer !== link.server)) clearRouting()
+    Qt.callLater(checkRouting)
     linkActive = link.active
     linkServer = link.server
     linkDevice = link.device
@@ -1351,6 +1365,59 @@ Item {
     }
   }
 
+  // Reads routes and resolved's state one command at a time; nothing here
+  // sends a packet. Link events can come in bursts, so starts are spaced.
+  function checkRouting() {
+    if (!active || !linkActive || state !== Model.STATES.connected || !Model.isTunnelDevice(linkDevice)) return
+    if (routingProcess.running || Date.now() - _routingStartedMs < 2000) {
+      _routingAgain = true
+      if (!routingProcess.running) routingRetry.restart()
+      return
+    }
+    _routingAgain = false
+    _routingStartedMs = Date.now()
+    _routingDevice = linkDevice
+    _routingStartedEpoch = _routingEpoch
+    _routingResults = ({})
+    runRoutingStep("ipv4")
+  }
+
+  function runRoutingStep(step) {
+    _routingStep = step
+    routingProcess.command = boundedCommand(Model.routingCommands()[step], 5000)
+    routingProcess.running = true
+  }
+
+  function handleRoutingStep(result) {
+    var step = _routingStep
+    _routingStep = ""
+    var results = _routingResults
+    results[step] = result
+    _routingResults = results
+    if (step === "ipv4") runRoutingStep("ipv6")
+    else if (step === "ipv6") runRoutingStep("dns")
+    // The firewall Kill Switch only matters when IPv6 seems to leave outside.
+    else if (step === "dns" && Model.routeVerdict(results.ipv6, _routingDevice).status === "leak") runRoutingStep("firewall")
+    else finishRouting()
+  }
+
+  function finishRouting() {
+    // The answer describes the tunnel the check started on.
+    if (_routingStartedEpoch === _routingEpoch && linkActive && linkDevice === _routingDevice && state === Model.STATES.connected) {
+      var shownBefore = routing.shown.length
+      routing = Model.routingHealth(routing, Model.routingVerdict(_routingResults, _routingDevice), Date.now())
+      sendNotification(Model.routingNotification(shownBefore, routing, { setting: notificationSetting, openPanels: openPanels }, loc))
+      if (routing.pending) routingConfirm.restart()
+    }
+    if (_routingAgain) Qt.callLater(checkRouting)
+  }
+
+  function clearRouting() {
+    _routingEpoch++
+    routingConfirm.stop()
+    routing = Model.emptyRouting()
+  }
+
   // Omarchy's own updater, in its own terminal; it asks for the password there.
   function updateSystem() {
     Quickshell.execDetached(Model.UPDATE_LAUNCHER)
@@ -1392,7 +1459,10 @@ Item {
   // Opening a panel starts its rates at once instead of at the next tick.
   onOpenPanelsChanged: {
     if (openPanels === 0) traffic = Model.emptyTraffic()
-    else if (openPanels === 1) sampleTraffic()
+    else if (openPanels === 1) {
+      sampleTraffic()
+      checkRouting()
+    }
   }
 
   onActiveChanged: {
@@ -1555,6 +1625,31 @@ Item {
       onRead: function(line) { linkSettle.restart() }
     }
     onExited: function(exitCode) { root.linkMonitorExited() }
+  }
+
+  Timer {
+    id: routingConfirm
+    interval: Model.ROUTING_CONFIRM_MS
+    onTriggered: root.checkRouting()
+  }
+
+  Timer {
+    id: routingRetry
+    interval: 2000
+    onTriggered: root.checkRouting()
+  }
+
+  Process {
+    id: routingProcess
+    running: false
+    command: []
+    stdout: StdioCollector {
+      id: routingStdout
+      waitForEnd: true
+    }
+    onExited: function(exitCode) {
+      root.handleRoutingStep({ exitCode: exitCode, stdout: String(routingStdout.text || ""), timedOut: exitCode === 124 })
+    }
   }
 
   Process {

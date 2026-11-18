@@ -44,6 +44,23 @@ describe("QML scheduler contract", () => {
     assert.doesNotMatch(service, /notify-send/)
   })
 
+  it("checks where traffic and DNS go only while connected, through fixed local reads", () => {
+    assert.match(service, /function checkRouting\(\) \{\n\s*if \(!active \|\| !linkActive \|\| state !== Model\.STATES\.connected \|\| !Model\.isTunnelDevice\(linkDevice\)\) return/)
+    assert.match(service, /routingProcess\.command = boundedCommand\(Model\.routingCommands\(\)\[step\], 5000\)/)
+    assert.equal((service.match(/routingProcess\.command =/g) || []).length, 1)
+    // A new or ended tunnel starts over, and an answer about an old one is dropped.
+    assert.match(service, /if \(!link\.active \|\| \(previousActive && previousServer !== link\.server\)\) clearRouting\(\)\n\s*Qt\.callLater\(checkRouting\)/)
+    assert.match(service, /if \(_routingStartedEpoch === _routingEpoch && linkActive && linkDevice === _routingDevice && state === Model\.STATES\.connected\)/)
+    assert.match(service, /function clearRouting\(\) \{\n\s*_routingEpoch\+\+/)
+    // A finding waits for a second check before it shows.
+    assert.match(service, /if \(routing\.pending\) routingConfirm\.restart\(\)/)
+    assert.match(service, /id: routingConfirm\n\s*interval: Model\.ROUTING_CONFIRM_MS/)
+    assert.match(service, /readonly property bool tunnelLeaking: linkActive && state === Model\.STATES\.connected && routing\.shown\.length > 0/)
+    assert.match(service, /else if \(step === "dns" && Model\.routeVerdict\(results\.ipv6, _routingDevice\)\.status === "leak"\) runRoutingStep\("firewall"\)/)
+    assert.equal((panel.match(/Model\.iconWarning\(root\.view\.state, root\.view\.blocking, root\.view\.stalled, root\.view\.leaking\)/g) || []).length, 2)
+    assert.match(panel, /model: root\.view\.leaking === true \? Model\.routingLeakLines\(vpn\.routing, root\.loc\) : \[\]/)
+  })
+
   it("launches install and sign-in only through fixed Omarchy terminals", () => {
     assert.match(service, /Quickshell\.execDetached\(Model\.INSTALL_LAUNCHER\)/)
     assert.match(service, /Quickshell\.execDetached\(Model\.SIGNIN_LAUNCHER\)/)
