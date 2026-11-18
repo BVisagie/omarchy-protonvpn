@@ -52,6 +52,7 @@ describe("QML scheduler contract", () => {
     assert.match(service, /if \(!link\.active \|\| \(previousActive && previousServer !== link\.server\)\) clearRouting\(\)\n\s*Qt\.callLater\(checkRouting\)/)
     assert.match(service, /if \(_routingStartedEpoch === _routingEpoch && linkActive && linkDevice === _routingDevice && state === Model\.STATES\.connected\)/)
     assert.match(service, /function clearRouting\(\) \{\n\s*_routingEpoch\+\+/)
+    assert.match(service, /onStateChanged: if \(state === Model\.STATES\.connected\) Qt\.callLater\(checkRouting\)/)
     // A finding waits for a second check before it shows.
     assert.match(service, /if \(routing\.pending\) routingConfirm\.restart\(\)/)
     assert.match(service, /id: routingConfirm\n\s*interval: Model\.ROUTING_CONFIRM_MS/)

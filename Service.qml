@@ -1456,6 +1456,9 @@ Item {
     }
   }
 
+  // A connect owns the state until it finishes, so check once it says connected.
+  onStateChanged: if (state === Model.STATES.connected) Qt.callLater(checkRouting)
+
   // Opening a panel starts its rates at once instead of at the next tick.
   onOpenPanelsChanged: {
     if (openPanels === 0) traffic = Model.emptyTraffic()
