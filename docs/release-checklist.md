@@ -6,8 +6,9 @@ resolve inside `omarchy-shell`. Before tagging a release, load it in a real bar.
 1. Run `./scripts/check.sh`. It must end with "All checks passed."
    Then run `./scripts/load-smoke.sh`, which loads the service and panel in a
    throwaway Quickshell instance and fails on QML errors. It runs only
-   read-only probes (Proton, NetworkManager, and with a tunnel up the routing
-   check, which can notify about a leak it finds).
+   read-only probes (Proton, NetworkManager, a `git status` of the checkout,
+   and with a tunnel up the routing check, which can notify about a leak it
+   finds).
 2. Install the branch over the plugin, for example by checking it out in
    `~/.config/omarchy/plugins/io.github.BVisagie.protonvpn/`. Saving there
    reloads the widget. Reloading the widget leaves an existing tunnel up.

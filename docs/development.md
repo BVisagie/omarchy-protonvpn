@@ -22,4 +22,4 @@ That script runs the Node and Python tests, `omarchy plugin validate` on a copy 
 ./scripts/load-smoke.sh
 ```
 
-That loads the service and panel in a throwaway Quickshell instance, outside `omarchy-shell`, and fails on QML errors. It runs only read-only Proton and NetworkManager probes. Then test the widget in the bar before releasing; [release-checklist.md](release-checklist.md) lists what to check.
+That loads the service and panel in a throwaway Quickshell instance, outside `omarchy-shell`, and fails on QML errors. It runs only read-only Proton and NetworkManager probes and a read-only `git status` of the checkout, and fails when a git checkout reports no commit. Then test the widget in the bar before releasing; [release-checklist.md](release-checklist.md) lists what to check.
