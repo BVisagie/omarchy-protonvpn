@@ -979,6 +979,13 @@ describe("tunnel routing check", () => {
     assert.equal(Model.firewallKillSwitchState(running), "running")
     assert.equal(Model.firewallKillSwitchState(ok("[]")), "unknown")
     assert.equal(Model.firewallKillSwitchState(ok("{}")), "unknown")
+    assert.equal(Model.firewallKillSwitchState(ok('"bad"')), "unknown")
+    assert.equal(Model.firewallKillSwitchState(ok('{"length":1}')), "unknown")
+    assert.equal(Model.firewallKillSwitchState(ok('[1]')), "unknown")
+    // Listed without a pid but not just activatable: credentials were withheld.
+    assert.equal(Model.firewallKillSwitchState(ok('[{"name":"me.proton.vpn.kill_switch","pid":null,"connection":":1.80"}]')), "unknown")
+    // Not installed at all.
+    assert.equal(Model.firewallKillSwitchState(ok('[{"name":"org.freedesktop.DBus","pid":1,"connection":"-"}]')), "stopped")
     assert.equal(Model.firewallKillSwitchState({ exitCode: 1, stdout: "", timedOut: false }), "unknown")
     assert.equal(Model.firewallKillSwitchState({ exitCode: 124, stdout: "", timedOut: true }), "unknown")
     const results = { ipv4: routing("route4-connected.json"), ipv6: routing("route6-disconnected.json"), dns: routing("resolved-connected.json") }

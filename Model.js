@@ -2160,15 +2160,20 @@ function routeVerdict(result, tunnelDevice) {
 
 // Proton's opt-in nftables Kill Switch blocks at the firewall, where a route
 // lookup cannot see. Its D-Bus service has a pid only once it has started.
-// "running", "stopped", or "unknown" when the bus listing failed.
+// "running", "stopped" only when the listing says so (activatable, or not
+// installed at all), and "unknown" for anything else.
 function firewallKillSwitchState(result) {
   var names = result && result.exitCode === 0 && result.timedOut !== true ? parseJson(result.stdout) : null
-  if (!names || typeof names.length !== "number" || names.length === 0) return "unknown"
+  if (!Array.isArray(names) || names.length === 0) return "unknown"
+  var row = null
   for (var i = 0; i < names.length; i++) {
-    var n = names[i] || {}
-    if (n.name === "me.proton.vpn.kill_switch" && Number(n.pid) > 0) return "running"
+    var n = names[i]
+    if (!n || typeof n !== "object" || typeof n.name !== "string") return "unknown"
+    if (n.name === "me.proton.vpn.kill_switch") row = n
   }
-  return "stopped"
+  if (!row) return "stopped"
+  if (Number(row.pid) > 0) return "running"
+  return row.connection === "(activatable)" ? "stopped" : "unknown"
 }
 
 function serverText(server) {
