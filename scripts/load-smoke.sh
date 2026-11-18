@@ -2,7 +2,9 @@
 # Load Service.qml and Panel.qml in a throwaway Quickshell instance, outside
 # omarchy-shell, and fail on QML errors. It opens no window, and the service
 # runs only its read-only probes (which, protonvpn status/--help/config list,
-# countries list, nmcli). It never connects, disconnects, or changes settings.
+# countries list, nmcli, and with a tunnel up ip route get, resolvectl, and
+# busctl). It never connects, disconnects, or changes settings, but with a
+# tunnel up and a leak found it can send a real desktop notification.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"

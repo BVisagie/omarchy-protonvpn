@@ -930,9 +930,211 @@ describe("IPC", () => {
     assert.deepEqual(json, {
       state: "connected", connected: true, server: "NL#806", location: "Amsterdam, Netherlands", load: 38, protocol: "WireGuard",
       exitIp: "", connectedSince: "2026-11-17T09:00:00.000Z", killSwitch: "standard", netshield: "malware-only",
-      killSwitchBlocking: false, stalled: false, message: ""
+      killSwitchBlocking: false, stalled: false, routing: null, leaks: [], message: ""
     })
     assert.equal(JSON.parse(Model.statusJson({ state: "disconnected", status: { server: "old" } })).server, "")
+    const routing = { ipv4: "ok", ipv6: "leak", dns: "ok", shown: [{ kind: "ipv6", device: "wlan0" }] }
+    const leaking = JSON.parse(Model.statusJson({ state: "connected", status: {} }, { routing }))
+    assert.deepEqual(leaking.routing, { ipv4: "ok", ipv6: "leak", dns: "ok" })
+    assert.deepEqual(leaking.leaks, ["IPv6 traffic leaves through wlan0, outside the tunnel."])
+    assert.equal(JSON.parse(Model.statusJson({ state: "disconnected" }, { routing })).routing, null)
+  })
+})
+
+describe("tunnel routing check", () => {
+  const ok = (stdout) => ({ exitCode: 0, stdout, timedOut: false })
+  const routing = (name) => ok(fixture(path.join("routing", name)))
+  const resolved = (name) => JSON.parse(fixture(path.join("routing", name)))
+  const dnsOf = (entries) => Model.dnsVerdict(ok(JSON.stringify(entries)), "proton0")
+  const link = (entries, name) => entries.find((e) => e.ifname === name)
+
+  it("finds a healthy WireGuard tunnel healthy, with and without custom DNS", () => {
+    for (const dns of ["resolved-connected.json", "resolved-custom-dns.json"]) {
+      const verdict = Model.routingVerdict({ ipv4: routing("route4-connected.json"), ipv6: routing("route6-connected.json"), dns: routing(dns) }, "proton0")
+      assert.deepEqual(verdict, { ipv4: "ok", ipv6: "ok", dns: "ok", leaks: [] }, dns)
+    }
+  })
+
+  it("names the device traffic leaves through outside the tunnel", () => {
+    const verdict = Model.routingVerdict({ ipv4: routing("route4-disconnected.json"), ipv6: routing("route6-disconnected.json"), dns: routing("resolved-connected.json"), firewall: routing("busctl-killswitch-idle.json") }, "proton0")
+    assert.deepEqual(verdict.leaks, [{ kind: "ipv4", device: "enp0s1" }, { kind: "ipv6", device: "enp0s1" }])
+    const exitNode = ok('[{"dst":"1.1.1.1","dev":"tailscale0","table":"52","flags":[]}]')
+    assert.deepEqual(Model.routeVerdict(exitNode, "proton0"), { status: "leak", device: "tailscale0" })
+  })
+
+  it("treats Proton's blocking devices and a missing route as no leak", () => {
+    for (const dev of ["pvpnksintrf0", "pvpnksintrf1", "pvpnrouteintrf0", "ipv6leakintrf0", "ipv6leakintrf1"]) {
+      assert.equal(Model.routeVerdict(ok(`[{"dst":"2606:4700:4700::1111","dev":"${dev}","metric":95}]`), "proton0").status, "blocked", dev)
+    }
+    assert.equal(Model.routeVerdict({ exitCode: 2, stdout: "", timedOut: false }, "proton0").status, "none")
+    assert.equal(Model.routeVerdict({ exitCode: 1, stdout: "", timedOut: false }, "proton0").status, "unknown")
+    assert.equal(Model.routeVerdict({ exitCode: 124, stdout: "", timedOut: true }, "proton0").status, "unknown")
+    assert.equal(Model.routeVerdict(ok("not json"), "proton0").status, "unknown")
+  })
+
+  it("cannot judge IPv6 while Proton's firewall Kill Switch runs, or when unsure", () => {
+    const idle = routing("busctl-killswitch-idle.json")
+    const running = ok('[{"name":"me.proton.vpn.kill_switch","pid":4242,"connection":":1.80"}]')
+    assert.equal(Model.firewallKillSwitchState(idle), "stopped")
+    assert.equal(Model.firewallKillSwitchState(running), "running")
+    assert.equal(Model.firewallKillSwitchState(ok("[]")), "unknown")
+    assert.equal(Model.firewallKillSwitchState(ok("{}")), "unknown")
+    assert.equal(Model.firewallKillSwitchState(ok('"bad"')), "unknown")
+    assert.equal(Model.firewallKillSwitchState(ok('{"length":1}')), "unknown")
+    assert.equal(Model.firewallKillSwitchState(ok('[1]')), "unknown")
+    // Listed without a pid but not just activatable: credentials were withheld.
+    assert.equal(Model.firewallKillSwitchState(ok('[{"name":"me.proton.vpn.kill_switch","pid":null,"connection":":1.80"}]')), "unknown")
+    // Not installed at all.
+    assert.equal(Model.firewallKillSwitchState(ok('[{"name":"org.freedesktop.DBus","pid":1,"connection":"-"}]')), "stopped")
+    assert.equal(Model.firewallKillSwitchState({ exitCode: 1, stdout: "", timedOut: false }), "unknown")
+    assert.equal(Model.firewallKillSwitchState({ exitCode: 124, stdout: "", timedOut: true }), "unknown")
+    const results = { ipv4: routing("route4-connected.json"), ipv6: routing("route6-disconnected.json"), dns: routing("resolved-connected.json") }
+    assert.equal(Model.routingVerdict(Object.assign({ firewall: idle }, results), "proton0").ipv6, "leak")
+    assert.equal(Model.routingVerdict(Object.assign({ firewall: running }, results), "proton0").ipv6, "unknown")
+    assert.equal(Model.routingVerdict(Object.assign({ firewall: { exitCode: 1, stdout: "" } }, results), "proton0").ipv6, "unknown")
+    assert.equal(Model.routingVerdict(results, "proton0").ipv6, "unknown")
+  })
+
+  it("follows resolved: a tunnel with ~. takes every ordinary lookup", () => {
+    const entries = resolved("resolved-connected.json")
+    // A LAN link that keeps DefaultRoute gets no ordinary lookups while proton0 has ~.
+    Object.assign(link(entries, "enp0s1"), { defaultRoute: true, servers: [{ addressString: "192.168.1.203" }], searchDomains: [{ name: "home", routeOnly: false }], scopes: [{ protocol: "dns" }] })
+    assert.equal(dnsOf(entries).status, "ok")
+    // Global servers without ~. get none either.
+    entries[0].servers = [{ addressString: "9.9.9.9" }]
+    assert.equal(dnsOf(entries).status, "ok")
+  })
+
+  it("flags a second ~. scope, such as a tailnet taking all DNS", () => {
+    const entries = resolved("resolved-connected.json")
+    link(entries, "tailscale0").searchDomains.push({ name: ".", routeOnly: true })
+    assert.deepEqual(dnsOf(entries), { status: "leak", device: "tailscale0", server: "100.100.100.100", global: false })
+  })
+
+  it("without a ~. scope, flags every DefaultRoute link and global server", () => {
+    const entries = resolved("resolved-disconnected.json")
+    assert.deepEqual(dnsOf(entries), { status: "leak", device: "enp0s1", server: "192.168.1.203", global: false })
+    const tunnelOnly = resolved("resolved-connected.json")
+    link(tunnelOnly, "proton0").searchDomains = []
+    assert.equal(dnsOf(tunnelOnly).status, "ok")
+    tunnelOnly[0].servers = [{ addressString: "9.9.9.9" }]
+    assert.deepEqual(dnsOf(tunnelOnly), { status: "leak", device: "", server: "9.9.9.9", global: true })
+  })
+
+  it("ignores Proton's placeholder DNS and domain-only routes", () => {
+    const entries = resolved("resolved-connected.json")
+    Object.assign(link(entries, "pvpnksintrf0"), { defaultRoute: true, servers: [{ addressString: "0.0.0.0" }, { addressString: "::1" }], scopes: [{ protocol: "dns" }] })
+    assert.equal(dnsOf(entries).status, "ok")
+    // The tailnet keeps its own names in every fixture without warning.
+    assert.equal(link(entries, "tailscale0").searchDomains.some((d) => d.name === "."), false)
+  })
+
+  it("skips links without an active DNS scope", () => {
+    const entries = resolved("resolved-connected.json")
+    // Kept settings on a link that is down: servers and ~. but no scope.
+    Object.assign(link(entries, "wlan0"), { defaultRoute: true, servers: [{ addressString: "192.168.1.1" }], searchDomains: [{ name: ".", routeOnly: true }] })
+    assert.equal(dnsOf(entries).status, "ok")
+    link(entries, "wlan0").scopes = [{ protocol: "dns" }]
+    assert.equal(dnsOf(entries).status, "leak")
+  })
+
+  it("follows a global server bound to a link", () => {
+    const entries = resolved("resolved-connected.json")
+    Object.assign(entries[0], { servers: [{ addressString: "10.2.0.1", ifindex: 6 }], searchDomains: [{ name: ".", routeOnly: true }] })
+    assert.equal(dnsOf(entries).status, "ok")
+    entries[0].servers = [{ addressString: "192.168.1.1", ifindex: 2 }]
+    assert.deepEqual(dnsOf(entries), { status: "leak", device: "enp0s1", server: "192.168.1.1", global: false })
+  })
+
+  it("cannot judge DNS when resolved does not see every lookup", () => {
+    const entries = resolved("resolved-connected.json")
+    entries[0].resolvConfMode = "static"
+    assert.equal(dnsOf(entries).status, "ok")
+    entries[0].resolvConfMode = "foreign"
+    assert.equal(dnsOf(entries).status, "unknown")
+    assert.equal(Model.dnsVerdict(ok('{"length":1}'), "proton0").status, "unknown")
+    assert.equal(Model.dnsVerdict({ exitCode: 1, stdout: "", timedOut: false }, "proton0").status, "unknown")
+    assert.equal(Model.dnsVerdict(ok("[]"), "proton0").status, "unknown")
+    const none = resolved("resolved-connected.json")
+    delete link(none, "proton0").servers
+    assert.equal(dnsOf(none).status, "unknown")
+  })
+
+  it("warns only once a second check agrees, and clears at once", () => {
+    const leak = { ipv4: "ok", ipv6: "leak", dns: "ok", leaks: [{ kind: "ipv6", device: "wlan0" }] }
+    const clean = { ipv4: "ok", ipv6: "ok", dns: "ok", leaks: [] }
+    let state = Model.routingHealth(Model.emptyRouting(), leak, 1000)
+    assert.deepEqual([state.shown.length, state.pending], [0, true])
+    state = Model.routingHealth(state, leak, 1000 + Model.ROUTING_CONFIRM_MS - 1)
+    assert.deepEqual([state.shown.length, state.pending], [0, true])
+    state = Model.routingHealth(state, leak, 1000 + Model.ROUTING_CONFIRM_MS)
+    assert.deepEqual([state.shown, state.pending], [leak.leaks, false])
+    state = Model.routingHealth(state, clean, 21000)
+    assert.deepEqual([state.shown, state.pending], [[], false])
+  })
+
+  it("confirms each leak on its own", () => {
+    const v4 = { kind: "ipv4", device: "tailscale0" }
+    const dns = { kind: "dns", device: "tailscale0", server: "100.100.100.100" }
+    const both = { ipv4: "leak", ipv6: "ok", dns: "leak", leaks: [v4, dns] }
+    const onlyV4 = { ipv4: "leak", ipv6: "ok", dns: "ok", leaks: [v4] }
+    // A DNS finding that comes and goes neither hides nor delays a steady IPv4 one.
+    let state = Model.routingHealth(Model.emptyRouting(), both, 0)
+    state = Model.routingHealth(state, onlyV4, 6000)
+    assert.deepEqual([state.shown, state.pending], [[v4], false])
+    state = Model.routingHealth(state, both, 12000)
+    assert.deepEqual([state.shown, state.pending], [[v4], true])
+    state = Model.routingHealth(state, both, 17000)
+    assert.deepEqual([state.shown, state.pending], [[v4, dns], false])
+  })
+
+  it("keeps a confirmed leak through a check that could not read that part", () => {
+    const v6 = { kind: "ipv6", device: "wlan0" }
+    const leak = { ipv4: "ok", ipv6: "leak", dns: "ok", leaks: [v6] }
+    const unread = { ipv4: "ok", ipv6: "unknown", dns: "ok", leaks: [] }
+    let state = Model.routingHealth(Model.routingHealth(Model.emptyRouting(), leak, 0), leak, 6000)
+    assert.deepEqual(state.shown, [v6])
+    state = Model.routingHealth(state, unread, 12000)
+    assert.deepEqual([state.shown, state.ipv6], [[v6], "unknown"])
+    // So the next reading does not notify again.
+    assert.equal(Model.routingNotification(state.shown.length, Model.routingHealth(state, leak, 18000), { setting: "drops", openPanels: 0 }), null)
+    // Only a reading of that part clears it.
+    state = Model.routingHealth(state, { ipv4: "ok", ipv6: "ok", dns: "unknown", leaks: [] }, 24000)
+    assert.deepEqual(state.shown, [])
+  })
+
+  it("never confirms a leak on a check that could not read that part", () => {
+    const v6 = { kind: "ipv6", device: "wlan0" }
+    const leak = { ipv4: "ok", ipv6: "leak", dns: "ok", leaks: [v6] }
+    const unread = { ipv4: "ok", ipv6: "unknown", dns: "ok", leaks: [] }
+    let state = Model.routingHealth(Model.emptyRouting(), leak, 0)
+    state = Model.routingHealth(state, unread, 6000)
+    assert.deepEqual([state.shown, state.pending], [[], true])
+    assert.equal(Model.routingNotification(0, state, { setting: "drops", openPanels: 0 }), null)
+    // The next real reading, still finding it, confirms it from when it was first seen.
+    state = Model.routingHealth(state, leak, 12000)
+    assert.deepEqual([state.shown, state.pending], [[v6], false])
+  })
+
+  it("words each leak and notifies once, only while the panel is closed", () => {
+    assert.equal(Model.routingLeakText({ kind: "dns", device: "wlan0", server: "192.168.1.1" }), "DNS goes to 192.168.1.1 on wlan0, outside the tunnel.")
+    assert.equal(Model.routingLeakText({ kind: "dnsGlobal", device: "", server: "9.9.9.9" }), "DNS goes to 9.9.9.9, set system-wide, instead of the tunnel's resolver.")
+    assert.equal(Model.routingLeakText({ kind: "ipv4", device: "%1 " + "x".repeat(40) }).length < 90, true)
+    const shown = { shown: [{ kind: "ipv4", device: "wlan0" }] }
+    const note = Model.routingNotification(0, shown, { setting: "drops", openPanels: 0 })
+    assert.equal(note.urgency, "critical")
+    assert.match(note.body, /^Open the panel for details\. IPv4 traffic leaves through wlan0/)
+    assert.equal(Model.routingNotification(1, shown, { setting: "drops", openPanels: 0 }), null)
+    assert.equal(Model.routingNotification(0, shown, { setting: "off", openPanels: 0 }), null)
+    assert.equal(Model.routingNotification(0, shown, { setting: "all", openPanels: 1 }), null)
+    assert.equal(Model.routingNotification(0, { shown: [] }, { setting: "all", openPanels: 0 }), null)
+  })
+
+  it("reads only local state, through fixed commands", () => {
+    const commands = Model.routingCommands()
+    assert.deepEqual(Object.keys(commands), ["ipv4", "ipv6", "dns", "firewall"])
+    for (const command of Object.values(commands)) assert.match(command[0], /^\/usr\/bin\/(ip|resolvectl|busctl)$/)
+    assert.deepEqual(commands.ipv4.slice(1, 4), ["-j", "route", "get"])
   })
 })
 

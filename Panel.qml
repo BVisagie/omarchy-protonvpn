@@ -761,7 +761,7 @@ Panel {
       return vpn.connectWith(parsed) ? "ok" : vpn.lastError
     }
     function status(): string { return Model.tooltipText(root.view, root.loc) }
-    function statusJson(): string { return Model.statusJson(root.view, { sinceMs: vpn.linkSinceMs, config: vpn.configValues }) }
+    function statusJson(): string { return Model.statusJson(root.view, { sinceMs: vpn.linkSinceMs, config: vpn.configValues, routing: vpn.routing }) }
   }
 
   BarIconButton {
@@ -781,7 +781,7 @@ Panel {
           color: root.barIconColor
           badgeColor: root.urgent
           crossed: Model.iconCrossed(root.view.state)
-          warning: Model.iconWarning(root.view.state, root.view.blocking, root.view.stalled)
+          warning: Model.iconWarning(root.view.state, root.view.blocking, root.view.stalled, root.view.leaking)
         }
       }
     }
@@ -889,7 +889,7 @@ Panel {
                   color: root.iconColor
                   badgeColor: root.urgent
                   crossed: Model.iconCrossed(root.view.state)
-                  warning: Model.iconWarning(root.view.state, root.view.blocking, root.view.stalled)
+                  warning: Model.iconWarning(root.view.state, root.view.blocking, root.view.stalled, root.view.leaking)
                 }
               }
               trailingControl: Component {
@@ -994,6 +994,21 @@ Panel {
             font.family: root.fontFamily
             font.pixelSize: Style.font.bodySmall
             wrapMode: Text.WordWrap
+          }
+
+          // One line for each part of the traffic that leaves outside the tunnel.
+          Repeater {
+            model: root.view.leaking === true ? Model.routingLeakLines(vpn.routing, root.loc) : []
+            delegate: Text {
+              required property string modelData
+              textFormat: Text.PlainText
+              width: parent ? parent.width : 0
+              text: modelData
+              color: root.urgent
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.bodySmall
+              wrapMode: Text.WordWrap
+            }
           }
 
           Text {

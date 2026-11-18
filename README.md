@@ -17,6 +17,7 @@ A bar widget and keyboard-driven panel for Omarchy 4.5 or later that controls Pr
 - Says under the status what protects you: Kill Switch, NetShield, and Secure Core, as Proton reports them.
 - Shows when Kill Switch is blocking internet traffic after a drop, so a dead connection is never a mystery.
 - Warns when the tunnel is up but nothing comes back through it, which a plain "connected" hides.
+- Checks, from local routing and DNS state, that IPv4, IPv6, and DNS really go through the tunnel, and warns when something else, such as a Tailscale exit node or another DNS server, takes them.
 - Sends a desktop notification when the VPN drops while the panel is closed; clicking it opens the panel. It can also reconnect for you, connect when you log in, and connect on Wi-Fi networks you have not trusted.
 - Installs the CLI and signs you in from the panel, through Omarchy's own terminal windows, and signs you out again after asking.
 - Shows the installed CLI version, and the newer one when your package database knows it, checks your Arch mirrors when you ask, and opens Omarchy's system update when there is a newer one.
@@ -170,7 +171,7 @@ With `connectOnLogin` on, the first shell start after you log in connects to the
 
 With `autoConnectWifi` on, joining a Wi-Fi network you have not trusted connects the same way, once per join, with the same waiting, limits, and cancelling. SETTINGS then shows **Trust** for the current network, which skips it from then on, or **Stop trusting**. Trusted names are saved as `trustedNetworks` in this widget's entry in `~/.config/omarchy/shell.json`. The plugin reads the current network from NetworkManager over D-Bus, through Quickshell, without starting a process. It never disconnects on a trusted network, a shell reload never counts as joining one, and a network whose name NetworkManager does not report counts as trusted. Sign in to a captive portal before you join it with Kill Switch on, or trust it.
 
-A drop is any tunnel loss the widget did not start itself, including one from another terminal. `all` also notifies when the tunnel connects. Notifications go through `omarchy-notification-send`; clicking one opens the panel.
+A drop is any tunnel loss the widget did not start itself, including one from another terminal. `drops` and `all` also notify when the tunnel check first finds traffic or DNS outside the tunnel, and `all` notifies when the tunnel connects. Notifications go through `omarchy-notification-send`; clicking one opens the panel.
 
 With `reconnectOnDrop` on, a drop starts a reconnect to the same target after 3 seconds, then retries after 10 seconds, 30 seconds, 1 minute, and 2 minutes before giving up with a notification. Connecting or disconnecting from the panel cancels it. The widget follows drops through `nmcli`, so this needs NetworkManager's link probe to work.
 
@@ -188,7 +189,7 @@ The panel answers Omarchy shell IPC on the target `io.github.BVisagie.protonvpn`
 | `disconnectVpn` | Disconnect |
 | `toggleVpn` | Connect or disconnect, like right-click |
 | `status` | The tooltip text |
-| `statusJson` | State, server, location, load, protocol, exit IP, connection start, Kill Switch, NetShield, and warnings as JSON |
+| `statusJson` | State, server, location, load, protocol, exit IP, connection start, Kill Switch, NetShield, warnings, and the tunnel check as JSON: `routing` gives the latest reading of `ipv4`, `ipv6`, and `dns` as `ok`, `blocked`, `none`, `leak`, or `unknown`, and `leaks` lists only the confirmed leaks |
 
 The connect and disconnect functions do nothing while a command is running or status is not healthy; `connectFastest` and `connectTo` print why. For example, in `~/.config/hypr/bindings.conf`, using keys that are free in your setup:
 
@@ -216,6 +217,7 @@ omarchy-shell io.github.BVisagie.protonvpn statusJson | jq -r .server
 - The exit IP is shown only when the Proton CLI itself returns it after connecting. Exit IP and traffic totals stay in memory and disappear when `omarchy-shell` exits.
 - Quickshell keeps the name of the Wi-Fi network you are on in memory, from NetworkManager. The plugin acts on it only with `autoConnectWifi` on, and saves the names you trust in its `shell.json` entry.
 - Favorites, and recent places only with `rememberRecent` on, are saved as connection choices (mode, country code, city, server ID) in this widget's own entry in `~/.config/omarchy/shell.json`, through Omarchy's plugin API. If you keep your dotfiles in a public repository, that file shows where you connect.
+- While connected, the tunnel check asks the kernel which device would carry traffic to 1.1.1.1 and 2606:4700:4700::1111 (`ip route get` looks the route up and sends nothing) and asks systemd-resolved where it sends lookups (`resolvectl status`). It runs when NetworkManager reports a change, at least once a minute, and when a panel opens. Its findings stay in memory.
 - Traffic rates come from the tunnel's own kernel counters under `/sys/class/net/`. While the tunnel is up they are read every two seconds with the panel open and every five seconds with it closed, for the stall warning; rates are shown only in the open panel. Reading them starts no process. Captured test fixtures are synthetic or redacted.
 - Raw CLI diagnostics are capped before they are shown.
 
@@ -230,6 +232,7 @@ Supervised by `scripts/run_bounded.py`, which caps output, enforces a deadline, 
 - `/usr/bin/nmcli -t -e no -f NAME,TYPE,DEVICE,STATE,TIMESTAMP connection show --active`
 - `/usr/bin/pacman -Q proton-vpn-cli`, `/usr/bin/pacman -Sddp --print-format "%n %r %v" proton-vpn-cli`, and `/usr/bin/stat -c %Y /var/lib/pacman/sync/<repo>.db`, local reads of the installed and latest known CLI version, at most once a minute when the panel opens
 - `/usr/bin/checkupdates --nocolor`, only when you press **Check**; it asks your Arch mirrors in a temporary database of its own
+- `/usr/bin/ip -j route get 1.1.1.1`, `/usr/bin/ip -j -6 route get 2606:4700:4700::1111`, and `/usr/bin/resolvectl --json=short status`, local reads for the tunnel check, only while connected; `/usr/bin/busctl --system --json=short list` as well, only when IPv6 seems to leave outside the tunnel, to see whether Proton's firewall Kill Switch runs
 
 Read in place, without starting a process: `/sys/class/net/<device>/statistics/rx_bytes` and `tx_bytes`, only for a `proton0`-style device.
 
@@ -246,7 +249,7 @@ Started directly, only when you press the matching panel control:
 
 Started directly when the tunnel changes while the panel is closed:
 
-- `omarchy-notification-send` sends a fixed desktop notification when the tunnel drops (or connects, if enabled), or when an automatic reconnect gives up. CLI-supplied server names only ever follow fixed text in the body. Clicking it runs `omarchy-shell io.github.BVisagie.protonvpn open`.
+- `omarchy-notification-send` sends a fixed desktop notification when the tunnel drops (or connects, if enabled), when an automatic reconnect gives up, or when the tunnel check first finds traffic or DNS outside the tunnel. CLI-supplied server names only ever follow fixed text in the body. Clicking it runs `omarchy-shell io.github.BVisagie.protonvpn open`.
 
 ## Limitations
 
@@ -259,6 +262,7 @@ Started directly when the tunnel changes while the panel is closed:
 - `protonvpn status` runs on a timer only while a panel is open. Each run starts Python and opens a new keyring connection, so with every panel closed it runs only at start-up, when the NetworkManager link changes, and after an action. If `nmcli` is unavailable, it keeps polling on the timer. The bar icon keeps following the tunnel through the read-only link probe, but a sign-out or a newly opened desktop app is noticed only when you open the panel or the link changes.
 - The Proton CLI sometimes crashes while exiting, after printing its full output. Read-only commands (`status`, `countries list`, `cities list`, `config list`) accept that output when it parses. Settings must list every known key, and country or city lists from a crashed run are fetched again next time. Connect, disconnect, and setting changes never do.
 - Desktop notifications are never sent while the panel is open.
+- The tunnel check covers WireGuard tunnels on a `proton0`-style device, the CLI's default; the panel does not follow OpenVPN tunnels. It reads routes and resolver state, so it cannot see a block in the firewall: while Proton's opt-in firewall Kill Switch service runs, or the system bus cannot be read, IPv6 cannot be judged and shows no warning. DNS can be judged only when `/etc/resolv.conf` points at systemd-resolved's stub resolver (its `stub` or `static` mode). Tailscale and other changes NetworkManager does not report show within a minute.
 - Changing Kill Switch while connected leaves you unprotected for a few seconds during the reconnect. That is why the panel asks first.
 
 ## Troubleshooting
@@ -289,6 +293,12 @@ The recorded parser fixtures target CLI versions 1.0.1 through 1.0.5. Versions o
 **Connection timeout.** `Timed out after 10s waiting for event(s): CONNECTED` means the CLI reached Proton but the handshake did not finish. Retry or check the network. This is separate from the widget's command-queue watchdog.
 
 **"Nothing has come back through the tunnel."** The tunnel has sent data for 30 seconds without receiving any. The Proton server or the network under the VPN may be down. Reconnect, or switch servers. An idle tunnel never shows this, and the warning clears as soon as anything arrives.
+
+**"IPv4 traffic leaves through …" or "IPv6 traffic leaves through …".** The kernel would send that traffic through the named device instead of the tunnel. A Tailscale exit node, another VPN, or a route you added can do this. Turn the other one off, or reconnect so Proton sets up its routes again. Proton's own Kill Switch and IPv6 leak protection devices never trigger it.
+
+**"DNS goes to … outside the tunnel."** systemd-resolved sends ordinary lookups to that server on that device, so it sees the names you look up. Tailscale with "use Tailscale DNS" taking every name, or another link set to take every name, are the usual causes. Names only one network resolves, such as your tailnet's or your LAN's search domain, are not counted.
+
+**"DNS goes to …, set system-wide."** A `DNS=` server in `resolved.conf` takes ordinary lookups: alongside the tunnel when it has `Domains=~.`, or instead of it when the tunnel does not claim them. Remove it, bind it to the tunnel (`DNS=10.2.0.1%proton0`), or reconnect so Proton sets its resolver again.
 
 **Check says "check failed".** pacman's `checkupdates` could not reach your Arch mirrors; Check's tooltip has its message. Retry once the network is up. The versions shown stay as they were: from the local package database, or from an earlier Check that worked.
 
