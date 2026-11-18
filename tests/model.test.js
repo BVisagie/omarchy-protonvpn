@@ -1103,6 +1103,19 @@ describe("tunnel routing check", () => {
     assert.deepEqual(state.shown, [])
   })
 
+  it("never confirms a leak on a check that could not read that part", () => {
+    const v6 = { kind: "ipv6", device: "wlan0" }
+    const leak = { ipv4: "ok", ipv6: "leak", dns: "ok", leaks: [v6] }
+    const unread = { ipv4: "ok", ipv6: "unknown", dns: "ok", leaks: [] }
+    let state = Model.routingHealth(Model.emptyRouting(), leak, 0)
+    state = Model.routingHealth(state, unread, 6000)
+    assert.deepEqual([state.shown, state.pending], [[], true])
+    assert.equal(Model.routingNotification(0, state, { setting: "drops", openPanels: 0 }), null)
+    // The next real reading, still finding it, confirms it from when it was first seen.
+    state = Model.routingHealth(state, leak, 12000)
+    assert.deepEqual([state.shown, state.pending], [[v6], false])
+  })
+
   it("words each leak and notifies once, only while the panel is closed", () => {
     assert.equal(Model.routingLeakText({ kind: "dns", device: "wlan0", server: "192.168.1.1" }), "DNS goes to 192.168.1.1 on wlan0, outside the tunnel.")
     assert.equal(Model.routingLeakText({ kind: "dnsGlobal", device: "", server: "9.9.9.9" }), "DNS goes to 9.9.9.9, set system-wide, instead of the tunnel's resolver.")
