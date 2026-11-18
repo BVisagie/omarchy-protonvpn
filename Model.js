@@ -1392,6 +1392,8 @@ function statusJson(view, extra) {
     netshield: String((x.config || {}).netshield || ""),
     killSwitchBlocking: v.blocking === true,
     stalled: v.stalled === true,
+    routing: connected && x.routing ? { ipv4: x.routing.ipv4, ipv6: x.routing.ipv6, dns: x.routing.dns } : null,
+    leaks: connected ? routingLeakLines(x.routing, null) : [],
     message: String(v.message || "")
   })
 }
@@ -1499,7 +1501,9 @@ function tooltipText(view, loc) {
   if (state === STATES.connected) {
     var summary = connectedSummary(view.status, loc)
     var line = summary !== "" ? "Proton VPN · " + summary : say(loc, "tooltip.connected", "Proton VPN connected.")
-    return view.stalled === true ? line + "\n" + say(loc, "tooltip.stalled", "Nothing is coming back through the tunnel.") : line
+    if (view.stalled === true) line += "\n" + say(loc, "tooltip.stalled", "Nothing is coming back through the tunnel.")
+    if (view.leaking === true) line += "\n" + say(loc, "tooltip.leaking", "Some traffic or DNS goes outside the tunnel.")
+    return line
   }
   if (state === STATES.disconnected) return say(loc, "tooltip.disconnected", "Proton VPN disconnected.")
   if (state === STATES.connecting) return say(loc, "tooltip.connecting", "Connecting to Proton VPN…")
@@ -1727,8 +1731,8 @@ function iconCrossed(state) {
   return state === STATES.disconnected || state === STATES.signedOut
 }
 
-function iconWarning(state, blocking, stalled) {
-  return blocking === true || stalled === true || state === STATES.cliMissing || state === STATES.guiConflict || state === STATES.error || state === STATES.stale
+function iconWarning(state, blocking, stalled, leaking) {
+  return blocking === true || stalled === true || leaking === true || state === STATES.cliMissing || state === STATES.guiConflict || state === STATES.error || state === STATES.stale
 }
 
 function iconUrgent(state, blocking) {
@@ -2113,6 +2117,167 @@ function stalledText(loc) {
   return say(loc, "health.stalled", "Connected, but nothing has come back through the tunnel for 30 seconds. The server or the network under it may be down; reconnect or switch servers if it lasts.")
 }
 
+// The tunnel check reads only local state: `ip route get` looks a route up
+// without sending a packet, and resolvectl says where systemd-resolved sends
+// lookups. Each part is "ok", "blocked", "none", "leak", or "unknown".
+var ROUTE_PROBE_V4 = "1.1.1.1"
+var ROUTE_PROBE_V6 = "2606:4700:4700::1111"
+// Proton's Kill Switch and IPv6 leak protection devices blackhole traffic.
+var PROTON_BLOCK_DEVICE = /^(?:pvpnksintrf|pvpnrouteintrf|ipv6leakintrf)\d+$/
+// A leak warns once a check at least this much later still finds it, so the
+// moments while NetworkManager applies a new connection never flash.
+var ROUTING_CONFIRM_MS = 5000
+
+function routingCommands() {
+  return {
+    ipv4: ["/usr/bin/ip", "-j", "route", "get", ROUTE_PROBE_V4],
+    ipv6: ["/usr/bin/ip", "-j", "-6", "route", "get", ROUTE_PROBE_V6],
+    dns: ["/usr/bin/resolvectl", "--json=short", "status"],
+    firewall: ["/usr/bin/busctl", "--system", "--json=short", "list"]
+  }
+}
+
+function parseJson(text) {
+  try {
+    return JSON.parse(String(text || ""))
+  } catch (e) {
+    return null
+  }
+}
+
+// `ip route get` exits 2 with nothing on stdout when no route exists.
+function routeVerdict(result, tunnelDevice) {
+  var r = result || {}
+  if (r.timedOut === true) return { status: "unknown", device: "" }
+  if (r.exitCode === 2 && String(r.stdout || "").trim() === "") return { status: "none", device: "" }
+  var routes = r.exitCode === 0 ? parseJson(r.stdout) : null
+  var dev = routes && routes.length > 0 && routes[0] ? String(routes[0].dev || "") : ""
+  if (dev === "") return { status: "unknown", device: "" }
+  if (tunnelDevice && dev === tunnelDevice) return { status: "ok", device: dev }
+  if (PROTON_BLOCK_DEVICE.test(dev)) return { status: "blocked", device: dev }
+  return { status: "leak", device: dev }
+}
+
+// Proton's opt-in nftables Kill Switch blocks at the firewall, where a route
+// lookup cannot see. Its D-Bus service has a pid only once it has started.
+function firewallKillSwitchRunning(result) {
+  var names = result && result.exitCode === 0 ? parseJson(result.stdout) : null
+  if (!names || !names.length) return false
+  for (var i = 0; i < names.length; i++) {
+    var n = names[i] || {}
+    if (n.name === "me.proton.vpn.kill_switch" && Number(n.pid) > 0) return true
+  }
+  return false
+}
+
+function serverText(server) {
+  return String((server && server.addressString) || "")
+}
+
+// systemd-resolved sends a lookup for an ordinary name to the scopes with a
+// "." routing domain when any has one, otherwise to every link with
+// DefaultRoute plus the global servers. Domain-only routes (a tailnet, the
+// LAN's search domain) never take ordinary names. Proton's blocking devices
+// list placeholder servers, so they never count.
+function dnsVerdict(result, tunnelDevice) {
+  var entries = result && result.exitCode === 0 && result.timedOut !== true ? parseJson(result.stdout) : null
+  if (!entries || !entries.length) return { status: "unknown", device: "", server: "" }
+  var global = null
+  var scopes = []
+  for (var i = 0; i < entries.length; i++) {
+    var e = entries[i] || {}
+    if (e.ifname === undefined) {
+      global = e
+      continue
+    }
+    var name = String(e.ifname || "")
+    if (PROTON_BLOCK_DEVICE.test(name) || !e.servers || e.servers.length === 0) continue
+    scopes.push({ device: name, global: false, defaultRoute: e.defaultRoute === true, domains: e.searchDomains || [], server: serverText(e.servers[0]) })
+  }
+  // Only the stub mode sends every program's lookups through resolved.
+  if (!global || global.resolvConfMode !== "stub") return { status: "unknown", device: "", server: "" }
+  if (global.servers && global.servers.length > 0) {
+    scopes.push({ device: "", global: true, defaultRoute: true, domains: global.searchDomains || [], server: serverText(global.servers[0]) })
+  }
+  var rooted = scopes.filter(function(s) {
+    return s.domains.some(function(d) { return d && d.name === "." })
+  })
+  var takers = rooted.length > 0 ? rooted : scopes.filter(function(s) { return s.defaultRoute })
+  if (takers.length === 0) return { status: "unknown", device: "", server: "" }
+  for (var j = 0; j < takers.length; j++) {
+    var t = takers[j]
+    if (t.global || t.device !== tunnelDevice) return { status: "leak", device: t.device, server: t.server, global: t.global }
+  }
+  return { status: "ok", device: tunnelDevice, server: takers[0].server }
+}
+
+// results: { ipv4, ipv6, dns, firewall } runner results; firewall may be
+// missing, since it is only read when IPv6 leaves outside the tunnel.
+function routingVerdict(results, tunnelDevice) {
+  var r = results || {}
+  var v4 = routeVerdict(r.ipv4, tunnelDevice)
+  var v6 = routeVerdict(r.ipv6, tunnelDevice)
+  if (v6.status === "leak" && firewallKillSwitchRunning(r.firewall)) v6 = { status: "unknown", device: v6.device }
+  var dns = dnsVerdict(r.dns, tunnelDevice)
+  var leaks = []
+  if (v4.status === "leak") leaks.push({ kind: "ipv4", device: v4.device })
+  if (v6.status === "leak") leaks.push({ kind: "ipv6", device: v6.device })
+  if (dns.status === "leak") leaks.push({ kind: dns.global ? "dnsGlobal" : "dns", device: dns.device, server: dns.server })
+  return { ipv4: v4.status, ipv6: v6.status, dns: dns.status, leaks: leaks }
+}
+
+function emptyRouting() {
+  return { ipv4: "unknown", ipv6: "unknown", dns: "unknown", leaks: [], shown: [], pending: false, pendingKey: "", pendingSinceMs: 0 }
+}
+
+// Shows a leak once two checks ROUTING_CONFIRM_MS apart agree on it; a clean
+// check clears it at once.
+function routingHealth(previous, verdict, nowMs) {
+  var prev = previous || emptyRouting()
+  var v = verdict || { ipv4: "unknown", ipv6: "unknown", dns: "unknown", leaks: [] }
+  var next = { ipv4: v.ipv4, ipv6: v.ipv6, dns: v.dns, leaks: v.leaks, shown: [], pending: false, pendingKey: "", pendingSinceMs: 0 }
+  if (v.leaks.length === 0) return next
+  var key = JSON.stringify(v.leaks)
+  var since = prev.pendingKey === key ? prev.pendingSinceMs : nowMs
+  var confirmed = nowMs - since >= ROUTING_CONFIRM_MS
+  next.pendingKey = key
+  next.pendingSinceMs = since
+  // Until the new finding is confirmed, keep showing what already was.
+  next.shown = confirmed ? v.leaks : (prev.shown || [])
+  next.pending = !confirmed
+  return next
+}
+
+// Each line starts with fixed text; device and server names come from the
+// system and are capped.
+function routingLeakText(leak, loc) {
+  var device = capOutput(String((leak && leak.device) || ""), 32)
+  var server = capOutput(String((leak && leak.server) || ""), 64)
+  var kind = leak ? leak.kind : ""
+  if (kind === "ipv4") return fill(say(loc, "routing.ipv4Leak", "IPv4 traffic leaves through %1, outside the tunnel."), device)
+  if (kind === "ipv6") return fill(say(loc, "routing.ipv6Leak", "IPv6 traffic leaves through %1, outside the tunnel."), device)
+  if (kind === "dnsGlobal") return fill(say(loc, "routing.dnsGlobalLeak", "DNS goes to %1, set system-wide, instead of the tunnel's resolver."), server)
+  return fill(say(loc, "routing.dnsLeak", "DNS goes to %1 on %2, outside the tunnel."), server, device)
+}
+
+function routingLeakLines(routing, loc) {
+  var shown = routing && routing.shown ? routing.shown : []
+  return shown.map(function(leak) { return routingLeakText(leak, loc) })
+}
+
+function routingNotification(previousCount, routing, ctx, loc) {
+  var c = ctx || {}
+  var lines = routingLeakLines(routing, loc)
+  if (previousCount > 0 || lines.length === 0) return null
+  if (normalizeNotificationSetting(c.setting) === "off" || c.openPanels > 0) return null
+  return {
+    summary: say(loc, "notify.leakTitle", "Proton VPN is not covering everything"),
+    body: say(loc, "notify.leakBody", "Open the panel for details.") + " " + lines.join(" "),
+    urgency: "critical",
+    glyph: NOTIFICATION_GLYPHS.dropped
+  }
+}
+
 function formatBytes(value, loc) {
   var n = Number(value)
   if (!isFinite(n) || n < 0) n = 0
@@ -2187,6 +2352,17 @@ if (typeof module !== "undefined") {
     emptyHealth: emptyHealth,
     tunnelHealth: tunnelHealth,
     stalledText: stalledText,
+    ROUTING_CONFIRM_MS: ROUTING_CONFIRM_MS,
+    routingCommands: routingCommands,
+    routeVerdict: routeVerdict,
+    firewallKillSwitchRunning: firewallKillSwitchRunning,
+    dnsVerdict: dnsVerdict,
+    routingVerdict: routingVerdict,
+    emptyRouting: emptyRouting,
+    routingHealth: routingHealth,
+    routingLeakText: routingLeakText,
+    routingLeakLines: routingLeakLines,
+    routingNotification: routingNotification,
     STALL_AFTER_MS: STALL_AFTER_MS,
 
     crashedAfterOutput: crashedAfterOutput,
