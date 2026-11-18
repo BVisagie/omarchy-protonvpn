@@ -2249,18 +2249,26 @@ function emptyRouting() {
   return { ipv4: "unknown", ipv6: "unknown", dns: "unknown", leaks: [], shown: [], pending: false, since: {} }
 }
 
+var ROUTING_LEAK_PART = { ipv4: "ipv4", ipv6: "ipv6", dns: "dns", dnsGlobal: "dns" }
+
 // Shows each leak once checks started ROUTING_CONFIRM_MS apart both found it,
-// and drops it at the first check that does not.
+// and drops it at the first check that reads that part and does not. A part
+// that could not be read keeps what it had: not knowing is no evidence.
 function routingHealth(previous, verdict, observedMs) {
   var prev = previous || emptyRouting()
   var prevSince = prev.since || {}
   var v = verdict || { ipv4: "unknown", ipv6: "unknown", dns: "unknown", leaks: [] }
-  var next = { ipv4: v.ipv4, ipv6: v.ipv6, dns: v.dns, leaks: v.leaks, shown: [], pending: false, since: {} }
-  for (var i = 0; i < v.leaks.length; i++) {
-    var key = JSON.stringify(v.leaks[i])
+  var leaks = v.leaks.slice()
+  var prevLeaks = prev.leaks || []
+  for (var p = 0; p < prevLeaks.length; p++) {
+    if (v[ROUTING_LEAK_PART[prevLeaks[p].kind]] === "unknown") leaks.push(prevLeaks[p])
+  }
+  var next = { ipv4: v.ipv4, ipv6: v.ipv6, dns: v.dns, leaks: leaks, shown: [], pending: false, since: {} }
+  for (var i = 0; i < leaks.length; i++) {
+    var key = JSON.stringify(leaks[i])
     var since = prevSince[key] !== undefined ? prevSince[key] : observedMs
     next.since[key] = since
-    if (observedMs - since >= ROUTING_CONFIRM_MS) next.shown.push(v.leaks[i])
+    if (observedMs - since >= ROUTING_CONFIRM_MS) next.shown.push(leaks[i])
     else next.pending = true
   }
   return next

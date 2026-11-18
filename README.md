@@ -171,7 +171,7 @@ With `connectOnLogin` on, the first shell start after you log in connects to the
 
 With `autoConnectWifi` on, joining a Wi-Fi network you have not trusted connects the same way, once per join, with the same waiting, limits, and cancelling. SETTINGS then shows **Trust** for the current network, which skips it from then on, or **Stop trusting**. Trusted names are saved as `trustedNetworks` in this widget's entry in `~/.config/omarchy/shell.json`. The plugin reads the current network from NetworkManager over D-Bus, through Quickshell, without starting a process. It never disconnects on a trusted network, a shell reload never counts as joining one, and a network whose name NetworkManager does not report counts as trusted. Sign in to a captive portal before you join it with Kill Switch on, or trust it.
 
-A drop is any tunnel loss the widget did not start itself, including one from another terminal. `all` also notifies when the tunnel connects. Notifications go through `omarchy-notification-send`; clicking one opens the panel.
+A drop is any tunnel loss the widget did not start itself, including one from another terminal. `drops` and `all` also notify when the tunnel check first finds traffic or DNS outside the tunnel, and `all` notifies when the tunnel connects. Notifications go through `omarchy-notification-send`; clicking one opens the panel.
 
 With `reconnectOnDrop` on, a drop starts a reconnect to the same target after 3 seconds, then retries after 10 seconds, 30 seconds, 1 minute, and 2 minutes before giving up with a notification. Connecting or disconnecting from the panel cancels it. The widget follows drops through `nmcli`, so this needs NetworkManager's link probe to work.
 
@@ -189,7 +189,7 @@ The panel answers Omarchy shell IPC on the target `io.github.BVisagie.protonvpn`
 | `disconnectVpn` | Disconnect |
 | `toggleVpn` | Connect or disconnect, like right-click |
 | `status` | The tooltip text |
-| `statusJson` | State, server, location, load, protocol, exit IP, connection start, Kill Switch, NetShield, warnings, and the tunnel check (`routing`, `leaks`) as JSON |
+| `statusJson` | State, server, location, load, protocol, exit IP, connection start, Kill Switch, NetShield, warnings, and the tunnel check as JSON: `routing` gives the latest reading of `ipv4`, `ipv6`, and `dns` as `ok`, `blocked`, `none`, `leak`, or `unknown`, and `leaks` lists only the confirmed leaks |
 
 The connect and disconnect functions do nothing while a command is running or status is not healthy; `connectFastest` and `connectTo` print why. For example, in `~/.config/hypr/bindings.conf`, using keys that are free in your setup:
 
@@ -296,9 +296,9 @@ The recorded parser fixtures target CLI versions 1.0.1 through 1.0.5. Versions o
 
 **"IPv4 traffic leaves through …" or "IPv6 traffic leaves through …".** The kernel would send that traffic through the named device instead of the tunnel. A Tailscale exit node, another VPN, or a route you added can do this. Turn the other one off, or reconnect so Proton sets up its routes again. Proton's own Kill Switch and IPv6 leak protection devices never trigger it.
 
-**"DNS goes to … outside the tunnel."** systemd-resolved sends ordinary lookups to that server on that device, so it sees the names you look up. Tailscale with "use Tailscale DNS" taking every name, or a DNS server set in `resolved.conf` with `Domains=~.`, are the usual causes. Names only one network resolves, such as your tailnet's or your LAN's search domain, are not counted.
+**"DNS goes to … outside the tunnel."** systemd-resolved sends ordinary lookups to that server on that device, so it sees the names you look up. Tailscale with "use Tailscale DNS" taking every name, or another link set to take every name, are the usual causes. Names only one network resolves, such as your tailnet's or your LAN's search domain, are not counted.
 
-**"DNS goes to …, set system-wide."** A `DNS=` server in `resolved.conf` takes ordinary lookups because the tunnel does not claim them. Remove it, or reconnect so Proton sets its resolver again.
+**"DNS goes to …, set system-wide."** A `DNS=` server in `resolved.conf` takes ordinary lookups: alongside the tunnel when it has `Domains=~.`, or instead of it when the tunnel does not claim them. Remove it, bind it to the tunnel (`DNS=10.2.0.1%proton0`), or reconnect so Proton sets its resolver again.
 
 **Check says "check failed".** pacman's `checkupdates` could not reach your Arch mirrors; Check's tooltip has its message. Retry once the network is up. The versions shown stay as they were: from the local package database, or from an earlier Check that worked.
 

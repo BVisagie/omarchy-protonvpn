@@ -6,7 +6,8 @@ resolve inside `omarchy-shell`. Before tagging a release, load it in a real bar.
 1. Run `./scripts/check.sh`. It must end with "All checks passed."
    Then run `./scripts/load-smoke.sh`, which loads the service and panel in a
    throwaway Quickshell instance and fails on QML errors. It runs only
-   read-only Proton and NetworkManager probes.
+   read-only probes (Proton, NetworkManager, and with a tunnel up the routing
+   check, which can notify about a leak it finds).
 2. Install the branch over the plugin, for example by checking it out in
    `~/.config/omarchy/plugins/io.github.BVisagie.protonvpn/`. Saving there
    reloads the widget. Reloading the widget leaves an existing tunnel up.
@@ -24,8 +25,10 @@ resolve inside `omarchy-shell`. Before tagging a release, load it in a real bar.
    - a desktop notification arrives when the tunnel goes down while the panel is
      closed (only when it is safe to drop the VPN);
    - `omarchy-shell io.github.BVisagie.protonvpn statusJson` prints JSON, and
-     while connected its `routing` reads `ok` for ipv4 and dns and `ok` (or
-     `none` without IPv6) for ipv6, with no tunnel-check warning in the panel.
+     while connected its `routing` reads `ok` for ipv4 and dns, and for ipv6
+     `ok`, `none` without IPv6, `blocked` with the CLI's IPv6 setting off, or
+     `unknown` while the firewall Kill Switch runs, with no tunnel-check warning
+     in the panel.
 5. Switch Setup > Language to another language and back; the panel follows
    without a restart.
 6. Try a vertical bar (`omarchy bar position left`) and move it back.
