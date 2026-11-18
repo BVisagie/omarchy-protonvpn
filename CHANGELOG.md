@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.4.0 — 2026-11-17
+## 1.4.0 — 2026-11-18
 
 - Rework the panel's layout. SETTINGS folds behind one row (`s`), so the panel opens on status and CONNECT. CONNECT puts Mode on its own row and the place on the row below, never more than two fields, with plain country and city names. A button under it names where it connects ("Connect to Santo Domingo · Dominican Republic", or "Switch to …" while connected). Refresh is an icon beside the switch, and status reads as one style, one line per topic. SETTINGS is borderless rows: NetShield, then the switches in two columns, then the CLI on one footer line; Kill Switch is a switch, captions live in tooltips, and labels are quiet so values stand out. The open panel fits without scrolling in all but its fullest states.
 - Tooltips stay while you hover or rest the cursor on a control, and `Esc` now hides one before it closes the panel; the action keys hide it too.
