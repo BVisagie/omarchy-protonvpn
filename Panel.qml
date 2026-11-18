@@ -678,7 +678,6 @@ Panel {
 
   function openPanel() {
     tipsDismissed = false
-    openTips = 0
     cursorActive = false
     keyboardNavigation = false
     if (panelFlick) panelFlick.contentY = 0
@@ -818,7 +817,7 @@ Panel {
         root.moveCursor(dx, dy)
       }
       onActivateRequested: {
-        root.tipsDismissed = true
+        root.dismissTips()
         if (root.cursorActive) root.activateCursor()
       }
       // The first Esc hides a tooltip; the next one closes as before.
@@ -830,7 +829,7 @@ Panel {
       }
       onTabRequested: function(direction) { root.switchPanel(direction) }
       onTextKey: function(t) {
-        root.tipsDismissed = true
+        root.dismissTips()
         if (t === "r" || t === "R") root.refreshAll()
         else if (t === "t" || t === "T") root.tryToggle()
         else if ((t === "s" || t === "S") && root.showWrites && vpn.installed) root.toggleSettingsFold()
@@ -1295,7 +1294,7 @@ Panel {
                     root.serverIdText = text
                   }
                   onAccepted: {
-                    root.tipsDismissed = true
+                    root.dismissTips()
                     root.offerSwitch ? root.switchNow() : root.tryToggle()
                   }
                   // Esc hides a tooltip, then hands the keys back to the panel.
@@ -1557,7 +1556,7 @@ Panel {
                   onHoveredChanged: if (hovered) root.setFocusSection("dns")
                   onTextChanged: root.dnsText = text
                   onAccepted: {
-                    root.tipsDismissed = true
+                    root.dismissTips()
                     root.applyDns()
                   }
                   // Esc hides a tooltip, then hands the keys back to the panel.

@@ -331,7 +331,7 @@ describe("QML scheduler contract", () => {
     assert.match(panel, /onClicked: root\.primaryConnect\(\)/)
     assert.match(panel, /if \(showConnectButton\) rows\.push\(\["switch"\]\)/)
     assert.match(panel, /focusSection === "switch"\) primaryConnect\(\)/)
-    assert.match(panel, /onAccepted: \{\n\s*root\.tipsDismissed = true\n\s*root\.offerSwitch \? root\.switchNow\(\) : root\.tryToggle\(\)/)
+    assert.match(panel, /onAccepted: \{\n\s*root\.dismissTips\(\)\n\s*root\.offerSwitch \? root\.switchNow\(\) : root\.tryToggle\(\)/)
     assert.doesNotMatch(panel, /function applyConnectDraft\(draft\) \{[^}]*connectDraftDirty/)
     assert.match(service, /activeTarget = target/)
     assert.match(service, /if \(state === Model\.STATES\.disconnected\) \{[\s\S]{0,300}activeTarget = null/)
@@ -426,7 +426,7 @@ describe("QML scheduler contract", () => {
 
   it("lets Esc dismiss a tooltip before it closes the panel", () => {
     assert.match(panel, /onCloseRequested: \{\n\s*if \(!root\.dismissTips\(\)\) \{\n\s*if \(root\.ksConfirmValue !== ""\) root\.cancelKillSwitch\(\)\n\s*else root\.close\(\)/)
-    assert.match(panel, /onActivateRequested: \{\n\s*root\.tipsDismissed = true/)
+    assert.match(panel, /onActivateRequested: \{\n\s*root\.dismissTips\(\)/)
     // Every tooltip is a counted SettingTip, so Esc never closes past one.
     assert.deepEqual(panel.match(/\S+ PanelToolTip \{|^\s*PanelToolTip \{/gm), ["SettingTip: PanelToolTip {"])
     assert.equal(panel.match(/^\s*tooltipText:/gm).length, 1, "only the bar widget sets tooltipText")
@@ -434,7 +434,7 @@ describe("QML scheduler contract", () => {
     assert.equal(panel.match(/Keys\.onEscapePressed: if \(!root\.dismissTips\(\)\) keyCatcher\.forceActiveFocus\(\)/g).length, 2)
     assert.match(panel, /visible: text !== "" && \(tipHovered \|\| tipCursor\) && !tipPopupOpen && !root\.pickerOpen && !root\.tipsDismissed/)
     assert.match(panel, /onFocusSectionChanged: tipsDismissed = false/)
-    assert.match(panel, /onTextKey: function\(t\) \{\n\s*root\.tipsDismissed = true/)
+    assert.match(panel, /onTextKey: function\(t\) \{\n\s*root\.dismissTips\(\)/)
     // No tooltip hides on a timer while it is hovered or focused (WCAG 1.4.13).
     assert.doesNotMatch(panel, /\btimeout: \d/)
   })

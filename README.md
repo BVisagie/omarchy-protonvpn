@@ -114,7 +114,7 @@ Inside the panel:
 - `s` shows or hides SETTINGS, which starts folded so the panel opens on status and CONNECT
 - `r` refreshes
 - `Tab` / `Shift+Tab` switches to the next bar panel
-- `Esc` hides a tooltip that is showing, then closes the panel
+- `Esc` hides a tooltip that is showing, then closes the panel; in the Server ID or DNS field it first hands the keys back to the panel
 
 CONNECT has Mode on its own row and the place, Country and City or a Server ID, on the row below. While disconnected, a button under them names where it connects (**Connect to Santo Domingo · Dominican Republic**). While connected, changing the choices turns it into **Switch to …**, which reconnects in place with the new choices; `Enter` in the Server ID field does the same. The header toggle and `t` still disconnect. City lists are cached for the shell session, so picking a country again shows its cities immediately; the refresh icon beside the toggle reloads them, and its tooltip says when status was last updated.
 
@@ -132,7 +132,7 @@ On Proton's free plan the CLI only connects to the fastest server. When `protonv
 
 While disconnected, the footer line of SETTINGS offers **Sign out**. Pressing it turns the line into a confirm, with Cancel selected; confirming runs `protonvpn signout`, which also clears the CLI's own settings. Favorites stay. Disconnect first if you are connected.
 
-The same footer line shows the installed Proton VPN CLI version, and the newer one when your package database knows it (otherwise "Up to date"); **Check**'s tooltip says how old that database is. It reads that locally. **Check** asks your Arch mirrors instead, through pacman's `checkupdates`, only when you press it. When a newer version exists, **Update** opens Omarchy's own system update in a terminal, which asks for your password there; Arch does not support updating one package alone, so the CLI updates with everything else.
+The same footer line shows the installed Proton VPN CLI version, and the newer one when your package database knows it, or "Up to date" once it knows the latest; **Check**'s tooltip says how old that database is. It reads that locally. **Check** asks your Arch mirrors instead, through pacman's `checkupdates`, only when you press it. When a newer version exists, **Update** opens Omarchy's own system update in a terminal, which asks for your password there; Arch does not support updating one package alone, so the CLI updates with everything else.
 
 Hover a CONNECT or SETTINGS control, or move onto it with `j` / `k`, for a Proton-sourced tooltip. A setting's tooltip also says when it needs a new connection or a paid plan. That copy is paraphrased from Proton’s official support articles and the Linux CLI guide. It is not a substitute for those pages, and the widget does not fetch Proton’s website.
 
