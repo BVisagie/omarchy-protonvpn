@@ -406,6 +406,8 @@ Item {
     _commandOutput = ""
     _commandError = ""
     refreshing = job.type === "status"
+    // A connect, switch, or disconnect replaces the tunnel the routing check knew.
+    if (job.type === "action") clearRouting()
     watchdog.interval = timeout + 2000
     watchdog.restart()
     commandProcess.command = boundedCommand(job.command, timeout)
@@ -491,6 +493,7 @@ Item {
   function handleAction(result, job) {
     // Any nmcli poll that started before this result may describe the old tunnel.
     _linkEpoch++
+    clearRouting()
     var automatic = job.auto === true || job.autoConnect !== ""
     var disconnectAfter = automatic && _disconnectAfterReconnect
     if (automatic) _disconnectAfterReconnect = false
@@ -754,7 +757,7 @@ Item {
     var previousServer = linkServer
     var link = Model.parseActiveVpn(result.stdout)
     // A new or ended tunnel starts the routing check over.
-    if (!link.active || (previousActive && previousServer !== link.server)) clearRouting()
+    if (!link.active || (previousActive && (previousServer !== link.server || linkDevice !== link.device))) clearRouting()
     Qt.callLater(checkRouting)
     linkActive = link.active
     linkServer = link.server
@@ -1405,7 +1408,8 @@ Item {
     // The answer describes the tunnel the check started on.
     if (_routingStartedEpoch === _routingEpoch && linkActive && linkDevice === _routingDevice && state === Model.STATES.connected) {
       var shownBefore = routing.shown.length
-      routing = Model.routingHealth(routing, Model.routingVerdict(_routingResults, _routingDevice), Date.now())
+      // Timed from when the reads started, so a slow read cannot confirm early.
+      routing = Model.routingHealth(routing, Model.routingVerdict(_routingResults, _routingDevice), _routingStartedMs)
       sendNotification(Model.routingNotification(shownBefore, routing, { setting: notificationSetting, openPanels: openPanels }, loc))
       if (routing.pending) routingConfirm.restart()
     }

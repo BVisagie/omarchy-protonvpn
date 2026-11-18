@@ -2227,24 +2227,23 @@ function routingVerdict(results, tunnelDevice) {
 }
 
 function emptyRouting() {
-  return { ipv4: "unknown", ipv6: "unknown", dns: "unknown", leaks: [], shown: [], pending: false, pendingKey: "", pendingSinceMs: 0 }
+  return { ipv4: "unknown", ipv6: "unknown", dns: "unknown", leaks: [], shown: [], pending: false, since: {} }
 }
 
-// Shows a leak once two checks ROUTING_CONFIRM_MS apart agree on it; a clean
-// check clears it at once.
-function routingHealth(previous, verdict, nowMs) {
+// Shows each leak once checks started ROUTING_CONFIRM_MS apart both found it,
+// and drops it at the first check that does not.
+function routingHealth(previous, verdict, observedMs) {
   var prev = previous || emptyRouting()
+  var prevSince = prev.since || {}
   var v = verdict || { ipv4: "unknown", ipv6: "unknown", dns: "unknown", leaks: [] }
-  var next = { ipv4: v.ipv4, ipv6: v.ipv6, dns: v.dns, leaks: v.leaks, shown: [], pending: false, pendingKey: "", pendingSinceMs: 0 }
-  if (v.leaks.length === 0) return next
-  var key = JSON.stringify(v.leaks)
-  var since = prev.pendingKey === key ? prev.pendingSinceMs : nowMs
-  var confirmed = nowMs - since >= ROUTING_CONFIRM_MS
-  next.pendingKey = key
-  next.pendingSinceMs = since
-  // Until the new finding is confirmed, keep showing what already was.
-  next.shown = confirmed ? v.leaks : (prev.shown || [])
-  next.pending = !confirmed
+  var next = { ipv4: v.ipv4, ipv6: v.ipv6, dns: v.dns, leaks: v.leaks, shown: [], pending: false, since: {} }
+  for (var i = 0; i < v.leaks.length; i++) {
+    var key = JSON.stringify(v.leaks[i])
+    var since = prevSince[key] !== undefined ? prevSince[key] : observedMs
+    next.since[key] = since
+    if (observedMs - since >= ROUTING_CONFIRM_MS) next.shown.push(v.leaks[i])
+    else next.pending = true
+  }
   return next
 }
 

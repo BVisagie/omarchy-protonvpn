@@ -49,7 +49,10 @@ describe("QML scheduler contract", () => {
     assert.match(service, /routingProcess\.command = boundedCommand\(Model\.routingCommands\(\)\[step\], 5000\)/)
     assert.equal((service.match(/routingProcess\.command =/g) || []).length, 1)
     // A new or ended tunnel starts over, and an answer about an old one is dropped.
-    assert.match(service, /if \(!link\.active \|\| \(previousActive && previousServer !== link\.server\)\) clearRouting\(\)\n\s*Qt\.callLater\(checkRouting\)/)
+    assert.match(service, /if \(!link\.active \|\| \(previousActive && \(previousServer !== link\.server \|\| linkDevice !== link\.device\)\)\) clearRouting\(\)\n\s*Qt\.callLater\(checkRouting\)/)
+    assert.match(service, /if \(job\.type === "action"\) clearRouting\(\)/)
+    assert.match(service, /_linkEpoch\+\+\n\s*clearRouting\(\)/)
+    assert.match(service, /Model\.routingHealth\(routing, Model\.routingVerdict\(_routingResults, _routingDevice\), _routingStartedMs\)/)
     assert.match(service, /if \(_routingStartedEpoch === _routingEpoch && linkActive && linkDevice === _routingDevice && state === Model\.STATES\.connected\)/)
     assert.match(service, /function clearRouting\(\) \{\n\s*_routingEpoch\+\+/)
     assert.match(service, /onStateChanged: if \(state === Model\.STATES\.connected\) Qt\.callLater\(checkRouting\)/)

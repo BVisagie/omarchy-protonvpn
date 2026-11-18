@@ -1036,12 +1036,23 @@ describe("tunnel routing check", () => {
     assert.deepEqual([state.shown.length, state.pending], [0, true])
     state = Model.routingHealth(state, leak, 1000 + Model.ROUTING_CONFIRM_MS)
     assert.deepEqual([state.shown, state.pending], [leak.leaks, false])
-    // A different leak waits for its own confirmation; the old one stays shown meanwhile.
-    const other = { ipv4: "leak", ipv6: "ok", dns: "ok", leaks: [{ kind: "ipv4", device: "tailscale0" }] }
-    state = Model.routingHealth(state, other, 20000)
-    assert.deepEqual([state.shown, state.pending], [leak.leaks, true])
     state = Model.routingHealth(state, clean, 21000)
     assert.deepEqual([state.shown, state.pending], [[], false])
+  })
+
+  it("confirms each leak on its own", () => {
+    const v4 = { kind: "ipv4", device: "tailscale0" }
+    const dns = { kind: "dns", device: "tailscale0", server: "100.100.100.100" }
+    const both = { ipv4: "leak", ipv6: "ok", dns: "leak", leaks: [v4, dns] }
+    const onlyV4 = { ipv4: "leak", ipv6: "ok", dns: "ok", leaks: [v4] }
+    // A DNS finding that comes and goes neither hides nor delays a steady IPv4 one.
+    let state = Model.routingHealth(Model.emptyRouting(), both, 0)
+    state = Model.routingHealth(state, onlyV4, 6000)
+    assert.deepEqual([state.shown, state.pending], [[v4], false])
+    state = Model.routingHealth(state, both, 12000)
+    assert.deepEqual([state.shown, state.pending], [[v4], true])
+    state = Model.routingHealth(state, both, 17000)
+    assert.deepEqual([state.shown, state.pending], [[v4, dns], false])
   })
 
   it("words each leak and notifies once, only while the panel is closed", () => {
