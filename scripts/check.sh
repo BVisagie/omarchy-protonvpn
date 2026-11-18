@@ -15,15 +15,29 @@ node --test tests/*.test.js
 echo "==> Python tests"
 python3 -m unittest discover -s tests -p 'test_*.py' -v
 
+echo "==> Shipped files"
+# Omarchy refuses a plugin folder with a symlink anywhere in it.
+if git ls-files -s | awk '$1 == "120000"' | grep -q .; then
+  fail "a tracked symlink would make omarchy plugin add refuse the plugin"
+fi
+
 echo "==> Manifest validation"
 if command -v omarchy >/dev/null 2>&1; then
-  omarchy plugin validate .
+  # Validate what a clone would contain, not local leftovers.
+  shipped="$(mktemp -d)"
+  trap 'rm -rf "$shipped"' EXIT
+  git ls-files -z --cached --others --exclude-standard | while IFS= read -r -d '' file; do
+    [[ -e $file ]] || continue
+    mkdir -p "$shipped/$(dirname "$file")"
+    cp -P "$file" "$shipped/$file"
+  done
+  omarchy plugin validate "$shipped"
 else
   echo "omarchy is not on PATH; manifest covered by portable tests"
 fi
 
 echo "==> QML files present"
-for file in Panel.qml Service.qml ProtonVpnIcon.qml Model.js Scheduler.js scripts/run_bounded.py; do
+for file in Panel.qml Service.qml ProtonVpnIcon.qml Model.js Scheduler.js scripts/run_bounded.py i18n/en.json; do
   [[ -s "$file" ]] || fail "missing $file"
 done
 
@@ -46,8 +60,15 @@ if [[ -n "$qmlint_bin" ]]; then
   # Fail only on syntax/parse errors, not the import-resolution warning flood.
   report="$(mktemp)"
   set +e
-  "$qmlint_bin" "${include[@]}" Panel.qml Service.qml ProtonVpnIcon.qml >"$report" 2>&1
+  # qmllint can loop on some valid QML (two inline components with the same
+  # id name did); a hang must fail the check, not stall it.
+  timeout 120 "$qmlint_bin" "${include[@]}" Panel.qml Service.qml ProtonVpnIcon.qml >"$report" 2>&1
+  lint_status=$?
   set -e
+  if [[ $lint_status -eq 124 ]]; then
+    rm -f "$report"
+    fail "qmllint did not finish in two minutes"
+  fi
   if grep -Ei 'syntax error|invalid token|unexpected token|Expected token' "$report" >/dev/null; then
     echo "qmllint reported syntax errors:" >&2
     grep -Ei 'syntax error|invalid token|unexpected token|Expected token' "$report" >&2

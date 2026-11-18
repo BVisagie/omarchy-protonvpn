@@ -1,6 +1,8 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Networking
+import qs.Commons
 import "Model.js" as Model
 import "Scheduler.js" as Scheduler
 
@@ -13,6 +15,16 @@ Item {
   // False keeps a panel-local fallback instance idle while the shared Omarchy
   // service is available.
   property bool active: true
+
+  // The plugin's own strings, following Setup > Language live. Messages kept
+  // in properties are worded once, when they happen.
+  readonly property QtObject strings: Translations { directory: Qt.resolvedUrl("i18n") }
+  function tr(key, english) { return root.strings.t(key, english) }
+  readonly property var loc: ({
+    tr: function(key, english) { return root.strings.t(key, english) },
+    tn: function(key, count, english) { return root.strings.tn(key, count, english) },
+    num: function(value, places) { return I18n.formatNumber(value, places) }
+  })
 
   property string state: Model.STATES.checking
   property var status: Model.emptyStatus()
@@ -39,8 +51,14 @@ Item {
   property string linkServer: ""
   property string linkDevice: ""
   property bool linkKillSwitch: false
+  // When NetworkManager activated the tunnel; 0 when unknown.
+  property double linkSinceMs: 0
   readonly property bool killSwitchBlocking: Model.killSwitchBlocking({ known: linkKnown, available: linkAvailable, active: linkActive, killSwitch: linkKillSwitch }, state)
   property var recentTargets: []
+  // Starred targets live in the widget's shell.json entry. Recents stay in
+  // memory unless rememberRecent is on, which also keeps the last target.
+  readonly property var favorites: Model.normalizeTargets(setting("favorites", []), Model.MAX_FAVORITES)
+  readonly property bool rememberRecent: Model.normalizeBooleanSetting(setting("rememberRecent", false))
   // Panels on every monitor share this service; count the open ones.
   property int openPanels: 0
   readonly property string notificationSetting: Model.normalizeNotificationSetting(setting("notifications", "drops"))
@@ -66,13 +84,68 @@ Item {
   property var _lastSession: null
   readonly property bool reconnectPending: _reconnectTarget !== null
 
+  // Connect at login: once, at the first shell start after logging in. The
+  // runner's lock file for this Hyprland session already exists when the
+  // shell merely reloaded, as it does for a theme change.
+  readonly property bool connectOnLogin: Model.normalizeBooleanSetting(setting("connectOnLogin", false))
+  readonly property string _runtimeDir: Quickshell.env("XDG_RUNTIME_DIR") || ""
+  property bool _loginConnectPending: false
+  // True when the lock file already existed: the shell reloaded mid-login.
+  property bool _shellReloaded: false
+
+  // Connect on untrusted Wi-Fi: joining a network that is not in
+  // trustedNetworks connects, once per join. The name comes from
+  // NetworkManager over D-Bus, through Quickshell; no process starts.
+  readonly property bool autoConnectWifi: Model.normalizeBooleanSetting(setting("autoConnectWifi", false))
+  readonly property var trustedNetworks: Model.normalizeNetworks(setting("trustedNetworks", []))
+  readonly property string wifiName: currentWifiName()
+  readonly property bool wifiTrusted: Model.isTrustedNetwork(trustedNetworks, wifiName)
+  property bool _wifiConnectPending: false
+  property bool _started: false
+  property double _startedMs: 0
+  readonly property bool autoConnectArmed: (connectOnLogin && _loginConnectPending) || (autoConnectWifi && _wifiConnectPending)
+
+  // Shared by both: ticks and attempts of the current automatic connect.
+  property int _autoTicks: 0
+  property int _autoAttempts: 0
+  // "login" or "wifi" while tryAutoConnect starts a connect; jobs keep it.
+  property string _autoConnectKind: ""
+
+  // The CLI package. The local package database is read when a panel
+  // opens; the mirrors are asked only through checkCliUpdates(), which the
+  // user starts.
+  property string cliInstalled: ""
+  property string cliRepo: ""
+  property string cliRepoVersion: ""
+  property double cliRepoSyncedMs: 0
+  property string cliMirrorVersion: ""
+  property double cliMirrorCheckedMs: 0
+  property bool cliChecking: false
+  property string cliCheckError: ""
+  property string _pkgStep: ""
+  property double _pkgReadMs: 0
+  readonly property var cliPackage: ({
+    cliVersion: cliVersion,
+    installed: cliInstalled,
+    repo: cliRepo,
+    repoVersion: cliRepoVersion,
+    repoSyncedMs: cliRepoSyncedMs,
+    mirrorVersion: cliMirrorVersion,
+    mirrorCheckedMs: cliMirrorCheckedMs
+  })
+
   property int _setupChecks: 0
   property string portForwardingNotice: ""
 
   property var traffic: Model.emptyTraffic()
   property string _trafficDevice: ""
   property string _trafficServer: ""
-  readonly property string trafficText: Model.trafficText(traffic)
+  // Data going out with nothing coming back; read even with every panel closed.
+  property var health: Model.emptyHealth()
+  readonly property bool tunnelStalled: linkActive && state === Model.STATES.connected && health.stalled === true
+  // Only a validated proton0-style device ever reaches a sysfs path.
+  readonly property string _statsDir: Model.isTunnelDevice(linkDevice) ? "/sys/class/net/" + linkDevice + "/statistics/" : ""
+  readonly property string trafficText: Model.trafficText(traffic, loc)
   // Options behind the current connection, when this session made it.
   property var activeTarget: null
 
@@ -111,7 +184,8 @@ Item {
     signedIn: root.signedIn,
     lastUpdatedMs: root.lastUpdatedMs,
     connectedSnapshot: root.connectedSnapshot,
-    blocking: root.killSwitchBlocking
+    blocking: root.killSwitchBlocking,
+    stalled: root.tunnelStalled
   })
   // A Kill Switch cycle owns the connection until it finishes; only its own
   // steps may write while it runs.
@@ -131,6 +205,12 @@ Item {
   property var _citiesCache: ({})
   property int _linkEpoch: 0
   property int _linkStartedEpoch: 0
+  // A change seen while a poll runs is read again once that poll ends.
+  property bool _linkRecheck: false
+  // `nmcli monitor` restarts with backoff; a run that lasted resets it.
+  property int _monitorFailures: 0
+  property double _monitorStartedMs: 0
+  readonly property bool linkEvents: linkMonitor.running
 
   function panelOpened() {
     openPanels = openPanels + 1
@@ -142,6 +222,34 @@ Item {
 
   function setSettings(next) {
     settings = next || ({})
+  }
+
+  // The whole entry is replaced, so start from the live settings. Applied
+  // locally first; the shell.json write comes back as the same value.
+  function saveSettings(patch) {
+    var entry = ({})
+    for (var key in settings) if (key !== "id") entry[key] = settings[key]
+    for (var name in patch) {
+      if (patch[name] === undefined) delete entry[name]
+      else entry[name] = patch[name]
+    }
+    settings = entry
+    if (shell && typeof shell.updateEntryInline === "function") shell.updateEntryInline(Model.PLUGIN_ID, entry)
+  }
+
+  function toggleFavorite(target) {
+    saveSettings({ favorites: Model.toggleFavorite(favorites, target) })
+  }
+
+  // Turned on, including when settings first arrive: a session with no
+  // recents yet reads the saved ones; one that has some saves them.
+  onRememberRecentChanged: {
+    if (rememberRecent) {
+      if (recentTargets.length === 0) recentTargets = Model.normalizeTargets(setting("recent", []), Model.MAX_RECENTS)
+      else saveSettings({ recent: Model.normalizeTargets(recentTargets, Model.MAX_RECENTS) })
+    } else if (setting("recent", undefined) !== undefined) {
+      saveSettings({ recent: undefined })
+    }
   }
 
   function setting(name, fallback) {
@@ -324,12 +432,13 @@ Item {
       cliVersion = ""
       cliCommands = []
       compatibilityWarning = ""
-      applyView(Model.classifyProbe({ cliMissing: true, exitCode: result.exitCode, stdout: "", stderr: "", timedOut: result.timedOut === true }))
+      applyView(Model.classifyProbe({ cliMissing: true, exitCode: result.exitCode, stdout: "", stderr: "", timedOut: result.timedOut === true }, null, loc))
       return
     }
     enqueue({ type: "help", command: ["protonvpn", "--help"], timeout: 5000 })
     requestStatusRefresh()
     watchLink()
+    startLinkMonitor()
   }
 
   function handleHelp(result) {
@@ -337,12 +446,12 @@ Item {
       ? Model.parseCliHelp(result.stdout) : Model.parseCliHelp("")
     cliVersion = info.version
     cliCommands = info.commands
-    compatibilityWarning = Model.compatibilityWarning(info)
+    compatibilityWarning = Model.compatibilityWarning(info, loc)
   }
 
   function handleStatus(result) {
     if (!installed) {
-      applyView(Model.classifyProbe({ cliMissing: true }))
+      applyView(Model.classifyProbe({ cliMissing: true }, null, loc))
       return
     }
     var previous = snapshot()
@@ -351,7 +460,7 @@ Item {
       stdout: result.stdout,
       stderr: result.stderr,
       timedOut: result.timedOut === true
-    }, previous)
+    }, previous, loc)
     if (next.state === Model.STATES.connected) {
       if (previous.status && previous.status.server === next.status.server) next.status.exitIp = String(previous.status.exitIp || "")
       if (linkConfirmed() && linkServer !== "" && next.status.server === "") next.status.server = linkServer
@@ -371,11 +480,12 @@ Item {
   function handleAction(result, job) {
     // Any nmcli poll that started before this result may describe the old tunnel.
     _linkEpoch++
-    var disconnectAfter = job.auto === true && _disconnectAfterReconnect
-    if (job.auto === true) _disconnectAfterReconnect = false
-    var classified = Model.classifyCommandResult(result, job.snapshot || snapshot())
+    var automatic = job.auto === true || job.autoConnect !== ""
+    var disconnectAfter = automatic && _disconnectAfterReconnect
+    if (automatic) _disconnectAfterReconnect = false
+    var classified = Model.classifyCommandResult(result, job.snapshot || snapshot(), loc)
     if (classified.stateHint === Model.STATES.guiConflict || classified.stateHint === Model.STATES.signedOut) {
-      applyView(Model.classifyProbe(result, job.snapshot || snapshot()))
+      applyView(Model.classifyProbe(result, job.snapshot || snapshot(), loc))
       actionStatus = ""
       delayedRefresh.restart()
       abortKillSwitch(classified.message)
@@ -384,11 +494,15 @@ Item {
     }
     if (classified.ok) {
       lastError = ""
-      actionStatus = classified.message || (job.action === "disconnect" ? "Disconnected." : "Connected.")
-      if (job.action === "disconnect") {
+      actionStatus = classified.message || (job.action === "disconnect" ? tr("action.disconnected", "Disconnected.")
+        : (job.action === "signout" ? tr("signout.done", "Signed out.") : tr("action.connected", "Connected.")))
+      if (job.action === "signout") {
+        applyView(Model.signedOutView(loc))
+      } else if (job.action === "disconnect") {
         linkActive = false
         linkServer = ""
         linkDevice = ""
+        linkSinceMs = 0
         applyView(disconnectedView())
         _lastSession = null
         noteLink(false, true)
@@ -405,15 +519,20 @@ Item {
         if (outcome.location !== "") nextStatus.location = outcome.location
         nextStatus.exitIp = outcome.exitIp
         applyView(connectedView(nextStatus))
-        var target = Model.recentTarget(job.options || {}, outcome)
+        // A new tunnel, even to the same server: take its own TIMESTAMP.
+        linkSinceMs = 0
+        var target = Model.recentTarget(job.options || {}, outcome, loc)
         activeTarget = target
-        recentTargets = Model.recordRecentTarget(recentTargets, target, 3)
-        portForwardingNotice = Model.portForwardingNotice(outcome.portForwarding)
+        recentTargets = Model.recordRecentTarget(recentTargets, target, Model.MAX_RECENTS)
+        if (rememberRecent) saveSettings({ recent: Model.normalizeTargets(recentTargets, Model.MAX_RECENTS) })
+        portForwardingNotice = Model.portForwardingNotice(outcome.portForwarding, loc)
         noteLink(true, true)
         if (job.auto === true) {
           cancelReconnect()
-          actionStatus = "Reconnected after the drop."
+          actionStatus = tr("action.reconnected", "Reconnected after the drop.")
           if (disconnectAfter) Qt.callLater(disconnect)
+        } else if (disconnectAfter) {
+          Qt.callLater(disconnect)
         }
       }
     } else {
@@ -448,9 +567,9 @@ Item {
   }
 
   function handleDiscovery(result, job) {
-    var classified = Model.classifyCommandResult(result, snapshot())
+    var classified = Model.classifyCommandResult(result, snapshot(), loc)
     if (classified.stateHint === Model.STATES.signedOut || classified.stateHint === Model.STATES.guiConflict) {
-      applyView(Model.classifyProbe(result, snapshot()))
+      applyView(Model.classifyProbe(result, snapshot(), loc))
       countriesLoading = false
       citiesLoading = false
       return
@@ -458,21 +577,21 @@ Item {
     if (job.kind === "countries") {
       countriesLoading = false
       if (!Model.readSucceeded(result)) {
-        countriesError = classified.message || "Could not list countries."
+        countriesError = classified.message || tr("discovery.countriesFailed", "Could not list countries.")
         if (countries.length > 0) discoveryStale = true
         return
       }
       var countriesCrashed = Model.crashedAfterOutput(result)
-      var parsedCountries = Model.parseCountries(result.stdout)
+      var parsedCountries = Model.parseCountries(result.stdout, loc)
       if (!parsedCountries.ok || (countriesCrashed && parsedCountries.countries.length === 0)) {
-        countriesError = countriesCrashed ? (classified.message || "Could not list countries.") : parsedCountries.message
+        countriesError = countriesCrashed ? (classified.message || tr("discovery.countriesFailed", "Could not list countries.")) : parsedCountries.message
         if (countriesCrashed && countries.length > 0) discoveryStale = true
         return
       }
       countries = parsedCountries.countries
       // A table has no end marker, so crashed output is shown but fetched again.
       countriesLoaded = !countriesCrashed
-      countriesError = parsedCountries.countries.length === 0 ? "No countries returned." : ""
+      countriesError = parsedCountries.countries.length === 0 ? tr("discovery.noCountries", "No countries returned.") : ""
       discoveryStale = false
       return
     }
@@ -480,15 +599,15 @@ Item {
       if (String(job.country || "") !== citiesCountry) return
       citiesLoading = false
       if (!Model.readSucceeded(result)) {
-        citiesError = classified.message || "Could not list cities."
+        citiesError = classified.message || tr("discovery.citiesFailed", "Could not list cities.")
         if (cities.length > 0) discoveryStale = true
         return
       }
       var citiesCrashed = Model.crashedAfterOutput(result)
-      var parsedCities = Model.parseCities(result.stdout)
+      var parsedCities = Model.parseCities(result.stdout, loc)
       if (!parsedCities.ok || (citiesCrashed && parsedCities.cities.length === 0)) {
         if (citiesCrashed) {
-          citiesError = classified.message || "Could not list cities."
+          citiesError = classified.message || tr("discovery.citiesFailed", "Could not list cities.")
           if (cities.length > 0) discoveryStale = true
           return
         }
@@ -502,29 +621,29 @@ Item {
         cache[citiesCountry] = parsedCities.cities
         _citiesCache = cache
       }
-      citiesError = parsedCities.cities.length === 0 ? "No cities returned for that country." : ""
+      citiesError = parsedCities.cities.length === 0 ? tr("discovery.noCities", "No cities returned for that country.") : ""
       discoveryStale = false
     }
   }
 
   function handleConfig(result, job) {
-    var classified = Model.classifyCommandResult(result, snapshot())
+    var classified = Model.classifyCommandResult(result, snapshot(), loc)
     if (classified.stateHint === Model.STATES.signedOut || classified.stateHint === Model.STATES.guiConflict) {
       pendingSetting = ""
       pendingValue = ""
-      applyView(Model.classifyProbe(result, snapshot()))
+      applyView(Model.classifyProbe(result, snapshot(), loc))
       if (job.kind === "set") abortKillSwitch(classified.message)
       return
     }
     if (job.kind === "list") {
       if (!Model.readSucceeded(result)) {
-        configError = classified.message || "Could not read Proton VPN settings."
+        configError = classified.message || tr("config.readFailed", "Could not read Proton VPN settings.")
         return
       }
       var configCrashed = Model.crashedAfterOutput(result)
-      var parsed = Model.parseConfigList(result.stdout)
+      var parsed = Model.parseConfigList(result.stdout, loc)
       if (!parsed.ok || (configCrashed && !Model.configListComplete(parsed))) {
-        configError = configCrashed ? (classified.message || "Could not read Proton VPN settings.") : parsed.message
+        configError = configCrashed ? (classified.message || tr("config.readFailed", "Could not read Proton VPN settings.")) : parsed.message
         return
       }
       configValues = parsed.settings
@@ -538,8 +657,8 @@ Item {
     if (job.kind === "set") {
       if (classified.ok) {
         lastError = ""
-        actionStatus = classified.message || "Setting updated."
-        restartNotice = job.restart === true ? Model.restartNotice(job.setting) : ""
+        actionStatus = classified.message || tr("config.updated", "Setting updated.")
+        restartNotice = job.restart === true ? Model.restartNotice(job.setting, loc) : ""
         if (/please establish a new VPN connection/i.test(classified.detail)) restartNotice = classified.detail
       } else {
         lastError = classified.message
@@ -576,15 +695,39 @@ Item {
   }
 
   function watchLink() {
-    if (!active || !installed || linkProcess.running) return
+    if (!active || !installed) return
+    if (linkProcess.running) {
+      _linkRecheck = true
+      return
+    }
+    _linkRecheck = false
     _linkStartedEpoch = _linkEpoch
     _linkOutput = ""
     _linkError = ""
-    linkProcess.command = boundedCommand(["/usr/bin/nmcli", "-t", "-e", "no", "-f", "NAME,TYPE,DEVICE,STATE", "connection", "show", "--active"], 5000)
+    linkProcess.command = boundedCommand(["/usr/bin/nmcli", "-t", "-e", "no", "-f", "NAME,TYPE,DEVICE,STATE,TIMESTAMP", "connection", "show", "--active"], 5000)
     linkProcess.running = true
   }
 
+  // NetworkManager prints a line for every device, connection, or
+  // connectivity change. The text is localized, so any line only means
+  // "look again"; the snapshot below is what gets parsed.
+  function startLinkMonitor() {
+    if (!active || !installed || linkMonitor.running) return
+    _monitorStartedMs = Date.now()
+    linkMonitor.running = true
+  }
+
+  function linkMonitorExited() {
+    if (!active || !installed) return
+    if (Date.now() - _monitorStartedMs > 60000) _monitorFailures = 0
+    monitorRestart.interval = Model.monitorRestartDelayMs(_monitorFailures)
+    _monitorFailures++
+    monitorRestart.restart()
+    watchLink()
+  }
+
   function applyLinkResult(result) {
+    if (_linkRecheck) Qt.callLater(watchLink)
     if (_linkStartedEpoch !== _linkEpoch) {
       // An action finished while this poll was running; re-read the live link.
       Qt.callLater(watchLink)
@@ -603,9 +746,15 @@ Item {
     linkServer = link.server
     linkDevice = link.device
     linkKillSwitch = link.killSwitch === true
+    // NetworkManager may refresh TIMESTAMP while a connection stays up;
+    // the same tunnel keeps its first one.
+    var sameTunnel = previousActive && link.active && previousServer === link.server && linkSinceMs > 0
+    linkSinceMs = !link.active ? 0 : (sameTunnel && link.sinceMs > 0 ? Math.min(linkSinceMs, link.sinceMs) : link.sinceMs)
     // The Kill Switch cycle owns the tunnel between its actions too.
     var owned = actionRunning || ksStep !== "idle"
     noteLink(link.active, owned)
+    // noteLink can drop a queued automatic connect, which no longer owns it.
+    owned = actionRunning || ksStep !== "idle"
     // NetworkManager can briefly continue reporting the old tunnel while a
     // connect, server change, or disconnect is in flight. Keep the live facts,
     // but let the action result own the transitional UI state.
@@ -683,10 +832,10 @@ Item {
 
   function connectWith(options) {
     if (!canToggle) {
-      reportError(Model.writeBlockedReason(state) || "Proton VPN is not ready to connect.")
+      reportError(Model.writeBlockedReason(state, loc) || tr("blocked.connect", "Proton VPN is not ready to connect."))
       return false
     }
-    var blocked = Model.planBlockedReason((options || {}).mode, freePlan)
+    var blocked = Model.planBlockedReason((options || {}).mode, freePlan, loc)
     if (blocked !== "") {
       reportError(blocked)
       // The plan is inferred from cached settings; re-read them in case the
@@ -694,40 +843,52 @@ Item {
       refreshConfig()
       return false
     }
-    var plan = Model.buildConnectCommand(options)
+    var plan = Model.buildConnectCommand(options, loc)
     if (!plan.ok) {
       reportError(plan.message)
       return false
     }
-    return runAction(plan.command, "connect", "Connecting…", options)
+    return runAction(plan.command, "connect", tr("action.connecting", "Connecting…"), options)
   }
 
   function disconnect() {
     // Asking to disconnect while a reconnect waits means staying disconnected,
     // even though there is no tunnel to take down yet.
     var stoppedReconnect = false
-    if (!_ksInternal && reconnectPending) {
-      if (_currentJob && _currentJob.auto === true) _disconnectAfterReconnect = true
+    var automaticRunning = !!_currentJob && (_currentJob.auto === true || !!_currentJob.autoConnect)
+    if (!_ksInternal && (reconnectPending || autoConnectArmed || automaticRunning || autoConnectQueued())) {
+      if (automaticRunning) _disconnectAfterReconnect = true
       cancelReconnect()
+      cancelAutoConnect("")
       stoppedReconnect = true
     }
     if (!canToggle) {
       if (stoppedReconnect) return noteReconnectStopped()
-      reportError(Model.writeBlockedReason(state) || "Proton VPN is not ready to disconnect.")
+      reportError(Model.writeBlockedReason(state, loc) || tr("blocked.disconnect", "Proton VPN is not ready to disconnect."))
       return false
     }
     if (state !== Model.STATES.connected) {
       if (stoppedReconnect) return noteReconnectStopped()
-      reportError("Proton VPN is not connected.")
+      reportError(tr("action.notConnected", "Proton VPN is not connected."))
       return false
     }
-    return runAction(["protonvpn", "disconnect"], "disconnect", "Disconnecting…", null)
+    return runAction(["protonvpn", "disconnect"], "disconnect", tr("action.disconnecting", "Disconnecting…"), null)
+  }
+
+  // Only from Disconnected: the CLI would drop a live tunnel itself, but
+  // asking first keeps Kill Switch and reconnects out of it.
+  function signOut() {
+    if (state !== Model.STATES.disconnected) {
+      reportError(tr("signout.disconnectFirst", "Disconnect before signing out."))
+      return false
+    }
+    return runAction(["protonvpn", "signout"], "signout", tr("signout.running", "Signing out…"), null)
   }
 
   function noteReconnectStopped() {
     actionStatus = _disconnectAfterReconnect
-      ? "Disconnecting once the current reconnect attempt finishes…"
-      : "Automatic reconnect cancelled."
+      ? tr("reconnect.disconnectAfter", "Disconnecting once the current reconnect attempt finishes…")
+      : tr("reconnect.cancelled", "Automatic connection cancelled.")
     actionStatusTimer.restart()
     return true
   }
@@ -741,7 +902,7 @@ Item {
   function runAction(command, action, label, options) {
     if (!installed || actionRunning) return false
     if (!Model.canWrite(state)) {
-      reportError(Model.writeBlockedReason(state))
+      reportError(Model.writeBlockedReason(state, loc))
       return false
     }
     var job = {
@@ -752,24 +913,28 @@ Item {
       priority: true,
       snapshot: snapshot(),
       options: options || ({}),
-      auto: _autoInternal === true
+      auto: _autoInternal === true,
+      autoConnect: _autoConnectKind
     }
     if (!enqueue(job)) return false
     if (job.auto !== true) cancelReconnect()
+    // Anything the user does wins over the login connect.
+    if (job.autoConnect === "") cancelAutoConnect("")
     lastError = ""
     actionStatus = label || ""
-    state = action === "disconnect" ? Model.STATES.disconnecting : Model.STATES.connecting
+    if (action === "connect") state = Model.STATES.connecting
+    else if (action === "disconnect") state = Model.STATES.disconnecting
     return true
   }
 
   function setConfig(settingName, value, extra) {
     if (!canChangeSettings) {
-      reportError(Model.writeBlockedReason(state) || "Proton VPN is not ready for settings changes.")
+      reportError(Model.writeBlockedReason(state, loc) || tr("blocked.settings", "Proton VPN is not ready for settings changes."))
       return false
     }
     var ctx = extra || ({})
     ctx.connected = Model.isVpnActive(snapshot())
-    var plan = Model.buildConfigSetCommand(settingName, value, ctx)
+    var plan = Model.buildConfigSetCommand(settingName, value, ctx, loc)
     if (!plan.ok) {
       reportError(plan.message)
       return false
@@ -777,7 +942,7 @@ Item {
     pendingSetting = settingName
     pendingValue = value
     lastError = ""
-    actionStatus = "Updating " + settingName + "…"
+    actionStatus = tr("config.updating", "Updating %1…").arg(Model.settingLabel(settingName, loc))
     if (!enqueue({ type: "config", kind: "set", setting: settingName, restart: plan.restart === true, command: plan.command, timeout: 20000, priority: true })) {
       pendingSetting = ""
       pendingValue = ""
@@ -792,10 +957,10 @@ Item {
   function setKillSwitch(value) {
     if (!Model.isVpnActive(snapshot())) return setConfig("kill-switch", value)
     if (!canChangeSettings) {
-      reportError(Model.writeBlockedReason(state) || "Proton VPN is not ready for settings changes.")
+      reportError(Model.writeBlockedReason(state, loc) || tr("blocked.settings", "Proton VPN is not ready for settings changes."))
       return false
     }
-    var check = Model.buildConfigSetCommand("kill-switch", value, { connected: false })
+    var check = Model.buildConfigSetCommand("kill-switch", value, { connected: false }, loc)
     if (!check.ok) {
       reportError(check.message)
       return false
@@ -813,7 +978,7 @@ Item {
     }
     pendingSetting = "kill-switch"
     pendingValue = _ksValue
-    actionStatus = "Changing Kill Switch…"
+    actionStatus = tr("killSwitch.changing", "Changing Kill Switch…")
     return true
   }
 
@@ -824,7 +989,7 @@ Item {
     if (step === "disconnecting" && next === "idle") {
       pendingSetting = ""
       pendingValue = ""
-      reportError("Kill Switch unchanged: " + String(message || "the VPN did not disconnect."))
+      reportError(tr("killSwitch.unchanged", "Kill Switch unchanged: %1").arg(String(message || tr("killSwitch.noDisconnect", "the VPN did not disconnect."))))
       return
     }
     if (next === "setting") {
@@ -832,19 +997,19 @@ Item {
       var started = setConfig("kill-switch", _ksValue)
       _ksInternal = false
       if (!started) advanceKillSwitch("setFailed", lastError)
-      else actionStatus = "Changing Kill Switch…"
+      else actionStatus = tr("killSwitch.changing", "Changing Kill Switch…")
       return
     }
     if (next === "reconnecting") {
-      if (event === "setFailed") _ksError = "Kill Switch unchanged: " + String(message || "Proton VPN rejected the change.")
+      if (event === "setFailed") _ksError = tr("killSwitch.unchanged", "Kill Switch unchanged: %1").arg(String(message || tr("killSwitch.rejected", "Proton VPN rejected the change.")))
       _ksInternal = true
       var reconnecting = connectWith(_ksTarget)
       _ksInternal = false
       if (!reconnecting) {
         ksStep = "idle"
-        reportError(_ksError !== "" ? _ksError : "Kill Switch changed, but reconnecting failed. Connect again.")
+        reportError(_ksError !== "" ? _ksError : tr("killSwitch.reconnectFailed", "Kill Switch changed, but reconnecting failed. Connect again."))
       } else {
-        actionStatus = "Reconnecting to " + Model.returnTargetLabel(_ksTarget) + "…"
+        actionStatus = tr("reconnect.to", "Reconnecting to %1…").arg(Model.returnTargetLabel(_ksTarget, loc))
       }
       return
     }
@@ -852,10 +1017,10 @@ Item {
       var carried = _ksError
       _ksError = ""
       _ksTarget = null
-      if (event === "connectFailed") reportError(carried !== "" ? carried + " Reconnecting also failed. Connect again." : "Kill Switch changed, but reconnecting failed. Connect again.")
+      if (event === "connectFailed") reportError(carried !== "" ? carried + " " + tr("killSwitch.alsoFailed", "Reconnecting also failed. Connect again.") : tr("killSwitch.reconnectFailed", "Kill Switch changed, but reconnecting failed. Connect again."))
       else if (carried !== "") reportError(carried)
       else {
-        actionStatus = "Kill Switch changed and reconnected."
+        actionStatus = tr("killSwitch.done", "Kill Switch changed and reconnected.")
         actionStatusTimer.restart()
       }
     }
@@ -871,8 +1036,10 @@ Item {
     _ksError = ""
     pendingSetting = ""
     pendingValue = ""
-    var where = step === "disconnecting" ? "Kill Switch unchanged" : "Kill Switch change interrupted and the VPN is disconnected"
-    reportError(where + ": " + String(message || "Proton VPN stopped responding."))
+    var why = String(message || tr("killSwitch.stopped", "Proton VPN stopped responding."))
+    reportError(step === "disconnecting"
+      ? tr("killSwitch.unchanged", "Kill Switch unchanged: %1").arg(why)
+      : tr("killSwitch.interrupted", "Kill Switch change interrupted and the VPN is disconnected: %1").arg(why))
   }
 
   // Decide whether a tunnel change deserves a desktop notification. Our own
@@ -887,7 +1054,11 @@ Item {
     var previous = _notifiedActive
     _notifiedActive = now
     var dropped = previous === true && !now && selfInitiated !== true && ksStep === "idle"
-    if (now) cancelReconnect()
+    if (now) {
+      // The tunnel is up; a waiting automatic connect would only replace it.
+      cancelReconnect()
+      cancelAutoConnect("")
+    }
     else if (dropped && reconnectOnDrop) armReconnect()
     sendNotification(Model.linkNotification(previous, now, {
       setting: notificationSetting,
@@ -898,7 +1069,7 @@ Item {
       reconnecting: reconnectPending,
       server: status.server || linkServer,
       location: status.location
-    }))
+    }, loc))
   }
 
   function sendNotification(note) {
@@ -959,8 +1130,8 @@ Item {
 
   function giveUpReconnect() {
     cancelReconnect()
-    reportError("Could not reconnect after the VPN dropped. Connect again.")
-    sendNotification(Model.reconnectFailedNotification({ setting: notificationSetting, openPanels: openPanels, killSwitch: linkKillSwitch }))
+    reportError(tr("reconnect.gaveUp", "Could not reconnect after the VPN dropped. Connect again."))
+    sendNotification(Model.reconnectFailedNotification({ setting: notificationSetting, openPanels: openPanels, killSwitch: linkKillSwitch }, loc))
   }
 
   function tryReconnect() {
@@ -979,32 +1150,117 @@ Item {
     _autoInternal = true
     var started = connectWith(_reconnectTarget)
     _autoInternal = false
-    if (started) actionStatus = "Reconnecting to " + Model.returnTargetLabel(_reconnectTarget) + "…"
+    if (started) actionStatus = tr("reconnect.to", "Reconnecting to %1…").arg(Model.returnTargetLabel(_reconnectTarget, loc))
     else scheduleNextReconnect()
   }
 
   onReconnectOnDropChanged: if (!reconnectOnDrop) cancelReconnect()
 
+  function currentWifiName() {
+    var devices = Networking.devices ? Networking.devices.values : []
+    for (var i = 0; i < devices.length; i++) {
+      var device = devices[i]
+      if (!device || device.type !== DeviceType.Wifi || !device.connected) continue
+      var networks = device.networks ? device.networks.values : []
+      for (var j = 0; j < networks.length; j++) {
+        if (networks[j] && networks[j].connected) return String(networks[j].name || "")
+      }
+    }
+    return ""
+  }
+
+  // A reload discovers the current network a moment after start; that is
+  // not a join, so a VPN you turned off stays off. A join later still counts.
+  onWifiNameChanged: {
+    cancelAutoConnect("wifi")
+    if (!_started || wifiName === "" || !autoConnectWifi || wifiTrusted) return
+    if (_shellReloaded && Date.now() - _startedMs < 10000) return
+    _autoTicks = 0
+    _autoAttempts = 0
+    _wifiConnectPending = true
+  }
+
+  // A trigger that no longer holds takes its waiting connect with it.
+  onWifiTrustedChanged: if (wifiTrusted) cancelAutoConnect("wifi")
+  onAutoConnectWifiChanged: if (!autoConnectWifi) cancelAutoConnect("wifi")
+  onConnectOnLoginChanged: if (!connectOnLogin) cancelAutoConnect("login")
+
+  function autoConnectQueued() {
+    var queued = _queueState.jobs || []
+    for (var i = 0; i < queued.length; i++) if (queued[i].autoConnect) return true
+    return false
+  }
+
+  // Like dropQueuedReconnect, for the login and Wi-Fi connects; kind ""
+  // cancels both.
+  function cancelAutoConnect(kind) {
+    if (kind !== "wifi") _loginConnectPending = false
+    if (kind !== "login") _wifiConnectPending = false
+    var dropped = Scheduler.removeQueued(_queueState, function(job) {
+      return !!job.autoConnect && (kind === "" || job.autoConnect === kind)
+    })
+    if (dropped.removed.length === 0) return
+    _queueState = dropped.queue
+    var snapshotView = dropped.removed[0].snapshot
+    if (snapshotView && state === Model.STATES.connecting) applyView(snapshotView)
+    actionStatus = ""
+    delayedRefresh.restart()
+  }
+
+  function toggleTrustedNetwork(name) {
+    saveSettings({ trustedNetworks: Model.toggleNetwork(trustedNetworks, name) })
+  }
+
+  // Every 10 seconds for up to 3 minutes, while the network and Proton's
+  // services come up: connect once Proton says Disconnected, at most 3 times.
+  // Signed out, not installed, or already connected ends it.
+  function tryAutoConnect() {
+    _autoTicks++
+    var done = state === Model.STATES.connected || linkActive || state === Model.STATES.signedOut || state === Model.STATES.cliMissing
+    if (done || _autoTicks > 18 || _autoAttempts >= 3) {
+      cancelAutoConnect("")
+      return
+    }
+    if (state !== Model.STATES.disconnected || !canToggle) {
+      if (!processBusy) requestStatusRefresh()
+      return
+    }
+    _autoAttempts++
+    var last = rememberRecent && recentTargets.length > 0 ? recentTargets[0] : null
+    _autoConnectKind = autoConnectWifi && _wifiConnectPending ? "wifi" : "login"
+    var started = connectWith(Model.returnTarget(last, null, freePlan))
+    var kind = _autoConnectKind
+    _autoConnectKind = ""
+    if (started) actionStatus = kind === "wifi"
+      ? tr("wifi.connecting", "Connecting on untrusted Wi-Fi…")
+      : tr("login.connecting", "Connecting at login…")
+  }
+
+  // Two small kernel files, read in place: no process starts for a sample.
+  // Rates are shown only in an open panel; the stall check runs regardless.
   function sampleTraffic() {
-    if (!active || openPanels === 0 || !linkActive || trafficProcess.running) return
-    if (!Model.isTunnelDevice(linkDevice)) return
+    if (!active || !linkActive || _statsDir === "") return
     if (linkDevice !== _trafficDevice || linkServer !== _trafficServer) {
       traffic = Model.emptyTraffic()
+      health = Model.emptyHealth()
       _trafficDevice = linkDevice
       _trafficServer = linkServer
     }
-    var base = "/sys/class/net/" + linkDevice + "/statistics/"
-    trafficProcess.command = boundedCommand(["/usr/bin/cat", base + "rx_bytes", base + "tx_bytes"], 2000)
-    trafficProcess.running = true
-  }
-
-  function applyTraffic(result) {
-    if (result.exitCode !== 0 || result.timedOut === true) return
-    traffic = Model.trafficSample(traffic, Model.parseInterfaceCounters(result.stdout), Date.now())
+    // reload() reads in the background; wait, or text() is the last sample.
+    rxFile.reload()
+    txFile.reload()
+    rxFile.waitForJob()
+    txFile.waitForJob()
+    var raw = rxFile.text() + " " + txFile.text()
+    if (!rxFile.loaded || !txFile.loaded) return
+    var counters = Model.parseInterfaceCounters(raw)
+    var now = Date.now()
+    health = Model.tunnelHealth(health, counters, now)
+    if (openPanels > 0) traffic = Model.trafficSample(traffic, counters, now)
   }
 
   function reportError(errorMessage) {
-    lastError = String(errorMessage || "Proton VPN command failed")
+    lastError = String(errorMessage || tr("failure.generic", "Proton VPN command failed."))
     actionStatus = lastError
     actionStatusTimer.restart()
   }
@@ -1013,7 +1269,7 @@ Item {
     var text = String(value || "")
     if (text === "") return
     Quickshell.execDetached(["wl-copy", "--", text])
-    actionStatus = "Copied"
+    actionStatus = tr("action.copied", "Copied")
     actionStatusTimer.restart()
   }
 
@@ -1021,12 +1277,12 @@ Item {
   // installed and signed in, or give up after six minutes.
   function installCli() {
     Quickshell.execDetached(Model.INSTALL_LAUNCHER)
-    watchSetup("Installing in a terminal…")
+    watchSetup(tr("setup.installing", "Installing in a terminal…"))
   }
 
   function signIn() {
     Quickshell.execDetached(Model.SIGNIN_LAUNCHER)
-    watchSetup("Signing in from a terminal…")
+    watchSetup(tr("setup.signingIn", "Signing in from a terminal…"))
   }
 
   function watchSetup(label) {
@@ -1042,6 +1298,67 @@ Item {
       return
     }
     if (!processBusy) refresh()
+  }
+
+  function runPackageStep(step, command, timeoutMs) {
+    _pkgStep = step
+    packageProcess.command = boundedCommand(command, timeoutMs)
+    packageProcess.running = true
+  }
+
+  // Local reads only, at most once a minute.
+  function readCliPackage() {
+    if (!active || !installed || packageProcess.running || Date.now() - _pkgReadMs < 60000) return
+    _pkgReadMs = Date.now()
+    cliCheckError = ""
+    runPackageStep("installed", ["/usr/bin/pacman", "-Q", Model.CLI_PACKAGE], 5000)
+  }
+
+  // Asks the Arch mirrors, through pacman's checkupdates, in a temporary
+  // database of its own. Only ever started by the user.
+  function checkCliUpdates() {
+    if (!active || packageProcess.running) return
+    cliChecking = true
+    cliCheckError = ""
+    runPackageStep("mirrors", ["/usr/bin/checkupdates", "--nocolor"], 90000)
+  }
+
+  function handlePackageStep(result) {
+    var step = _pkgStep
+    _pkgStep = ""
+    var ok = result.exitCode === 0 && result.timedOut !== true
+    if (step === "installed") {
+      cliInstalled = ok ? Model.parseInstalledPackage(result.stdout) : ""
+      runPackageStep("repo", ["/usr/bin/pacman", "-Sddp", "--print-format", "%n %r %v", Model.CLI_PACKAGE], 5000)
+    } else if (step === "repo") {
+      var sync = ok ? Model.parseSyncPackage(result.stdout) : null
+      cliRepo = sync ? sync.repo : ""
+      cliRepoVersion = sync ? sync.version : ""
+      // The repo name was validated; its database's age says how fresh "latest" is.
+      if (sync) runPackageStep("synced", ["/usr/bin/stat", "-c", "%Y", "/var/lib/pacman/sync/" + sync.repo + ".db"], 5000)
+    } else if (step === "synced") {
+      var seconds = ok ? parseInt(String(result.stdout || "").trim(), 10) : 0
+      cliRepoSyncedMs = seconds > 0 ? seconds * 1000 : 0
+    } else if (step === "mirrors") {
+      cliChecking = false
+      // 2 means no updates at all; 0 lists them.
+      if (result.exitCode === 2 || result.exitCode === 0) {
+        cliMirrorVersion = result.exitCode === 0 ? (Model.parseCheckUpdates(result.stdout) || "") : ""
+        cliMirrorCheckedMs = Date.now()
+      } else {
+        cliCheckError = tr("cli.checkFailed", "Could not reach the Arch mirrors.")
+      }
+    }
+  }
+
+  // Omarchy's own updater, in its own terminal; it asks for the password there.
+  function updateSystem() {
+    Quickshell.execDetached(Model.UPDATE_LAUNCHER)
+    actionStatus = tr("cli.updating", "Updating in a terminal…")
+    actionStatusTimer.restart()
+    // Read the installed version again once the panel next opens; the mirror
+    // answer goes stale by itself once the CLI or the database catches up.
+    _pkgReadMs = 0
   }
 
   function configDisplayValue(key) {
@@ -1061,24 +1378,80 @@ Item {
 
   Timer {
     id: trafficTimer
-    interval: 2000
+    interval: root.openPanels > 0 ? 2000 : 5000
     repeat: true
-    running: root.active && root.openPanels > 0 && root.linkActive
+    running: root.active && root.linkActive
     triggeredOnStart: true
     onTriggered: root.sampleTraffic()
-    onRunningChanged: if (!running) root.traffic = Model.emptyTraffic()
+    onRunningChanged: if (!running) {
+      root.traffic = Model.emptyTraffic()
+      root.health = Model.emptyHealth()
+    }
   }
 
-  onActiveChanged: if (active) refresh()
-  Component.onCompleted: if (active) refresh()
+  // Opening a panel starts its rates at once instead of at the next tick.
+  onOpenPanelsChanged: {
+    if (openPanels === 0) traffic = Model.emptyTraffic()
+    else if (openPanels === 1) sampleTraffic()
+  }
 
+  onActiveChanged: {
+    if (active) {
+      refresh()
+      startLinkMonitor()
+    } else {
+      linkMonitor.running = false
+    }
+  }
+  Component.onCompleted: {
+    loginMarker.reload()
+    loginMarker.waitForJob()
+    _shellReloaded = _runtimeDir === "" || loginMarker.loaded
+    _loginConnectPending = !_shellReloaded
+    _startedMs = Date.now()
+    _started = true
+    if (active) refresh()
+  }
+
+  // With NetworkManager events this is only a safety net for a missed one;
+  // without them it is the live link check.
   Timer {
     id: linkTimer
-    interval: root.linkWatchIntervalSec * 1000
+    interval: root.linkEvents ? 60000 : root.linkWatchIntervalSec * 1000
     repeat: true
     running: root.active && root.installed
     triggeredOnStart: true
     onTriggered: root.watchLink()
+  }
+
+  Timer {
+    id: linkSettle
+    interval: 300
+    repeat: false
+    onTriggered: root.watchLink()
+  }
+
+  Timer {
+    id: monitorRestart
+    repeat: false
+    onTriggered: root.startLinkMonitor()
+  }
+
+  // The login window closes 3 minutes after start-up, so switching
+  // connectOnLogin on later in the session never counts as a login.
+  Timer {
+    id: loginWindow
+    interval: 180000
+    running: root._loginConnectPending
+    onTriggered: root._loginConnectPending = false
+  }
+
+  Timer {
+    id: autoConnectTimer
+    interval: 10000
+    repeat: true
+    running: root.active && root.autoConnectArmed
+    onTriggered: root.tryAutoConnect()
   }
 
   Timer {
@@ -1151,16 +1524,49 @@ Item {
     }
   }
 
+  // Only asks whether the runner's lock file exists; never reads or writes it.
+  FileView {
+    id: loginMarker
+    path: root._runtimeDir !== "" ? root._runtimeDir + "/" + Model.runnerLockName(Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE")) : ""
+    blockLoading: true
+    printErrors: false
+  }
+
+  FileView {
+    id: rxFile
+    path: root._statsDir !== "" ? root._statsDir + "rx_bytes" : ""
+    blockLoading: true
+    printErrors: false
+  }
+
+  FileView {
+    id: txFile
+    path: root._statsDir !== "" ? root._statsDir + "tx_bytes" : ""
+    blockLoading: true
+    printErrors: false
+  }
+
+  // Read-only: `nmcli monitor` only prints what NetworkManager reports.
   Process {
-    id: trafficProcess
+    id: linkMonitor
+    running: false
+    command: ["/usr/bin/nmcli", "monitor"]
+    stdout: SplitParser {
+      onRead: function(line) { linkSettle.restart() }
+    }
+    onExited: function(exitCode) { root.linkMonitorExited() }
+  }
+
+  Process {
+    id: packageProcess
     running: false
     command: []
     stdout: StdioCollector {
-      id: trafficStdout
+      id: packageStdout
       waitForEnd: true
     }
     onExited: function(exitCode) {
-      root.applyTraffic({ exitCode: exitCode, stdout: String(trafficStdout.text || ""), timedOut: exitCode === 124 })
+      root.handlePackageStep({ exitCode: exitCode, stdout: String(packageStdout.text || ""), timedOut: exitCode === 124 })
     }
   }
 

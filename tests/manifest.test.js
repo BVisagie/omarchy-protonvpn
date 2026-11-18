@@ -9,7 +9,7 @@ describe("plugin manifest", () => {
   it("declares one shared service and the existing bar widget", () => {
     assert.equal(manifest.schemaVersion, 1)
     assert.equal(manifest.id, "io.github.BVisagie.protonvpn")
-    assert.equal(manifest.version, "1.3.0")
+    assert.equal(manifest.version, "1.4.0")
     assert.deepEqual(manifest.kinds, ["service", "bar-widget"])
     assert.equal(manifest.entryPoints.service, "Service.qml")
     assert.equal(manifest.entryPoints.barWidget, "Panel.qml")
@@ -32,6 +32,15 @@ describe("plugin manifest", () => {
     assert.equal(entry.type, "enum")
     assert.deepEqual(entry.options.map((o) => o.value), ["off", "drops", "all"])
     assert.equal(entry.defaultValue, "drops")
+  })
+
+  it("publishes the bar label and remembered recents as opt-ins", () => {
+    const label = manifest.barWidget.schema.find((item) => item.key === "barLabel")
+    assert.deepEqual(label.options.map((o) => o.value), require("../Model.js").BAR_LABELS)
+    assert.equal(manifest.barWidget.defaults.barLabel, "none")
+    assert.equal(manifest.barWidget.defaults.rememberRecent, false)
+    assert.equal(manifest.barWidget.defaults.connectOnLogin, false)
+    assert.equal(manifest.barWidget.defaults.autoConnectWifi, false)
   })
 
   it("publishes reconnect on drop as an opt-in boolean", () => {

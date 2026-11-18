@@ -1,2 +1,6 @@
 tmp/
 __pycache__/
+# Agent skills are installed per machine. Omarchy refuses a plugin folder that
+# contains a symlink, and every committed file ships to each user.
+.agents/
+.claude/

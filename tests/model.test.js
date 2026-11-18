@@ -605,7 +605,6 @@ describe("Proton-sourced help copy", () => {
     assert.doesNotMatch(Model.settingDescription("custom-dns"), /help them fix bugs|third-party resolvers/i)
     assert.match(Model.settingDescription("custom-dns"), /NetShield/i)
     assert.match(Model.settingDescription("port-forwarding", { upgrade: true }), /Upgrade to enable/)
-    assert.match(Model.SETTINGS_SECTION_HELP, /IPv6 and custom DNS/i)
   })
 
   it("title-cases setting names that were sentence-cased", () => {
@@ -653,15 +652,6 @@ describe("switching while connected", () => {
     assert.equal(Model.shouldOfferSwitch(Object.assign({}, base, { activeTarget: null, draftDirty: true })), true)
     assert.equal(Model.shouldOfferSwitch(Object.assign({}, base, { activeTarget: null, draftDirty: false })), false)
     assert.equal(Model.shouldOfferSwitch(null), false)
-  })
-
-  it("leaves the current connection out of RECENT", () => {
-    const tirana = Model.recentTarget({ mode: "city", country: "AL", city: "Tirana" })
-    const zurichTarget = Model.recentTarget(zurich)
-    assert.deepEqual(Model.recentChoices([tirana], tirana), [])
-    assert.deepEqual(Model.recentChoices([zurichTarget, tirana], zurichTarget).map((item) => item.label), ["Tirana"])
-    assert.deepEqual(Model.recentChoices([zurichTarget, tirana], null).map((item) => item.label), ["Zurich", "Tirana"])
-    assert.deepEqual(Model.recentChoices(null, null), [])
   })
 
   it("labels the switch like the RECENT buttons", () => {
@@ -794,7 +784,284 @@ describe("free plan", () => {
     assert.equal(free.length, Model.CONNECTION_MODES.length)
     assert.equal(free.find((option) => option.value === "country").description, "Needs a paid plan")
     assert.equal(free.find((option) => option.value === "fastest").description, Model.modeDef("fastest").description)
-    assert.deepEqual(Model.modeOptions(false), Model.CONNECTION_MODES)
+    assert.deepEqual(Model.modeOptions(false), Model.CONNECTION_MODES.map((def) => ({ value: def.value, label: def.label, description: def.description })))
+  })
+
+  it("words tables and messages through the catalog when one is given", () => {
+    const loc = { tr: (key, english) => "[" + key + "]", num: (value) => "n" + value }
+    assert.equal(Model.modeLabel("country", loc), "[mode.country.label]")
+    assert.equal(Model.settingLabel("kill-switch", loc), "[setting.kill-switch.label]")
+    assert.equal(Model.settingShortLabel("anonymous-crash-reports", loc), "[setting.anonymous-crash-reports.shortLabel]")
+    assert.equal(Model.settingShortLabel("anonymous-crash-reports"), "Crash Reports")
+    assert.equal(Model.settingShortLabel("kill-switch"), "Kill Switch")
+    assert.equal(Model.configValueLabel("netshield", "malware-only", loc), "[setting.netshield.value.malware-only]")
+    assert.equal(Model.settingChoiceOptions("kill-switch", loc)[1].description, "[setting.kill-switch.valueDescription.standard]")
+    assert.equal(Model.displayLoad(23.4, loc), "n23%")
+    assert.equal(Model.relativeTime(1000, 61000, loc), "[age.minutes]")
+    assert.equal(Model.fill("%1 of %2", "a", "b"), "a of b")
+    assert.equal(Model.formatBytes(1500), "1.5 KB")
+    assert.equal(Model.formatBytes(1500, { num: (value, places) => value.toFixed(places).replace(".", ",") }), "1,5 KB")
+  })
+})
+
+describe("quick connect", () => {
+  const countries = [{ code: "CH", name: "Switzerland" }, { code: "NL", name: "Netherlands" }]
+  const zurich = { mode: "city", country: "CH", city: "Zurich", serverId: "" }
+  const nl = { mode: "country", country: "NL", city: "", serverId: "" }
+
+  it("reads saved targets back as untrusted", () => {
+    assert.deepEqual(Model.normalizeTargets([zurich, zurich, nl, { mode: "country" }, { mode: "evil" },
+      { mode: "server", serverId: "rm -rf" }, { mode: "country", country: 7 }, "x", null, { mode: "country", country: "x".repeat(65) }], 8), [zurich, nl])
+    assert.deepEqual(Model.normalizeTargets("nope", 8), [])
+    assert.deepEqual(Model.normalizeTargets([nl, zurich], 1), [nl])
+    assert.deepEqual(Model.cleanTarget({ mode: "fastest", label: "<b>x</b>", extra: 1 }), { mode: "fastest", country: "", city: "", serverId: "" })
+  })
+
+  it("stars and unstars a target", () => {
+    const one = Model.toggleFavorite([], Object.assign({ label: "Zurich" }, zurich))
+    assert.deepEqual(one, [zurich])
+    assert.equal(Model.isFavorite(one, zurich), true)
+    assert.deepEqual(Model.toggleFavorite(one, zurich), [])
+    const full = Array.from({ length: 8 }, (_, i) => ({ mode: "server", serverId: "CH#" + (i + 1) }))
+    assert.equal(Model.toggleFavorite(full, nl).length, 8)
+  })
+
+  it("names targets in full", () => {
+    assert.equal(Model.targetName(zurich, countries), "Zurich · Switzerland")
+    assert.equal(Model.targetName(nl, countries), "Netherlands")
+    assert.equal(Model.targetName(nl, []), "NL")
+    assert.equal(Model.targetName({ mode: "p2p", country: "NL" }, countries), "P2P · Netherlands")
+    assert.equal(Model.targetName({ mode: "server", serverId: "CH#242" }, countries), "CH#242")
+    assert.equal(Model.targetName({ mode: "fastest" }, countries), "Fastest server")
+  })
+
+  it("lists favorites, then the current connection, then other recents", () => {
+    const rows = Model.quickConnectRows([zurich], [nl, zurich, { mode: "fastest" }], nl)
+    assert.deepEqual(rows.map((r) => [Model.targetName(r.target, countries), r.favorite, r.active]), [
+      ["Netherlands", false, true],
+      ["Zurich · Switzerland", true, false],
+      ["Fastest server", false, false]
+    ])
+    assert.deepEqual(Model.quickConnectRows([nl], [], nl).map((r) => [r.favorite, r.active]), [[true, true]])
+  })
+})
+
+describe("protocol names", () => {
+  it("names the CLI's lowercase protocols properly", () => {
+    assert.deepEqual(["wireguard", "openvpn-udp", "OpenVPN-TCP", "WireGuard", "something-new", ""].map(Model.protocolName),
+      ["WireGuard", "OpenVPN UDP", "OpenVPN TCP", "WireGuard", "something-new", ""])
+    assert.equal(Model.heroDetail({ state: "connected", status: { protocol: "wireguard" } }), "WireGuard")
+  })
+})
+
+describe("sign-out", () => {
+  it("answers as signed out and blocks writes", () => {
+    const view = Model.signedOutView()
+    assert.equal(view.state, "signedOut")
+    assert.equal(view.signedIn, false)
+    assert.equal(Model.canWrite(view.state), false)
+  })
+})
+
+describe("status pairs", () => {
+  it("states Kill Switch, NetShield, and Secure Core as facts", () => {
+    const connected = { state: "connected", status: { server: "IS-CH#1" } }
+    const flat = (pairs) => pairs.map((p) => p.label + " " + p.value).join(" · ")
+    assert.equal(flat(Model.protectionPairs({ "kill-switch": "standard", netshield: "malware-ads-trackers" }, connected)),
+      "Kill Switch On · NetShield Malware, ads, and trackers · Secure Core On")
+    assert.equal(flat(Model.protectionPairs({ "kill-switch": "off", netshield: "off" }, { state: "connected", status: { server: "NL#1" } })),
+      "Kill Switch Off · NetShield Off")
+    assert.equal(flat(Model.protectionPairs({ "kill-switch": "off", netshield: "malware-only", "custom-dns": "on [1.1.1.1]" }, null)),
+      "Kill Switch Off · NetShield Off (custom DNS)")
+    assert.deepEqual(Model.protectionPairs({}, connected), [])
+  })
+
+  it("puts traffic in the same pairs once it is known", () => {
+    assert.deepEqual(Model.trafficPairs(Model.emptyTraffic()), [])
+    assert.deepEqual(Model.trafficPairs({ known: true, rxRate: 1500, txRate: 20, sessionRx: 2000000, sessionTx: 500000 }).map((p) => p.value),
+      ["1.5 KB/s", "20 B/s", "2.5 MB"])
+  })
+
+  it("labels the CONNECT button with full place names", () => {
+    const countries = [{ code: "DO", name: "Dominican Republic" }]
+    const city = { mode: "city", country: "DO", city: "Santo Domingo" }
+    assert.equal(Model.connectButtonLabel("disconnected", city, countries), "Connect to Santo Domingo · Dominican Republic")
+    assert.equal(Model.connectButtonLabel("connected", { mode: "country", country: "DO" }, countries), "Switch to Dominican Republic")
+    assert.equal(Model.connectButtonLabel("disconnected", { mode: "fastest" }, []), "Connect to Fastest server")
+    assert.equal(Model.connectButtonLabel("disconnected", { mode: "city", country: "DO", city: "" }, countries), "Connect")
+    assert.equal(Model.connectButtonLabel("disconnected", { mode: "country", country: "" }, countries), "Connect")
+    assert.equal(Model.connectButtonLabel("connected", { mode: "server", serverId: "" }, countries), "Switch")
+    assert.equal(Model.targetName({ mode: "city", country: "DO", city: "" }, countries), "Dominican Republic")
+  })
+})
+
+describe("bar label", () => {
+  const view = { state: "connected", status: { server: "IS-CH#1", location: "Reykjavik, via Switzerland" } }
+  it("names the connection beside the icon only when asked and connected", () => {
+    assert.equal(Model.barLabelText("country", view), "IS")
+    assert.equal(Model.barLabelText("server", view), "IS-CH#1")
+    assert.equal(Model.barLabelText("city", view), "Reykjavik")
+    assert.equal(Model.barLabelText("country", { state: "connected", status: { server: "NL#806" } }), "NL")
+    assert.equal(Model.barLabelText("none", view), "")
+    assert.equal(Model.barLabelText("bogus", view), "")
+    assert.equal(Model.barLabelText("server", { state: "disconnected", status: {} }), "")
+    assert.equal(Model.barLabelText("city", { state: "connected", status: { location: "A very long city name indeed" } }).length, 16)
+  })
+})
+
+describe("IPC", () => {
+  it("parses connectTo targets and refuses anything else", () => {
+    const t = (spec) => Model.parseTargetSpec(spec)
+    assert.deepEqual(t("nl"), { mode: "country", country: "NL", city: "", serverId: "" })
+    assert.deepEqual(t("ch#242"), { mode: "server", country: "", city: "", serverId: "CH#242" })
+    assert.deepEqual(t("US  New York"), { mode: "city", country: "US", city: "New York", serverId: "" })
+    assert.deepEqual(t("p2p NL"), { mode: "p2p", country: "NL", city: "", serverId: "" })
+    assert.deepEqual(t("SecureCore"), { mode: "securecore", country: "", city: "", serverId: "" })
+    assert.deepEqual(t("fastest"), { mode: "fastest", country: "", city: "", serverId: "" })
+    for (const bad of ["", "fastest NL", "p2p Netherlands", "tor NL x", "Netherlands", "CH#", "; rm -rf ~", "x".repeat(90)]) {
+      assert.equal(t(bad), null, bad)
+    }
+  })
+
+  it("prints status as JSON with only what the panel shows", () => {
+    const json = JSON.parse(Model.statusJson(
+      { state: "connected", status: { server: "NL#806", location: "Amsterdam, Netherlands", load: 38, protocol: "wireguard", exitIp: "" }, blocking: false, stalled: false },
+      { sinceMs: Date.UTC(2026, 10, 17, 9, 0), config: { "kill-switch": "standard", netshield: "malware-only" } }))
+    assert.deepEqual(json, {
+      state: "connected", connected: true, server: "NL#806", location: "Amsterdam, Netherlands", load: 38, protocol: "WireGuard",
+      exitIp: "", connectedSince: "2026-11-17T09:00:00.000Z", killSwitch: "standard", netshield: "malware-only",
+      killSwitchBlocking: false, stalled: false, message: ""
+    })
+    assert.equal(JSON.parse(Model.statusJson({ state: "disconnected", status: { server: "old" } })).server, "")
+  })
+})
+
+describe("trusted Wi-Fi", () => {
+  it("keeps names as given, bounded, and toggles them", () => {
+    assert.deepEqual(Model.normalizeNetworks(["Home", "Home", "", 7, "x".repeat(33), "Café <b>"]), ["Home", "Café <b>"])
+    assert.deepEqual(Model.normalizeNetworks("Home"), [])
+    assert.equal(Model.isTrustedNetwork(["Home"], "Home"), true)
+    assert.equal(Model.isTrustedNetwork(["Home"], "home"), false)
+    assert.equal(Model.isTrustedNetwork(["Home"], ""), false)
+    assert.deepEqual(Model.toggleNetwork(["Home"], "Office"), ["Home", "Office"])
+    assert.deepEqual(Model.toggleNetwork(["Home", "Office"], "Home"), ["Office"])
+    assert.deepEqual(Model.toggleNetwork([], ""), [])
+  })
+})
+
+describe("connection duration", () => {
+  it("reads the activation time NetworkManager reports", () => {
+    const link = Model.parseActiveVpn("ProtonVPN NL#806:wireguard:proton0:activated:1794925926\nWi:Fi:802-11-wireless:wlan0:activated:1794903424\n")
+    assert.equal(link.server, "NL#806")
+    assert.equal(link.sinceMs, 1794925926000)
+    assert.equal(Model.parseActiveVpn(fixture("nmcli-active.txt")).sinceMs, 0)
+    const colon = Model.parseActiveVpn("ProtonVPN: CH#1:wireguard:proton0:activated:5\n")
+    assert.equal(colon.server, "CH#1")
+    assert.equal(colon.sinceMs, 5000)
+  })
+
+  it("words short and long durations", () => {
+    const at = (s) => Model.durationText(1000, 1000 + s * 1000)
+    assert.deepEqual([at(42), at(720), at(4320), at(273600)], ["42s", "12m", "1h 12m", "3d 4h"])
+    assert.equal(Model.durationText(0, 5000), "")
+  })
+})
+
+describe("stalled tunnel", () => {
+  function run(samples) {
+    let health = Model.emptyHealth()
+    for (const [atMs, rx, tx] of samples) health = Model.tunnelHealth(health, { rx, tx }, atMs)
+    return health
+  }
+
+  it("flags data going out with nothing coming back for 30 seconds", () => {
+    assert.equal(run([[0, 100, 100], [5000, 100, 3000], [25000, 100, 6000]]).stalled, false)
+    assert.equal(run([[0, 100, 100], [5000, 100, 3000], [15000, 100, 5000], [30000, 100, 6000]]).stalled, true)
+  })
+
+  it("clears as soon as anything comes back", () => {
+    const stalled = run([[0, 100, 100], [15000, 100, 3000], [30000, 100, 6000]])
+    assert.equal(stalled.stalled, true)
+    assert.equal(Model.tunnelHealth(stalled, { rx: 101, tx: 6100 }, 35000).stalled, false)
+  })
+
+  it("never calls an idle tunnel stalled", () => {
+    assert.equal(run([[0, 100, 100], [15000, 100, 100], [60000, 100, 500]]).stalled, false)
+  })
+
+  it("starts over after a gap such as suspend, or reset counters", () => {
+    assert.equal(run([[0, 100, 100], [15000, 100, 3000], [600000, 100, 9000]]).stalled, false)
+    assert.equal(run([[0, 900, 900], [15000, 100, 3000], [30000, 100, 9000]]).stalled, false)
+  })
+
+  it("shows in the icon and tooltip", () => {
+    assert.equal(Model.iconWarning("connected", false, true), true)
+    assert.equal(Model.iconWarning("connected", false, false), false)
+    assert.match(Model.tooltipText({ state: "connected", status: { server: "NL#1" }, stalled: true }), /nothing is coming back/i)
+  })
+})
+
+describe("CLI package version", () => {
+  it("reads pacman's fixed formats and refuses anything else", () => {
+    assert.equal(Model.parseInstalledPackage("proton-vpn-cli 1.0.5-1\n"), "1.0.5-1")
+    assert.equal(Model.parseInstalledPackage("error: package 'proton-vpn-cli' was not found"), "")
+    assert.equal(Model.parseInstalledPackage("other 1.0-1"), "")
+    assert.deepEqual(Model.parseSyncPackage("proton-vpn-cli extra 1.0.6-1\n"), { repo: "extra", version: "1.0.6-1" })
+    assert.deepEqual(Model.parseSyncPackage("python-dep extra 9.9-1\nproton-vpn-cli extra 1.0.6-1\n"), { repo: "extra", version: "1.0.6-1" })
+    assert.equal(Model.parseSyncPackage("python-dep extra 9.9-1\n"), null)
+    assert.equal(Model.parseSyncPackage("proton-vpn-cli extra 1.0.6-1; rm -rf"), null)
+    assert.equal(Model.parseSyncPackage(""), null)
+    assert.equal(Model.parseCheckUpdates("linux 6.1-1 -> 6.2-1\nproton-vpn-cli 1.0.5-1 -> 1.0.6-1\n"), "1.0.6-1")
+    assert.equal(Model.parseCheckUpdates("linux 6.1-1 -> 6.2-1\n"), null)
+  })
+
+  it("orders versions the way pacman's vercmp does", () => {
+    // Each expected sign was taken from /usr/bin/vercmp.
+    const cases = [
+      ["1.0.5-1", "1.0.6-1", -1], ["1.0.10-1", "1.0.9-1", 1], ["1.0.5-1", "1.0.5-2", -1], ["1.0.5-1", "1.0.5-1", 0],
+      ["1:1.0-1", "2.0-1", 1], ["1.0.5-1", "1.0.5.post1-1", -1], ["1.0a-1", "1.0-1", -1], ["1.0-1", "1.0b-1", 1],
+      ["1.0rc1-1", "1.0-1", -1], ["1.0.0-1", "1.0-1", 1], ["1.0_1-1", "1.0.1-1", 0], ["2.0", "2.0-1", 0],
+      ["1.0-1", "1.0.1", -1], ["1.2.3alpha", "1.2.3", -1], ["01.2", "1.2", 0], ["1..2", "1.2", 1],
+      ["1.0+a", "1.0+b", -1], ["0:1.0", "1.0", 0], ["1.0~rc1", "1.0", 1]
+    ]
+    for (const [a, b, sign] of cases) assert.equal(Model.comparePackageVersions(a, b), sign, `${a} vs ${b}`)
+  })
+
+  it("lets a later local sync replace an older mirror check", () => {
+    const now = Date.UTC(2026, 10, 17)
+    const info = Model.cliVersionInfo({ installed: "1.0.5-1", repo: "extra", repoVersion: "1.0.6-1", repoSyncedMs: now, mirrorVersion: "", mirrorCheckedMs: now - 60000 }, now)
+    assert.equal(info.latest, "1.0.6-1")
+    assert.equal(info.newer, true)
+  })
+
+  it("says whether an update is available, and from where", () => {
+    const now = Date.UTC(2026, 10, 17)
+    const day = 86400000
+    const repo = Model.cliVersionInfo({ installed: "1.0.5-1", repo: "extra", repoVersion: "1.0.5-1", repoSyncedMs: now - 26 * day }, now)
+    assert.deepEqual([repo.latest, repo.source, repo.newer, repo.status], ["1.0.5-1", "extra, database dated 26d ago", false, "Up to date"])
+    const mirror = Model.cliVersionInfo({ installed: "1.0.5-1", repo: "extra", repoVersion: "1.0.5-1", mirrorVersion: "1.0.6-1", mirrorCheckedMs: now }, now)
+    assert.deepEqual([mirror.latest, mirror.source, mirror.newer, mirror.status], ["1.0.6-1", "mirrors, checked just now", true, "Update available"])
+    const none = Model.cliVersionInfo({ installed: "1.0.5-1", mirrorVersion: "", mirrorCheckedMs: now }, now)
+    assert.equal(none.latest, "1.0.5-1")
+    assert.equal(Model.cliVersionInfo({ cliVersion: "1.0.5" }, now).status, "")
+  })
+})
+
+describe("runner lock name", () => {
+  it("matches scripts/run_bounded.py", () => {
+    assert.equal(Model.runnerLockName("abc_123"), "omarchy-protonvpn-abc_123.lock")
+    assert.equal(Model.runnerLockName("../evil"), "omarchy-protonvpn.lock")
+    assert.equal(Model.runnerLockName(""), "omarchy-protonvpn.lock")
+    const runner = fs.readFileSync(path.join(__dirname, "..", "scripts", "run_bounded.py"), "utf8")
+    assert.match(runner, /re\.fullmatch\(r"\[A-Za-z0-9_\]\{1,128\}", signature\)/)
+    assert.match(runner, /f"omarchy-protonvpn-\{signature\}\.lock"/)
+  })
+})
+
+describe("NetworkManager monitor", () => {
+  it("restarts with a capped backoff", () => {
+    assert.deepEqual([0, 1, 2, 5, 6, 20].map(Model.monitorRestartDelayMs), [1000, 2000, 4000, 32000, 60000, 60000])
+    assert.equal(Model.monitorRestartDelayMs("x"), 1000)
   })
 })
 

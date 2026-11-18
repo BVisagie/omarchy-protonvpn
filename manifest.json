@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.BVisagie.protonvpn",
   "name": "Proton VPN",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "author": "BVisagie",
   "license": "MIT",
   "homepage": "https://github.com/BVisagie/omarchy-protonvpn",
@@ -23,7 +23,11 @@
       "refreshIntervalSec": 30,
       "linkWatchIntervalSec": 4,
       "notifications": "drops",
-      "reconnectOnDrop": false
+      "reconnectOnDrop": false,
+      "rememberRecent": false,
+      "barLabel": "none",
+      "connectOnLogin": false,
+      "autoConnectWifi": false
     },
     "schema": [
       {
@@ -38,7 +42,7 @@
       {
         "key": "linkWatchIntervalSec",
         "type": "integer",
-        "label": "Live link check interval (seconds)",
+        "label": "Link check interval when NetworkManager events are unavailable (seconds)",
         "min": 2,
         "max": 60,
         "step": 1,
@@ -59,6 +63,36 @@
         "key": "reconnectOnDrop",
         "type": "boolean",
         "label": "Reconnect when the VPN drops",
+        "defaultValue": false
+      },
+      {
+        "key": "rememberRecent",
+        "type": "boolean",
+        "label": "Remember recent connections and the last target across restarts",
+        "defaultValue": false
+      },
+      {
+        "key": "barLabel",
+        "type": "enum",
+        "label": "Text beside the bar icon while connected",
+        "options": [
+          { "value": "none", "label": "None" },
+          { "value": "country", "label": "Country code" },
+          { "value": "server", "label": "Server" },
+          { "value": "city", "label": "City" }
+        ],
+        "defaultValue": "none"
+      },
+      {
+        "key": "connectOnLogin",
+        "type": "boolean",
+        "label": "Connect when you log in",
+        "defaultValue": false
+      },
+      {
+        "key": "autoConnectWifi",
+        "type": "boolean",
+        "label": "Connect on Wi-Fi networks you have not trusted",
         "defaultValue": false
       }
     ]
