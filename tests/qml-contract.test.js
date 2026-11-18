@@ -425,7 +425,13 @@ describe("QML scheduler contract", () => {
   })
 
   it("lets Esc dismiss a tooltip before it closes the panel", () => {
-    assert.match(panel, /if \(root\.openTips > 0 && !root\.tipsDismissed\) root\.tipsDismissed = true\n\s*else if \(root\.ksConfirmValue !== ""\) root\.cancelKillSwitch\(\)\n\s*else root\.close\(\)/)
+    assert.match(panel, /onCloseRequested: \{\n\s*if \(!root\.dismissTips\(\)\) \{\n\s*if \(root\.ksConfirmValue !== ""\) root\.cancelKillSwitch\(\)\n\s*else root\.close\(\)/)
+    assert.match(panel, /onActivateRequested: \{\n\s*root\.tipsDismissed = true/)
+    // Every tooltip is a counted SettingTip, so Esc never closes past one.
+    assert.deepEqual(panel.match(/\S+ PanelToolTip \{|^\s*PanelToolTip \{/gm), ["SettingTip: PanelToolTip {"])
+    assert.equal(panel.match(/^\s*tooltipText:/gm).length, 1, "only the bar widget sets tooltipText")
+    assert.match(panel, /Component\.onDestruction: root\.countTip\(tipPopup, false\)/)
+    assert.equal(panel.match(/Keys\.onEscapePressed: if \(!root\.dismissTips\(\)\) keyCatcher\.forceActiveFocus\(\)/g).length, 2)
     assert.match(panel, /visible: text !== "" && \(tipHovered \|\| tipCursor\) && !tipPopupOpen && !root\.tipsDismissed/)
     assert.match(panel, /onFocusSectionChanged: tipsDismissed = false/)
     assert.match(panel, /onTextKey: function\(t\) \{\n\s*root\.tipsDismissed = true/)

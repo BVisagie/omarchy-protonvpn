@@ -662,6 +662,20 @@ Panel {
     }
   }
 
+  // Hides the tooltips that are showing; false when none was.
+  function dismissTips() {
+    if (openTips === 0 || tipsDismissed) return false
+    tipsDismissed = true
+    return true
+  }
+
+  // A tooltip counts once while visible, and stops counting when destroyed.
+  function countTip(tip, on) {
+    if (tip.counted === on) return
+    tip.counted = on
+    openTips = Math.max(0, openTips + (on ? 1 : -1))
+  }
+
   function openPanel() {
     tipsDismissed = false
     openTips = 0
@@ -803,12 +817,16 @@ Panel {
         if (!root.cursorActive) { root.cursorActive = true; return }
         root.moveCursor(dx, dy)
       }
-      onActivateRequested: if (root.cursorActive) root.activateCursor()
+      onActivateRequested: {
+        root.tipsDismissed = true
+        if (root.cursorActive) root.activateCursor()
+      }
       // The first Esc hides a tooltip; the next one closes as before.
       onCloseRequested: {
-        if (root.openTips > 0 && !root.tipsDismissed) root.tipsDismissed = true
-        else if (root.ksConfirmValue !== "") root.cancelKillSwitch()
-        else root.close()
+        if (!root.dismissTips()) {
+          if (root.ksConfirmValue !== "") root.cancelKillSwitch()
+          else root.close()
+        }
       }
       onTabRequested: function(direction) { root.switchPanel(direction) }
       onTextKey: function(t) {
@@ -935,10 +953,9 @@ Panel {
                   onHovered: function(on) { if (on) header.focusHero() }
                   onToggled: root.tryToggle()
 
-                  PanelToolTip {
-                    visible: powerSwitch.containsMouse && !root.tipsDismissed
-                    onVisibleChanged: root.openTips = Math.max(0, root.openTips + (visible ? 1 : -1))
+                  SettingTip {
                     text: root.toggleHint
+                    tipHovered: powerSwitch.containsMouse
                     fontFamily: hero.fontFamily
                   }
                 }
@@ -1278,6 +1295,8 @@ Panel {
                     root.serverIdText = text
                   }
                   onAccepted: root.offerSwitch ? root.switchNow() : root.tryToggle()
+                  // Esc hides a tooltip, then hands the keys back to the panel.
+                  Keys.onEscapePressed: if (!root.dismissTips()) keyCatcher.forceActiveFocus()
 
                   SettingTip {
                     text: Model.connectFieldTooltip("server", root.loc)
@@ -1299,7 +1318,7 @@ Panel {
               wrapMode: Text.WordWrap
             }
 
-            Button {
+            TipButton {
               id: switchButton
               visible: root.showConnectButton
               width: parent.width
@@ -1308,14 +1327,14 @@ Panel {
               active: root.view.state !== Model.STATES.connected
               verticalPadding: Style.space(9)
               text: Model.connectButtonLabel(root.view.state, root.connectOptions(), vpn.countries, root.loc)
-              tooltipText: root.tipsDismissed ? "" : (root.view.state === Model.STATES.connected
+              section: "switch"
+              tip: root.view.state === Model.STATES.connected
                 ? root.tr("connect.switchTip", "Reconnect with these choices. Proton replaces the current connection.")
-                : root.tr("connect.connectTip", "Connect with these choices (t)"))
+                : root.tr("connect.connectTip", "Connect with these choices (t)")
               hasCursor: root.cursorActive && root.focusSection === "switch"
               foreground: root.foreground
               fontFamily: root.fontFamily
               onClicked: root.primaryConnect()
-              onHovered: function(on) { if (on) root.setFocusSection("switch") }
             }
           }
 
@@ -1535,6 +1554,8 @@ Panel {
                   onHoveredChanged: if (hovered) root.setFocusSection("dns")
                   onTextChanged: root.dnsText = text
                   onAccepted: root.applyDns()
+                  // Esc hides a tooltip, then hands the keys back to the panel.
+                  Keys.onEscapePressed: if (!root.dismissTips()) keyCatcher.forceActiveFocus()
                 }
               }
 
@@ -1598,49 +1619,49 @@ Panel {
                     }
                   }
 
-                  Button {
+                  TipButton {
                     visible: !root.signOutConfirm && root.cliInfo.installed !== ""
                     bordered: true
                     verticalPadding: Style.space(3)
                     text: vpn.cliChecking ? root.tr("cli.checking", "Checking…") : root.tr("cli.check", "Check")
-                    tooltipText: root.tipsDismissed ? "" : (vpn.cliCheckError !== "" ? vpn.cliCheckError + " " : "")
+                    section: "cli-check"
+                    tip: (vpn.cliCheckError !== "" ? vpn.cliCheckError + " " : "")
                       + (root.cliInfo.source !== "" ? root.tr("cli.latestFrom", "Latest from %1.").arg(root.cliInfo.source) + " " : "")
                       + root.tr("cli.checkTip", "Asks your Arch mirrors with checkupdates. Nothing else reaches the network.")
                     hasCursor: root.cursorActive && root.focusSection === "cli-check"
                     foreground: root.foreground
                     fontFamily: root.fontFamily
                     onClicked: vpn.checkCliUpdates()
-                    onHovered: function(on) { if (on) root.setFocusSection("cli-check") }
                   }
 
-                  Button {
+                  TipButton {
                     visible: !root.signOutConfirm && root.cliInfo.newer
                     bordered: true
                     verticalPadding: Style.space(3)
                     text: root.tr("cli.update", "Update")
-                    tooltipText: root.tipsDismissed ? "" : root.tr("cli.updateTip", "Opens Omarchy's system update in a terminal. It updates every package, the Proton VPN CLI included.")
+                    section: "cli-update"
+                    tip: root.tr("cli.updateTip", "Opens Omarchy's system update in a terminal. It updates every package, the Proton VPN CLI included.")
                     hasCursor: root.cursorActive && root.focusSection === "cli-update"
                     foreground: root.foreground
                     fontFamily: root.fontFamily
                     onClicked: vpn.updateSystem()
-                    onHovered: function(on) { if (on) root.setFocusSection("cli-update") }
                   }
 
                   // Quiet until the cursor reaches it, then red: it is the one
                   // destructive action here.
-                  Button {
+                  TipButton {
                     id: signOutRow
                     readonly property bool armed: root.cursorActive && root.focusSection === "signout"
                     visible: !root.signOutConfirm && root.signOutAvailable
                     bordered: armed
                     verticalPadding: Style.space(3)
                     text: root.tr("signout.title", "Sign out")
-                    tooltipText: root.tipsDismissed ? "" : root.tr("signout.tip", "Clears the CLI's settings; signing in again needs your password and 2FA. Favorites stay.")
+                    section: "signout"
+                    tip: root.tr("signout.tip", "Clears the CLI's settings; signing in again needs your password and 2FA. Favorites stay.")
                     hasCursor: armed
                     foreground: armed ? root.urgent : root.foreground
                     fontFamily: root.fontFamily
                     onClicked: root.askSignOut()
-                    onHovered: function(on) { if (on) root.setFocusSection("signout") }
                   }
 
                   Button {
@@ -1883,12 +1904,34 @@ Panel {
   }
 
   component SettingTip: PanelToolTip {
+    id: tipPopup
     property bool tipHovered: false
     property bool tipCursor: false
     property bool tipPopupOpen: false
+    property bool counted: false
     visible: text !== "" && (tipHovered || tipCursor) && !tipPopupOpen && !root.tipsDismissed
-    onVisibleChanged: root.openTips = Math.max(0, root.openTips + (visible ? 1 : -1))
+    onVisibleChanged: root.countTip(tipPopup, visible)
+    Component.onDestruction: root.countTip(tipPopup, false)
     fontFamily: root.fontFamily
+  }
+
+  // A Button whose tooltip the panel counts, so Esc can hide it; it shows
+  // under the pointer and under the keyboard cursor, as SettingTip does.
+  component TipButton: Button {
+    id: tipButton
+    property string tip: ""
+    property string section: ""
+    property bool mouseIn: false
+    onHovered: function(on) {
+      mouseIn = on
+      if (on) root.setFocusSection(section)
+    }
+
+    SettingTip {
+      text: tipButton.tip
+      tipHovered: tipButton.mouseIn
+      tipCursor: root.keyboardNavigation && root.cursorActive && root.focusSection === tipButton.section
+    }
   }
 
   // A SETTINGS row: label and an optional caption on the left, its control
