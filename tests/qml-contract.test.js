@@ -331,7 +331,7 @@ describe("QML scheduler contract", () => {
     assert.match(panel, /onClicked: root\.primaryConnect\(\)/)
     assert.match(panel, /if \(showConnectButton\) rows\.push\(\["switch"\]\)/)
     assert.match(panel, /focusSection === "switch"\) primaryConnect\(\)/)
-    assert.match(panel, /onAccepted: root\.offerSwitch \? root\.switchNow\(\) : root\.tryToggle\(\)/)
+    assert.match(panel, /onAccepted: \{\n\s*root\.tipsDismissed = true\n\s*root\.offerSwitch \? root\.switchNow\(\) : root\.tryToggle\(\)/)
     assert.doesNotMatch(panel, /function applyConnectDraft\(draft\) \{[^}]*connectDraftDirty/)
     assert.match(service, /activeTarget = target/)
     assert.match(service, /if \(state === Model\.STATES\.disconnected\) \{[\s\S]{0,300}activeTarget = null/)
@@ -432,7 +432,7 @@ describe("QML scheduler contract", () => {
     assert.equal(panel.match(/^\s*tooltipText:/gm).length, 1, "only the bar widget sets tooltipText")
     assert.match(panel, /Component\.onDestruction: root\.countTip\(tipPopup, false\)/)
     assert.equal(panel.match(/Keys\.onEscapePressed: if \(!root\.dismissTips\(\)\) keyCatcher\.forceActiveFocus\(\)/g).length, 2)
-    assert.match(panel, /visible: text !== "" && \(tipHovered \|\| tipCursor\) && !tipPopupOpen && !root\.tipsDismissed/)
+    assert.match(panel, /visible: text !== "" && \(tipHovered \|\| tipCursor\) && !tipPopupOpen && !root\.pickerOpen && !root\.tipsDismissed/)
     assert.match(panel, /onFocusSectionChanged: tipsDismissed = false/)
     assert.match(panel, /onTextKey: function\(t\) \{\n\s*root\.tipsDismissed = true/)
     // No tooltip hides on a timer while it is hovered or focused (WCAG 1.4.13).

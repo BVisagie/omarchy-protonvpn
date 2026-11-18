@@ -1294,7 +1294,10 @@ Panel {
                     if (text !== root.serverIdText) root.connectDraftDirty = true
                     root.serverIdText = text
                   }
-                  onAccepted: root.offerSwitch ? root.switchNow() : root.tryToggle()
+                  onAccepted: {
+                    root.tipsDismissed = true
+                    root.offerSwitch ? root.switchNow() : root.tryToggle()
+                  }
                   // Esc hides a tooltip, then hands the keys back to the panel.
                   Keys.onEscapePressed: if (!root.dismissTips()) keyCatcher.forceActiveFocus()
 
@@ -1553,7 +1556,10 @@ Panel {
                   hasCursor: root.cursorActive && root.focusSection === "dns" && !activeFocus
                   onHoveredChanged: if (hovered) root.setFocusSection("dns")
                   onTextChanged: root.dnsText = text
-                  onAccepted: root.applyDns()
+                  onAccepted: {
+                    root.tipsDismissed = true
+                    root.applyDns()
+                  }
                   // Esc hides a tooltip, then hands the keys back to the panel.
                   Keys.onEscapePressed: if (!root.dismissTips()) keyCatcher.forceActiveFocus()
                 }
@@ -1909,7 +1915,8 @@ Panel {
     property bool tipCursor: false
     property bool tipPopupOpen: false
     property bool counted: false
-    visible: text !== "" && (tipHovered || tipCursor) && !tipPopupOpen && !root.tipsDismissed
+    // An open dropdown takes Esc for itself, so no tooltip shows over one.
+    visible: text !== "" && (tipHovered || tipCursor) && !tipPopupOpen && !root.pickerOpen && !root.tipsDismissed
     onVisibleChanged: root.countTip(tipPopup, visible)
     Component.onDestruction: root.countTip(tipPopup, false)
     fontFamily: root.fontFamily
