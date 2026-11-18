@@ -290,7 +290,7 @@ The recorded parser fixtures target CLI versions 1.0.1 through 1.0.5. Versions o
 
 **"Nothing has come back through the tunnel."** The tunnel has sent data for 30 seconds without receiving any. The Proton server or the network under the VPN may be down. Reconnect, or switch servers. An idle tunnel never shows this, and the warning clears as soon as anything arrives.
 
-**Check says "check failed".** pacman's `checkupdates` could not reach your Arch mirrors; Check's tooltip has its message. Retry once the network is up. The installed and latest versions shown come from the local package database either way.
+**Check says "check failed".** pacman's `checkupdates` could not reach your Arch mirrors; Check's tooltip has its message. Retry once the network is up. The versions shown stay as they were: from the local package database, or from an earlier Check that worked.
 
 **Status looks outdated.** A failed or timed-out poll keeps the last good result and marks it stale. Connection and settings changes stay disabled until a fresh probe succeeds. Refresh after the network or Proton daemon recovers.
 
