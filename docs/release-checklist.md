@@ -6,8 +6,9 @@ resolve inside `omarchy-shell`. Before tagging a release, load it in a real bar.
 1. Run `./scripts/check.sh`. It must end with "All checks passed."
    Then run `./scripts/load-smoke.sh`, which loads the service and panel in a
    throwaway Quickshell instance and fails on QML errors. It runs only
-   read-only probes (Proton, NetworkManager, and with a tunnel up the routing
-   check, which can notify about a leak it finds).
+   read-only probes (Proton, NetworkManager, a `git status` of the checkout,
+   and with a tunnel up the routing check, which can notify about a leak it
+   finds).
 2. Install the branch over the plugin, for example by checking it out in
    `~/.config/omarchy/plugins/io.github.BVisagie.protonvpn/`. Saving there
    reloads the widget. Reloading the widget leaves an existing tunnel up.
@@ -17,6 +18,8 @@ resolve inside `omarchy-shell`. Before tagging a release, load it in a real bar.
    - the bar icon and tooltip for connected and disconnected;
    - the panel opens, the keyboard cursor moves through every row, and `Esc`
      closes it (with a tooltip showing, the first `Esc` hides the tooltip);
+   - the foot of the panel reads "Plugin <version> · <commit>", with
+     ", modified" after you change a tracked file;
    - SETTINGS folds open and closed, and every value matches
      `protonvpn config list`;
    - QUICK CONNECT lists favorites and recents by full name, and `f` stars a row;
@@ -32,4 +35,7 @@ resolve inside `omarchy-shell`. Before tagging a release, load it in a real bar.
 5. Switch Setup > Language to another language and back; the panel follows
    without a restart.
 6. Try a vertical bar (`omarchy bar position left`) and move it back.
-7. Bump `manifest.json`, `tests/manifest.test.js`, and `CHANGELOG.md` together.
+7. Every merge to `main` reaches installs, so any pull request that changes
+   shipped code bumps the version: `manifest.json`, `VERSION` in `Model.js`, and
+   `CHANGELOG.md` together. After merging, date the changelog entry, then tag
+   that commit `v<version>`.

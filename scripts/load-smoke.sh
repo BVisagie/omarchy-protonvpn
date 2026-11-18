@@ -2,8 +2,8 @@
 # Load Service.qml and Panel.qml in a throwaway Quickshell instance, outside
 # omarchy-shell, and fail on QML errors. It opens no window, and the service
 # runs only its read-only probes (which, protonvpn status/--help/config list,
-# countries list, nmcli, and with a tunnel up ip route get, resolvectl, and
-# busctl). It never connects, disconnects, or changes settings, but with a
+# countries list, nmcli, git status of this checkout, and with a tunnel up ip
+# route get, resolvectl, and busctl). It never connects, disconnects, or changes settings, but with a
 # tunnel up and a leak found it can send a real desktop notification.
 set -euo pipefail
 
@@ -29,7 +29,7 @@ ShellRoot {
     running: true
     onTriggered: {
       console.log("SMOKE state=" + svc.state + " link=" + svc.linkActive + " events=" + svc.linkEvents + " config=" + svc.configLoaded
-        + " panel=" + panel.view.state)
+        + " panel=" + panel.view.state + " build=" + JSON.stringify(svc.pluginBuild))
       Qt.quit()
     }
   }
@@ -41,6 +41,10 @@ grep -E "SMOKE|ERROR|TypeError|ReferenceError|is not a type|is not defined" <<<"
 grep -q 'SMOKE state=' <<<"$log" || { echo "load smoke: the harness never reported" >&2; exit 1; }
 if grep -Eq 'ERROR|TypeError|ReferenceError|is not a type|is not defined' <<<"$log"; then
   echo "load smoke: QML errors above" >&2
+  exit 1
+fi
+if [[ -e $root/.git ]] && grep -q 'build=null' <<<"$log"; then
+  echo "load smoke: the version line found no commit in this git checkout" >&2
   exit 1
 fi
 echo "load smoke: Service.qml and Panel.qml load"

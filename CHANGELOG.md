@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.0 — unreleased
+
+- Show which plugin code runs at the foot of the panel, in every state: "Plugin 1.6.0 · e991c06", with ", modified" after local edits. Every merge to `main` reaches installs and updates bring no tags, so the commit comes from the checkout itself, read once per load with `git status`. Outside a git checkout the line shows the version alone.
+- Move panel use, privacy, troubleshooting, and development notes from the README into `docs/`, so the README covers what the plugin does and how to install it.
+- Stop shipping `AGENTS.md` and `CLAUDE.md`, the local instructions for the coding agents used to develop the plugin.
+
 ## 1.5.0 — 2026-11-18
 
 - Check that IPv4, IPv6, and DNS really go through the tunnel while connected, from local routing and systemd-resolved state only: `ip route get` looks a route up without sending anything, and `resolvectl status` says where lookups go. When a Tailscale exit node, another VPN, or another DNS server takes some of it, the panel says which device or server, the icon warns, the tooltip says so, and a notification arrives while the panel is closed. A finding shows only once a second check five seconds later agrees. Proton's Kill Switch and IPv6 leak protection count as blocked, not leaked. `statusJson` gains `routing` and `leaks`.

@@ -1,4 +1,6 @@
 var PLUGIN_ID = "io.github.BVisagie.protonvpn"
+// tests/manifest.test.js keeps this equal to manifest.json's version.
+var VERSION = "1.6.0"
 var CLI_PACKAGE = "proton-vpn-cli"
 var MIN_TESTED_CLI_VERSION = "1.0.1"
 var MAX_TESTED_CLI_VERSION = "1.0.5"
@@ -2128,6 +2130,36 @@ var PROTON_BLOCK_DEVICE = /^(?:pvpnksintrf|pvpnrouteintrf|ipv6leakintrf)\d+$/
 // moments while NetworkManager applies a new connection never flash.
 var ROUTING_CONFIRM_MS = 5000
 
+// Every merge to main reaches installs, so the version alone cannot say which
+// code runs. Updates fetch no tags, so the commit stands in for them. An
+// explicit --git-dir never finds a repository above a plugin that is not one.
+// `status` with --no-optional-locks never writes the index; `describe --dirty`
+// does. A user's core.fsmonitor would start a resident daemon in the checkout.
+function pluginBuildCommand(dir) {
+  return ["/usr/bin/git", "-c", "core.fsmonitor=false", "--no-optional-locks", "--git-dir=" + dir + "/.git", "--work-tree=" + dir,
+    "status", "--porcelain=v2", "--branch"]
+}
+
+// The commit from "# branch.oid", modified when any line is a change rather
+// than a "#" header; null without a commit.
+function parsePluginBuild(text) {
+  var lines = String(text || "").split("\n").filter(function(line) { return line !== "" })
+  var commit = ""
+  var modified = false
+  for (var i = 0; i < lines.length; i++) {
+    var oid = /^# branch\.oid ([0-9a-f]{40,64})$/.exec(lines[i])
+    if (oid) commit = oid[1].substring(0, 7)
+    else if (lines[i].charAt(0) !== "#") modified = true
+  }
+  return commit !== "" ? { commit: commit, modified: modified } : null
+}
+
+function pluginVersionText(build, loc) {
+  if (!build) return fill(say(loc, "plugin.version", "Plugin %1"), VERSION)
+  if (build.modified) return fill(say(loc, "plugin.versionModified", "Plugin %1 · %2, modified"), VERSION, build.commit)
+  return fill(say(loc, "plugin.versionCommit", "Plugin %1 · %2"), VERSION, build.commit)
+}
+
 function routingCommands() {
   return {
     ipv4: ["/usr/bin/ip", "-j", "route", "get", ROUTE_PROBE_V4],
@@ -2337,6 +2369,10 @@ function trafficText(traffic, loc) {
 
 if (typeof module !== "undefined") {
   module.exports = {
+    VERSION: VERSION,
+    pluginBuildCommand: pluginBuildCommand,
+    parsePluginBuild: parsePluginBuild,
+    pluginVersionText: pluginVersionText,
     configListComplete: configListComplete,
     isTunnelDevice: isTunnelDevice,
     NOTIFICATION_MODES: NOTIFICATION_MODES,

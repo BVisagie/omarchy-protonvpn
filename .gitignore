@@ -4,3 +4,6 @@ __pycache__/
 # contains a symlink, and every committed file ships to each user.
 .agents/
 .claude/
+# Agent instructions are a local workflow recipe, not part of the plugin.
+/AGENTS.md
+/CLAUDE.md
