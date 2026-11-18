@@ -199,6 +199,7 @@
   "server.empty": "Enter a Proton VPN server ID such as IT#23.",
   "server.invalid": "Server IDs look like IT#23 or CH-IS#1. Proton lists them in the account server list.",
   "setting.anonymous-crash-reports.label": "Anonymous Crash Reports",
+  "setting.anonymous-crash-reports.shortLabel": "Crash Reports",
   "setting.anonymous-crash-reports.tooltip": "Sends anonymous crash reports to help Proton fix bugs.",
   "setting.custom-dns.label": "Custom DNS",
   "setting.custom-dns.tooltip": "Third-party DNS instead of Proton's. Needs a new connection.",

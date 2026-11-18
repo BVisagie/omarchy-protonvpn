@@ -306,7 +306,7 @@ describe("QML scheduler contract", () => {
     assert.doesNotMatch(connectGrid[0], /SettingHelp/)
     assert.doesNotMatch(panel, /SettingHelp/)
     assert.match(panel, /title: Model\.settingLabel\("netshield", root\.loc\)[\s\S]{0,600}id: netshieldDropdown/)
-    assert.match(panel, /title: key !== "" \? Model\.settingLabel\(key, root\.loc\) : ""/)
+    assert.match(panel, /title: key !== "" \? Model\.settingShortLabel\(key, root\.loc\) : ""/)
     assert.equal(require("../Model.js").settingLabel("kill-switch"), "Kill Switch")
   })
 

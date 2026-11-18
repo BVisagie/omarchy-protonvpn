@@ -26,6 +26,7 @@ function tableStrings(Model) {
   for (const def of Model.CONNECT_FIELDS) out.push([`field.${def.key}.tooltip`, def.tooltip])
   for (const def of Model.CONFIG_SETTINGS) {
     out.push([`setting.${def.key}.label`, def.label], [`setting.${def.key}.tooltip`, def.tooltip])
+    if (def.shortLabel) out.push([`setting.${def.key}.shortLabel`, def.shortLabel])
     for (const value of Object.keys(def.valueLabels || {})) out.push([`setting.${def.key}.value.${value}`, def.valueLabels[value]])
     for (const value of Object.keys(def.valueDescriptions || {})) out.push([`setting.${def.key}.valueDescription.${value}`, def.valueDescriptions[value]])
   }

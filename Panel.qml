@@ -1991,7 +1991,7 @@ Panel {
     id: cell
     property string key: ""
     section: key !== "" ? "config:" + key : ""
-    title: key !== "" ? Model.settingLabel(key, root.loc) : ""
+    title: key !== "" ? Model.settingShortLabel(key, root.loc) : ""
     tip: key !== "" ? root.settingTip(key) : ""
     onActivated: root.activateConfig(key)
 

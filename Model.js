@@ -254,6 +254,8 @@ var CONFIG_SETTINGS = [
   {
     key: "anonymous-crash-reports",
     label: "Anonymous Crash Reports",
+    // A switch cell is half the panel; the tooltip says "anonymous".
+    shortLabel: "Crash Reports",
     type: "toggle",
     values: ["off", "on"],
     help: "Sends anonymous crash reports to Proton VPN to help them fix bugs and improve the software.",
@@ -1048,6 +1050,12 @@ function connectFieldTooltip(key, loc) {
 function settingLabel(key, loc) {
   var def = settingDef(key)
   return def ? tableText(loc, "setting", key, "label", def.label) : String(key || "")
+}
+
+// The name in a half-width switch cell.
+function settingShortLabel(key, loc) {
+  var def = settingDef(key)
+  return def && def.shortLabel ? tableText(loc, "setting", key, "shortLabel", def.shortLabel) : settingLabel(key, loc)
 }
 
 // Dropdown options for a choice setting, in the order Proton lists them.
@@ -2160,6 +2168,7 @@ if (typeof module !== "undefined") {
     fill: fill,
     modeLabel: modeLabel,
     settingLabel: settingLabel,
+    settingShortLabel: settingShortLabel,
     settingChoiceOptions: settingChoiceOptions,
     portForwardingNotice: portForwardingNotice,
     isFreePlan: isFreePlan,

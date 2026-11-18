@@ -791,6 +791,9 @@ describe("free plan", () => {
     const loc = { tr: (key, english) => "[" + key + "]", num: (value) => "n" + value }
     assert.equal(Model.modeLabel("country", loc), "[mode.country.label]")
     assert.equal(Model.settingLabel("kill-switch", loc), "[setting.kill-switch.label]")
+    assert.equal(Model.settingShortLabel("anonymous-crash-reports", loc), "[setting.anonymous-crash-reports.shortLabel]")
+    assert.equal(Model.settingShortLabel("anonymous-crash-reports"), "Crash Reports")
+    assert.equal(Model.settingShortLabel("kill-switch"), "Kill Switch")
     assert.equal(Model.configValueLabel("netshield", "malware-only", loc), "[setting.netshield.value.malware-only]")
     assert.equal(Model.settingChoiceOptions("kill-switch", loc)[1].description, "[setting.kill-switch.valueDescription.standard]")
     assert.equal(Model.displayLoad(23.4, loc), "n23%")
