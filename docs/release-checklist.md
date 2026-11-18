@@ -36,5 +36,5 @@ resolve inside `omarchy-shell`. Before tagging a release, load it in a real bar.
 6. Try a vertical bar (`omarchy bar position left`) and move it back.
 7. Every merge to `main` reaches installs, so any pull request that changes
    shipped code bumps the version: `manifest.json`, `VERSION` in `Model.js`, and
-   `CHANGELOG.md` together. After merging, tag the commit `v<version>` and date
-   its changelog entry.
+   `CHANGELOG.md` together. After merging, date the changelog entry, then tag
+   that commit `v<version>`.

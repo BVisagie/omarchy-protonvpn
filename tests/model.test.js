@@ -1369,7 +1369,7 @@ describe("plugin version line", () => {
   })
 
   it("asks git about the plugin's own checkout only", () => {
-    assert.deepEqual(Model.pluginBuildCommand("/p"), ["/usr/bin/git", "--no-optional-locks", "--git-dir=/p/.git",
+    assert.deepEqual(Model.pluginBuildCommand("/p"), ["/usr/bin/git", "-c", "core.fsmonitor=false", "--no-optional-locks", "--git-dir=/p/.git",
       "--work-tree=/p", "status", "--porcelain=v2", "--branch"])
   })
 })

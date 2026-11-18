@@ -100,7 +100,7 @@ This removes the plugin from Omarchy. It does not uninstall `proton-vpn-cli` or 
 
 ## Privacy
 
-The plugin runs a fixed set of local commands, never through a shell and never as root, and it never handles your Proton credentials. Its only network request of its own is **Check** in SETTINGS, which asks your Arch mirrors when you press it. Favorites, and recent places with `rememberRecent` on, are saved in this widget's entry in `~/.config/omarchy/shell.json`.
+The plugin runs a fixed set of local commands, never builds a shell command from your input, never runs anything as root, and never handles your Proton credentials. Its only network request of its own is **Check** in SETTINGS, which asks your Arch mirrors when you press it. Favorites, and recent places with `rememberRecent` on, are saved in this widget's entry in `~/.config/omarchy/shell.json`.
 
 Omarchy plugins run unsandboxed inside the long-lived `omarchy-shell` process with your user privileges. Review the code before enabling it. [docs/privacy.md](docs/privacy.md) lists everything the plugin reads, stores, and runs.
 

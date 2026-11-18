@@ -21,7 +21,7 @@ Omarchy plugins run unsandboxed inside the long-lived `omarchy-shell` process wi
 Supervised by `scripts/run_bounded.py`, which caps output, enforces a deadline, and cleans up the process group. `protonvpn` runs also take the lock above:
 
 - `/usr/bin/which protonvpn` to find the CLI
-- `/usr/bin/git --no-optional-locks --git-dir=<plugin>/.git --work-tree=<plugin> status --porcelain=v2 --branch`, once when the plugin loads, a local read of the commit the plugin runs from, and whether its files changed, for the version line; it writes nothing and fails quietly outside a git checkout
+- `/usr/bin/git -c core.fsmonitor=false --no-optional-locks --git-dir=<plugin>/.git --work-tree=<plugin> status --porcelain=v2 --branch`, once when the plugin loads, a local read of the commit the plugin runs from, and whether its files changed, for the version line; it writes nothing and fails quietly outside a git checkout
 - `protonvpn` subcommands: `--help`, `status`, `connect`, `disconnect`, `countries list`, `cities list`, `config list`, `config set`, and `signout`
 - `/usr/bin/nmcli -t -e no -f NAME,TYPE,DEVICE,STATE,TIMESTAMP connection show --active`
 - `/usr/bin/pacman -Q proton-vpn-cli`, `/usr/bin/pacman -Sddp --print-format "%n %r %v" proton-vpn-cli`, and `/usr/bin/stat -c %Y /var/lib/pacman/sync/<repo>.db`, local reads of the installed and latest known CLI version, at most once a minute when the panel opens

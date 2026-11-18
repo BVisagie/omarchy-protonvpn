@@ -2133,9 +2133,10 @@ var ROUTING_CONFIRM_MS = 5000
 // Every merge to main reaches installs, so the version alone cannot say which
 // code runs. Updates fetch no tags, so the commit stands in for them. An
 // explicit --git-dir never finds a repository above a plugin that is not one.
-// `status` with --no-optional-locks never writes the index; `describe --dirty` does.
+// `status` with --no-optional-locks never writes the index; `describe --dirty`
+// does. A user's core.fsmonitor would start a resident daemon in the checkout.
 function pluginBuildCommand(dir) {
-  return ["/usr/bin/git", "--no-optional-locks", "--git-dir=" + dir + "/.git", "--work-tree=" + dir,
+  return ["/usr/bin/git", "-c", "core.fsmonitor=false", "--no-optional-locks", "--git-dir=" + dir + "/.git", "--work-tree=" + dir,
     "status", "--porcelain=v2", "--branch"]
 }
 
