@@ -12,6 +12,11 @@
     "family": 10,
     "port": 53
    }
+  ],
+  "scopes": [
+   {
+    "protocol": "dns"
+   }
   ]
  },
  {
@@ -22,12 +27,14 @@
    {
     "addressString": "100.100.100.100",
     "family": 2,
-    "port": 53
+    "port": 53,
+    "ifindex": 3
    },
    {
     "addressString": "fd7a:115c:a1e0::53",
     "family": 10,
-    "port": 53
+    "port": 53,
+    "ifindex": 3
    }
   ],
   "searchDomains": [
@@ -43,6 +50,11 @@
     "name": "ts.net",
     "routeOnly": true
    }
+  ],
+  "scopes": [
+   {
+    "protocol": "dns"
+   }
   ]
  },
  {
@@ -53,18 +65,25 @@
    {
     "addressString": "192.168.1.203",
     "family": 2,
-    "port": 53
+    "port": 53,
+    "ifindex": 2
    },
    {
     "addressString": "2001:db8:1:0:1",
     "family": 10,
-    "port": 53
+    "port": 53,
+    "ifindex": 2
    }
   ],
   "searchDomains": [
    {
     "name": "home",
     "routeOnly": false
+   }
+  ],
+  "scopes": [
+   {
+    "protocol": "dns"
    }
   ]
  },
@@ -76,18 +95,25 @@
    {
     "addressString": "192.168.1.203",
     "family": 2,
-    "port": 53
+    "port": 53,
+    "ifindex": 4
    },
    {
     "addressString": "2001:db8:1:0:1",
     "family": 10,
-    "port": 53
+    "port": 53,
+    "ifindex": 4
    }
   ],
   "searchDomains": [
    {
     "name": "home",
     "routeOnly": false
+   }
+  ],
+  "scopes": [
+   {
+    "protocol": "dns"
    }
   ]
  }

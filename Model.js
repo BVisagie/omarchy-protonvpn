@@ -2183,13 +2183,19 @@ function serverText(server) {
 // systemd-resolved sends a lookup for an ordinary name to the scopes with a
 // "." routing domain when any has one, otherwise to every link with
 // DefaultRoute plus the global servers. Domain-only routes (a tailnet, the
-// LAN's search domain) never take ordinary names. Proton's blocking devices
-// list placeholder servers, so they never count.
+// LAN's search domain) never take ordinary names, and neither does a link
+// without an active DNS scope. Proton's blocking devices list placeholder
+// servers, so they never count.
+function hasDnsScope(entry) {
+  return Array.isArray(entry.scopes) && entry.scopes.some(function(s) { return s && s.protocol === "dns" })
+}
+
 function dnsVerdict(result, tunnelDevice) {
   var entries = result && result.exitCode === 0 && result.timedOut !== true ? parseJson(result.stdout) : null
-  if (!entries || !entries.length) return { status: "unknown", device: "", server: "" }
+  if (!Array.isArray(entries) || entries.length === 0) return { status: "unknown", device: "", server: "" }
   var global = null
   var scopes = []
+  var deviceByIndex = {}
   for (var i = 0; i < entries.length; i++) {
     var e = entries[i] || {}
     if (e.ifname === undefined) {
@@ -2197,13 +2203,19 @@ function dnsVerdict(result, tunnelDevice) {
       continue
     }
     var name = String(e.ifname || "")
-    if (PROTON_BLOCK_DEVICE.test(name) || !e.servers || e.servers.length === 0) continue
+    deviceByIndex[e.ifindex] = name
+    if (PROTON_BLOCK_DEVICE.test(name) || !hasDnsScope(e) || !e.servers || e.servers.length === 0) continue
     scopes.push({ device: name, global: false, defaultRoute: e.defaultRoute === true, domains: e.searchDomains || [], server: serverText(e.servers[0]) })
   }
-  // Only the stub mode sends every program's lookups through resolved.
-  if (!global || global.resolvConfMode !== "stub") return { status: "unknown", device: "", server: "" }
+  // Both modes point /etc/resolv.conf at resolved's stub, so every program's
+  // lookups pass through it.
+  if (!global || (global.resolvConfMode !== "stub" && global.resolvConfMode !== "static")) return { status: "unknown", device: "", server: "" }
   if (global.servers && global.servers.length > 0) {
-    scopes.push({ device: "", global: true, defaultRoute: true, domains: global.searchDomains || [], server: serverText(global.servers[0]) })
+    // A global server bound to a link (DNS=10.2.0.1%proton0) goes out on that link.
+    global.servers.forEach(function(s) {
+      var bound = s && s.ifindex !== undefined ? String(deviceByIndex[s.ifindex] || "") : ""
+      scopes.push({ device: bound, global: bound === "", defaultRoute: true, domains: global.searchDomains || [], server: serverText(s) })
+    })
   }
   var rooted = scopes.filter(function(s) {
     return s.domains.some(function(d) { return d && d.name === "." })

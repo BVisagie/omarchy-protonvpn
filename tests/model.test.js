@@ -998,7 +998,7 @@ describe("tunnel routing check", () => {
   it("follows resolved: a tunnel with ~. takes every ordinary lookup", () => {
     const entries = resolved("resolved-connected.json")
     // A LAN link that keeps DefaultRoute gets no ordinary lookups while proton0 has ~.
-    Object.assign(link(entries, "enp0s1"), { defaultRoute: true, servers: [{ addressString: "192.168.1.203" }], searchDomains: [{ name: "home", routeOnly: false }] })
+    Object.assign(link(entries, "enp0s1"), { defaultRoute: true, servers: [{ addressString: "192.168.1.203" }], searchDomains: [{ name: "home", routeOnly: false }], scopes: [{ protocol: "dns" }] })
     assert.equal(dnsOf(entries).status, "ok")
     // Global servers without ~. get none either.
     entries[0].servers = [{ addressString: "9.9.9.9" }]
@@ -1023,16 +1023,36 @@ describe("tunnel routing check", () => {
 
   it("ignores Proton's placeholder DNS and domain-only routes", () => {
     const entries = resolved("resolved-connected.json")
-    Object.assign(link(entries, "pvpnksintrf0"), { defaultRoute: true, servers: [{ addressString: "0.0.0.0" }, { addressString: "::1" }] })
+    Object.assign(link(entries, "pvpnksintrf0"), { defaultRoute: true, servers: [{ addressString: "0.0.0.0" }, { addressString: "::1" }], scopes: [{ protocol: "dns" }] })
     assert.equal(dnsOf(entries).status, "ok")
     // The tailnet keeps its own names in every fixture without warning.
     assert.equal(link(entries, "tailscale0").searchDomains.some((d) => d.name === "."), false)
   })
 
+  it("skips links without an active DNS scope", () => {
+    const entries = resolved("resolved-connected.json")
+    // Kept settings on a link that is down: servers and ~. but no scope.
+    Object.assign(link(entries, "wlan0"), { defaultRoute: true, servers: [{ addressString: "192.168.1.1" }], searchDomains: [{ name: ".", routeOnly: true }] })
+    assert.equal(dnsOf(entries).status, "ok")
+    link(entries, "wlan0").scopes = [{ protocol: "dns" }]
+    assert.equal(dnsOf(entries).status, "leak")
+  })
+
+  it("follows a global server bound to a link", () => {
+    const entries = resolved("resolved-connected.json")
+    Object.assign(entries[0], { servers: [{ addressString: "10.2.0.1", ifindex: 6 }], searchDomains: [{ name: ".", routeOnly: true }] })
+    assert.equal(dnsOf(entries).status, "ok")
+    entries[0].servers = [{ addressString: "192.168.1.1", ifindex: 2 }]
+    assert.deepEqual(dnsOf(entries), { status: "leak", device: "enp0s1", server: "192.168.1.1", global: false })
+  })
+
   it("cannot judge DNS when resolved does not see every lookup", () => {
     const entries = resolved("resolved-connected.json")
+    entries[0].resolvConfMode = "static"
+    assert.equal(dnsOf(entries).status, "ok")
     entries[0].resolvConfMode = "foreign"
     assert.equal(dnsOf(entries).status, "unknown")
+    assert.equal(Model.dnsVerdict(ok('{"length":1}'), "proton0").status, "unknown")
     assert.equal(Model.dnsVerdict({ exitCode: 1, stdout: "", timedOut: false }, "proton0").status, "unknown")
     assert.equal(Model.dnsVerdict(ok("[]"), "proton0").status, "unknown")
     const none = resolved("resolved-connected.json")
