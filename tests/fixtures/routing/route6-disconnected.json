@@ -1,0 +1,1 @@
+[{"dst":"2606:4700:4700::1111","from":"::","gateway":"fe80::1","dev":"enp0s1","protocol":"ra","prefsrc":"2001:db8:1:0:0:0:0:19","metric":100,"flags":[],"pref":"high"}]

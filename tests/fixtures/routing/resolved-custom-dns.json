@@ -1,0 +1,86 @@
+[
+ {
+  "resolvConfMode": "stub",
+  "fallbackServers": [
+   {
+    "addressString": "9.9.9.9",
+    "family": 2,
+    "port": 53
+   },
+   {
+    "addressString": "2620:fe::9",
+    "family": 10,
+    "port": 53
+   }
+  ]
+ },
+ {
+  "ifname": "tailscale0",
+  "ifindex": 3,
+  "defaultRoute": false,
+  "servers": [
+   {
+    "addressString": "100.100.100.100",
+    "family": 2,
+    "port": 53
+   },
+   {
+    "addressString": "fd7a:115c:a1e0::53",
+    "family": 10,
+    "port": 53
+   }
+  ],
+  "searchDomains": [
+   {
+    "name": "example-tailnet.ts.net",
+    "routeOnly": false
+   },
+   {
+    "name": "0.e.1.a.c.5.1.1.a.7.d.f.ip6.arpa",
+    "routeOnly": true
+   },
+   {
+    "name": "ts.net",
+    "routeOnly": true
+   }
+  ]
+ },
+ {
+  "ifname": "pvpnksintrf0",
+  "ifindex": 5,
+  "defaultRoute": false
+ },
+ {
+  "ifname": "proton0",
+  "ifindex": 7,
+  "defaultRoute": true,
+  "servers": [
+   {
+    "addressString": "1.1.1.1",
+    "family": 2,
+    "port": 53
+   },
+   {
+    "addressString": "2a07:b944::2:1",
+    "family": 10,
+    "port": 53
+   }
+  ],
+  "searchDomains": [
+   {
+    "name": ".",
+    "routeOnly": true
+   }
+  ]
+ },
+ {
+  "ifname": "enp0s1",
+  "ifindex": 2,
+  "defaultRoute": false
+ },
+ {
+  "ifname": "wlan0",
+  "ifindex": 4,
+  "defaultRoute": false
+ }
+]
