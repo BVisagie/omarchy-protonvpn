@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.0 — unreleased
+
+- Check that IPv4, IPv6, and DNS really go through the tunnel while connected, from local routing and systemd-resolved state only: `ip route get` looks a route up without sending anything, and `resolvectl status` says where lookups go. When a Tailscale exit node, another VPN, or another DNS server takes some of it, the panel says which device or server, the icon warns, the tooltip says so, and a notification arrives while the panel is closed. A finding shows only once a second check five seconds later agrees. Proton's Kill Switch and IPv6 leak protection count as blocked, not leaked. `statusJson` gains `routing` and `leaks`.
+
 ## 1.4.0 — 2026-11-18
 
 - Rework the panel's layout. SETTINGS folds behind one row (`s`), so the panel opens on status and CONNECT. CONNECT puts Mode on its own row and the place on the row below, never more than two fields, with plain country and city names. A button under it names where it connects ("Connect to Santo Domingo · Dominican Republic", or "Switch to …" while connected). Refresh is an icon beside the switch, and status reads as one style, one line per topic. SETTINGS is borderless rows: NetShield, then the switches in two columns, then the CLI on one footer line; Kill Switch is a switch, captions live in tooltips, and labels are quiet so values stand out. The open panel fits without scrolling in all but its fullest states.
