@@ -203,6 +203,9 @@ Item {
   readonly property bool canToggle: Model.canWrite(state) && !actionRunning && (ksStep === "idle" || _ksInternal)
   readonly property bool canChangeSettings: canToggle
   readonly property string runnerPath: decodeURIComponent(Qt.resolvedUrl("scripts/run_bounded.py").toString().replace(/^file:\/\//, ""))
+  readonly property string pluginDir: decodeURIComponent(Qt.resolvedUrl(".").toString().replace(/^file:\/\//, "")).replace(/\/$/, "")
+  // The commit this plugin runs from, or null outside a git checkout.
+  property var pluginBuild: null
 
   property var _queueState: Scheduler.emptyQueue()
   property var _currentJob: null
@@ -1317,6 +1320,13 @@ Item {
     if (!processBusy) refresh()
   }
 
+  // Once per load: an update changes the files, which reloads the service.
+  function readPluginBuild() {
+    if (!active || pluginBuild !== null || buildProcess.running) return
+    buildProcess.command = boundedCommand(Model.pluginBuildCommand(pluginDir), 5000)
+    buildProcess.running = true
+  }
+
   function runPackageStep(step, command, timeoutMs) {
     _pkgStep = step
     packageProcess.command = boundedCommand(command, timeoutMs)
@@ -1475,6 +1485,7 @@ Item {
   onActiveChanged: {
     if (active) {
       refresh()
+      readPluginBuild()
       startLinkMonitor()
     } else {
       linkMonitor.running = false
@@ -1487,6 +1498,7 @@ Item {
     _loginConnectPending = !_shellReloaded
     _startedMs = Date.now()
     _started = true
+    readPluginBuild()
     if (active) refresh()
   }
 
@@ -1656,6 +1668,19 @@ Item {
     }
     onExited: function(exitCode) {
       root.handleRoutingStep({ exitCode: exitCode, stdout: String(routingStdout.text || ""), timedOut: exitCode === 124 })
+    }
+  }
+
+  Process {
+    id: buildProcess
+    running: false
+    command: []
+    stdout: StdioCollector {
+      id: buildStdout
+      waitForEnd: true
+    }
+    onExited: function(exitCode) {
+      if (exitCode === 0) root.pluginBuild = Model.parsePluginBuild(buildStdout.text)
     }
   }
 

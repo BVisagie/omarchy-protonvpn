@@ -1349,3 +1349,25 @@ describe("live traffic", () => {
     assert.equal(Model.isTunnelDevice(""), false)
   })
 })
+
+describe("plugin version line", () => {
+  it("reads the commit, and local edits, from git describe", () => {
+    assert.deepEqual(Model.parsePluginBuild("e991c06\n"), { commit: "e991c06", modified: false })
+    assert.deepEqual(Model.parsePluginBuild("e991c06-dirty\n"), { commit: "e991c06", modified: true })
+    for (const bad of ["", "v1.6.0", "fatal: not a git repository", "e991c06-dirty extra", null]) {
+      assert.equal(Model.parsePluginBuild(bad), null)
+    }
+  })
+
+  it("shows the version, with the commit when there is one", () => {
+    const v = Model.VERSION
+    assert.equal(Model.pluginVersionText(null), `Plugin ${v}`)
+    assert.equal(Model.pluginVersionText({ commit: "e991c06", modified: false }), `Plugin ${v} · e991c06`)
+    assert.equal(Model.pluginVersionText({ commit: "e991c06", modified: true }), `Plugin ${v} · e991c06, modified`)
+  })
+
+  it("asks git about the plugin's own checkout only", () => {
+    assert.deepEqual(Model.pluginBuildCommand("/p"), ["/usr/bin/git", "--no-optional-locks", "--git-dir=/p/.git",
+      "--work-tree=/p", "describe", "--always", "--dirty", "--exclude=*"])
+  })
+})

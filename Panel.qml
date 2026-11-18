@@ -1712,6 +1712,19 @@ Panel {
               }
             }
           }
+
+          // Which plugin code runs, for bug reports; shown in every state.
+          Text {
+            width: parent.width
+            rightPadding: Style.spacing.controlPaddingX
+            horizontalAlignment: Text.AlignRight
+            textFormat: Text.PlainText
+            elide: Text.ElideLeft
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            color: root.dim
+            text: Model.pluginVersionText(vpn.pluginBuild, root.loc)
+          }
         }
       }
     }
