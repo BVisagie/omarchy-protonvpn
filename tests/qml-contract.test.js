@@ -424,6 +424,15 @@ describe("QML scheduler contract", () => {
     }
   })
 
+  it("lets Esc dismiss a tooltip before it closes the panel", () => {
+    assert.match(panel, /if \(root\.openTips > 0 && !root\.tipsDismissed\) root\.tipsDismissed = true\n\s*else if \(root\.ksConfirmValue !== ""\) root\.cancelKillSwitch\(\)\n\s*else root\.close\(\)/)
+    assert.match(panel, /visible: text !== "" && \(tipHovered \|\| tipCursor\) && !tipPopupOpen && !root\.tipsDismissed/)
+    assert.match(panel, /onFocusSectionChanged: tipsDismissed = false/)
+    assert.match(panel, /onTextKey: function\(t\) \{\n\s*root\.tipsDismissed = true/)
+    // No tooltip hides on a timer while it is hovered or focused (WCAG 1.4.13).
+    assert.doesNotMatch(panel, /\btimeout: \d/)
+  })
+
   it("folds SETTINGS away until asked for", () => {
     assert.match(panel, /property bool settingsOpen: false/)
     assert.match(panel, /rows\.push\(\["settings"\]\)\n\s*if \(settingsOpen && vpn\.configLoaded\) \{/)

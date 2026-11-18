@@ -3,6 +3,7 @@
 ## 1.4.0 — 2026-11-17
 
 - Rework the panel's layout. SETTINGS folds behind one row (`s`), so the panel opens on status and CONNECT. CONNECT puts Mode on its own row and the place on the row below, never more than two fields, with plain country and city names. A button under it names where it connects ("Connect to Santo Domingo · Dominican Republic", or "Switch to …" while connected). Refresh is an icon beside the switch, and status reads as one style, one line per topic. SETTINGS is borderless rows: NetShield, then the switches in two columns, then the CLI on one footer line; Kill Switch is a switch, captions live in tooltips, and labels are quiet so values stand out. The open panel fits without scrolling in all but its fullest states.
+- Tooltips stay while you hover or rest the cursor on a control, and `Esc` now hides one before it closes the panel; the action keys hide it too.
 - Show the installed Proton VPN CLI version and the latest your package database knows. **Check** asks your Arch mirrors through `checkupdates`, only when you press it, and **Update** opens Omarchy's system update.
 - Replace RECENT with **QUICK CONNECT**: the current connection, starred favorites, and recent places, by full name. A star, or `f`, keeps a place as a favorite in the widget's `shell.json` entry. A new `rememberRecent` setting also saves recent places there and starts CONNECT on the last one.
 - Show how long you have been connected, what protects the connection (Kill Switch, NetShield, Secure Core), and protocols by their proper names.

@@ -45,6 +45,12 @@ Panel {
   property var countedVpn: null
   // Kill Switch value awaiting confirmation while connected; "" when none.
   property string ksConfirmValue: ""
+  // Esc, or any action key, hides the tooltip that is showing; moving the
+  // cursor or the pointer to another control shows its own again.
+  property bool tipsDismissed: false
+  property int openTips: 0
+  onFocusSectionChanged: tipsDismissed = false
+
   // Sign-out waits for a second, explicit choice.
   property bool signOutConfirm: false
   // SETTINGS starts folded so the panel opens on status and CONNECT.
@@ -657,6 +663,8 @@ Panel {
   }
 
   function openPanel() {
+    tipsDismissed = false
+    openTips = 0
     cursorActive = false
     keyboardNavigation = false
     if (panelFlick) panelFlick.contentY = 0
@@ -796,9 +804,15 @@ Panel {
         root.moveCursor(dx, dy)
       }
       onActivateRequested: if (root.cursorActive) root.activateCursor()
-      onCloseRequested: root.ksConfirmValue !== "" ? root.cancelKillSwitch() : root.close()
+      // The first Esc hides a tooltip; the next one closes as before.
+      onCloseRequested: {
+        if (root.openTips > 0 && !root.tipsDismissed) root.tipsDismissed = true
+        else if (root.ksConfirmValue !== "") root.cancelKillSwitch()
+        else root.close()
+      }
       onTabRequested: function(direction) { root.switchPanel(direction) }
       onTextKey: function(t) {
+        root.tipsDismissed = true
         if (t === "r" || t === "R") root.refreshAll()
         else if (t === "t" || t === "T") root.tryToggle()
         else if ((t === "s" || t === "S") && root.showWrites && vpn.installed) root.toggleSettingsFold()
@@ -922,7 +936,8 @@ Panel {
                   onToggled: root.tryToggle()
 
                   PanelToolTip {
-                    visible: powerSwitch.containsMouse
+                    visible: powerSwitch.containsMouse && !root.tipsDismissed
+                    onVisibleChanged: root.openTips = Math.max(0, root.openTips + (visible ? 1 : -1))
                     text: root.toggleHint
                     fontFamily: hero.fontFamily
                   }
@@ -1293,9 +1308,9 @@ Panel {
               active: root.view.state !== Model.STATES.connected
               verticalPadding: Style.space(9)
               text: Model.connectButtonLabel(root.view.state, root.connectOptions(), vpn.countries, root.loc)
-              tooltipText: root.view.state === Model.STATES.connected
+              tooltipText: root.tipsDismissed ? "" : (root.view.state === Model.STATES.connected
                 ? root.tr("connect.switchTip", "Reconnect with these choices. Proton replaces the current connection.")
-                : root.tr("connect.connectTip", "Connect with these choices (t)")
+                : root.tr("connect.connectTip", "Connect with these choices (t)"))
               hasCursor: root.cursorActive && root.focusSection === "switch"
               foreground: root.foreground
               fontFamily: root.fontFamily
@@ -1588,7 +1603,7 @@ Panel {
                     bordered: true
                     verticalPadding: Style.space(3)
                     text: vpn.cliChecking ? root.tr("cli.checking", "Checking…") : root.tr("cli.check", "Check")
-                    tooltipText: (vpn.cliCheckError !== "" ? vpn.cliCheckError + " " : "")
+                    tooltipText: root.tipsDismissed ? "" : (vpn.cliCheckError !== "" ? vpn.cliCheckError + " " : "")
                       + (root.cliInfo.source !== "" ? root.tr("cli.latestFrom", "Latest from %1.").arg(root.cliInfo.source) + " " : "")
                       + root.tr("cli.checkTip", "Asks your Arch mirrors with checkupdates. Nothing else reaches the network.")
                     hasCursor: root.cursorActive && root.focusSection === "cli-check"
@@ -1603,7 +1618,7 @@ Panel {
                     bordered: true
                     verticalPadding: Style.space(3)
                     text: root.tr("cli.update", "Update")
-                    tooltipText: root.tr("cli.updateTip", "Opens Omarchy's system update in a terminal. It updates every package, the Proton VPN CLI included.")
+                    tooltipText: root.tipsDismissed ? "" : root.tr("cli.updateTip", "Opens Omarchy's system update in a terminal. It updates every package, the Proton VPN CLI included.")
                     hasCursor: root.cursorActive && root.focusSection === "cli-update"
                     foreground: root.foreground
                     fontFamily: root.fontFamily
@@ -1620,7 +1635,7 @@ Panel {
                     bordered: armed
                     verticalPadding: Style.space(3)
                     text: root.tr("signout.title", "Sign out")
-                    tooltipText: root.tr("signout.tip", "Clears the CLI's settings; signing in again needs your password and 2FA. Favorites stay.")
+                    tooltipText: root.tipsDismissed ? "" : root.tr("signout.tip", "Clears the CLI's settings; signing in again needs your password and 2FA. Favorites stay.")
                     hasCursor: armed
                     foreground: armed ? root.urgent : root.foreground
                     fontFamily: root.fontFamily
@@ -1871,7 +1886,8 @@ Panel {
     property bool tipHovered: false
     property bool tipCursor: false
     property bool tipPopupOpen: false
-    visible: text !== "" && (tipHovered || tipCursor) && !tipPopupOpen
+    visible: text !== "" && (tipHovered || tipCursor) && !tipPopupOpen && !root.tipsDismissed
+    onVisibleChanged: root.openTips = Math.max(0, root.openTips + (visible ? 1 : -1))
     fontFamily: root.fontFamily
   }
 

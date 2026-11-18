@@ -114,7 +114,7 @@ Inside the panel:
 - `s` shows or hides SETTINGS, which starts folded so the panel opens on status and CONNECT
 - `r` refreshes
 - `Tab` / `Shift+Tab` switches to the next bar panel
-- `Esc` closes
+- `Esc` hides a tooltip that is showing, then closes the panel
 
 CONNECT has Mode on its own row and the place, Country and City or a Server ID, on the row below. While disconnected, a button under them names where it connects (**Connect to Santo Domingo · Dominican Republic**). While connected, changing the choices turns it into **Switch to …**, which reconnects in place with the new choices; `Enter` in the Server ID field does the same. The header toggle and `t` still disconnect. City lists are cached for the shell session, so picking a country again shows its cities immediately; the refresh icon beside the toggle reloads them, and its tooltip says when status was last updated.
 
