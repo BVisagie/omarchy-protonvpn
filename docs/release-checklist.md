@@ -18,7 +18,8 @@ resolve inside `omarchy-shell`. Before tagging a release, load it in a real bar.
      closes it;
    - SETTINGS folds open and closed, and every value matches
      `protonvpn config list`;
-   - Quick connect lists favourites and recents, and `f` stars a row;
+   - QUICK CONNECT lists favorites and recents by full name, and `f` stars a row;
+   - SETTINGS fits without scrolling, and the footer shows the CLI version;
    - a desktop notification arrives when the tunnel goes down while the panel is
      closed (only when it is safe to drop the VPN);
    - `omarchy-shell io.github.BVisagie.protonvpn statusJson` prints JSON.

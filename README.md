@@ -1,9 +1,9 @@
 # Proton VPN for Omarchy
 
 <p align="center">
-  <img src="docs/images/panel-country.png" alt="Proton VPN panel in a navy Omarchy theme, connected to DK#194 in Copenhagen in Country mode, with live traffic, BE under RECENT, and settings below" width="32%">
-  <img src="docs/images/panel-city.png" alt="Proton VPN panel in a monochrome Omarchy theme, connected to CH#1072 in Zurich in City mode, with DK and BE under RECENT" width="32%">
-  <img src="docs/images/panel-fastest.png" alt="Proton VPN panel in a green Omarchy theme, connected to NL#553 in Amsterdam on the fastest server, with Zurich selected under RECENT" width="32%">
+  <img src="docs/images/panel-connected.png" alt="Proton VPN panel in the Tokyo Night theme, connected to DK#68 in Copenhagen, with live traffic, Kill Switch and NetShield status, and QUICK CONNECT listing the connection, two starred favorites, and two recent places" width="32%">
+  <img src="docs/images/panel-settings.png" alt="Proton VPN panel in the Matte Black theme, connected to DK#68, with SETTINGS open: NetShield, seven switches in two columns, and the Proton VPN CLI version marked up to date with a Check button" width="32%">
+  <img src="docs/images/panel-city.png" alt="Proton VPN panel in the InkyPinky theme, disconnected, with City mode set to Santo Domingo in the Dominican Republic and a Connect to Santo Domingo · Dominican Republic button" width="32%">
 </p>
 
 A bar widget and keyboard-driven panel for Omarchy 4.5 or later that controls Proton VPN through Proton's official Linux CLI, `protonvpn`. Every connection and setting change goes through that CLI. The plugin does not reimplement Proton protocols, call Proton's private APIs, handle your credentials, or edit Proton's files, and the only network request of its own is the update check you start from the panel. [Privacy](#privacy) lists exactly what it runs.
@@ -19,6 +19,7 @@ A bar widget and keyboard-driven panel for Omarchy 4.5 or later that controls Pr
 - Warns when the tunnel is up but nothing comes back through it, which a plain "connected" hides.
 - Sends a desktop notification when the VPN drops while the panel is closed; clicking it opens the panel. It can also reconnect for you, connect when you log in, and connect on Wi-Fi networks you have not trusted.
 - Installs the CLI and signs you in from the panel, through Omarchy's own terminal windows, and signs you out again after asking.
+- Shows the installed CLI version and the latest one your package database knows, checks your Arch mirrors when you ask, and opens Omarchy's system update when there is a newer one.
 - Follows your Omarchy theme and language, and the panel works entirely from the keyboard.
 
 ## What you need
@@ -109,6 +110,7 @@ Inside the panel:
 - `h` / `l` or left/right arrows move the cursor across a row
 - `Enter` / `Space` activates the selected control
 - `t` toggles connect/disconnect with the same safety gate as right-click
+- `f` stars or unstars the QUICK CONNECT row under the cursor
 - `s` shows or hides SETTINGS, which starts folded so the panel opens on status and CONNECT
 - `r` refreshes
 - `Tab` / `Shift+Tab` switches to the next bar panel
@@ -120,7 +122,7 @@ CONNECT has Mode on its own row and the place, Country and City or a Server ID, 
 
 Country and city lists come from `protonvpn countries list` and `protonvpn cities list`. Server IDs are entered as text because the CLI does not expose a machine-readable server list; Proton publishes IDs at [the account WireGuard server list](https://account.proton.me/vpn/WireGuard).
 
-Settings cover every value exposed by `protonvpn config` on the tested CLI 1.0.1–1.0.5 range: NetShield, Kill Switch, port forwarding, custom DNS, VPN Accelerator, moderate NAT, IPv6, and anonymous crash reports. Changing Kill Switch while connected asks first, with Cancel selected. Confirming disconnects, changes the setting, and reconnects to the same target. If Proton rejects the change, the panel still reconnects and shows the error. IPv6 and custom DNS need a new VPN connection to apply. Custom DNS is validated locally and passed as one `--dns` argument.
+SETTINGS shows NetShield on its own row, the switches in two columns, and the CLI on a footer line. Settings cover every value exposed by `protonvpn config` on the tested CLI 1.0.1–1.0.5 range: NetShield, Kill Switch, port forwarding, custom DNS, VPN Accelerator, moderate NAT, IPv6, and anonymous crash reports. Changing Kill Switch while connected asks first, with Cancel selected. Confirming disconnects, changes the setting, and reconnects to the same target. If Proton rejects the change, the panel still reconnects and shows the error. IPv6 and custom DNS need a new VPN connection to apply. Custom DNS is validated locally and passed as one `--dns` argument.
 
 With Kill Switch on, a drop leaves internet traffic blocked until the VPN reconnects. The panel reads that from NetworkManager's active connections: the bar icon turns urgent and the panel says traffic is blocked, so you know to connect again or turn Kill Switch off.
 
@@ -128,11 +130,11 @@ With port forwarding on, the panel repeats what the CLI says after connecting: w
 
 On Proton's free plan the CLI only connects to the fastest server. When `protonvpn config list` marks settings "Upgrade to enable", the panel labels the other modes as needing a paid plan and explains that instead of running a command that would fail. A Kill Switch change or an automatic reconnect then returns to the fastest server.
 
-While disconnected, the bottom of SETTINGS offers **Sign out**. It asks first, with Cancel selected, then runs `protonvpn signout`, which also clears the CLI's own settings. Favorites stay. Disconnect first if you are connected.
+While disconnected, the footer line of SETTINGS offers **Sign out**. Pressing it turns the line into a confirm, with Cancel selected; confirming runs `protonvpn signout`, which also clears the CLI's own settings. Favorites stay. Disconnect first if you are connected.
 
-The bottom of SETTINGS shows the installed Proton VPN CLI version and the latest one your package database knows; **Check**'s tooltip says how old that database is. It reads that locally. **Check** asks your Arch mirrors instead, through pacman's `checkupdates`, only when you press it. When a newer version exists, **Update** opens Omarchy's own system update in a terminal, which asks for your password there; Arch does not support updating one package alone, so the CLI updates with everything else.
+The same footer line shows the installed Proton VPN CLI version and the latest one your package database knows; **Check**'s tooltip says how old that database is. It reads that locally. **Check** asks your Arch mirrors instead, through pacman's `checkupdates`, only when you press it. When a newer version exists, **Update** opens Omarchy's own system update in a terminal, which asks for your password there; Arch does not support updating one package alone, so the CLI updates with everything else.
 
-Some rows show a short caption. Hover a CONNECT or SETTINGS control, or move onto it with `j` / `k`, for a Proton-sourced tooltip. That copy is paraphrased from Proton’s official support articles and the Linux CLI guide. It is not a substitute for those pages, and the widget does not fetch Proton’s website.
+Hover a CONNECT or SETTINGS control, or move onto it with `j` / `k`, for a Proton-sourced tooltip. A setting's tooltip also says when it needs a new connection or a paid plan. That copy is paraphrased from Proton’s official support articles and the Linux CLI guide. It is not a substitute for those pages, and the widget does not fetch Proton’s website.
 
 ## Languages
 
@@ -288,6 +290,8 @@ The recorded parser fixtures target CLI versions 1.0.1 through 1.0.5. Versions o
 
 **"Nothing has come back through the tunnel."** The tunnel has sent data for 30 seconds without receiving any. The Proton server or the network under the VPN may be down. Reconnect, or switch servers. An idle tunnel never shows this, and the warning clears as soon as anything arrives.
 
+**Check says "check failed".** pacman's `checkupdates` could not reach your Arch mirrors; Check's tooltip has its message. Retry once the network is up. The installed and latest versions shown come from the local package database either way.
+
 **Status looks outdated.** A failed or timed-out poll keeps the last good result and marks it stale. Connection and settings changes stay disabled until a fresh probe succeeds. Refresh after the network or Proton daemon recovers.
 
 **Paid-plan or invalid option.** The panel shows the CLI message, or its own free-plan note, and keeps the previous healthy status when it can. Fastest connect remains available.
@@ -302,7 +306,13 @@ The recorded parser fixtures target CLI versions 1.0.1 through 1.0.5. Versions o
 ./scripts/check.sh
 ```
 
-That script runs Node and Python tests, `omarchy plugin validate .` when Omarchy is installed, a QML contract check, bounded-runner tests, a `qmllint` syntax check, and shell-load smoke tests. The same portable checks run in GitHub Actions. `qmllint` reports many unresolved-import warnings because Quickshell and Omarchy imports only resolve inside `omarchy-shell`. The script ignores those and fails only on syntax errors, so a pass does not prove the widget loads. Test it in the bar before releasing.
+That script runs the Node and Python tests, `omarchy plugin validate` on a copy of the files a clone would contain (when Omarchy is installed), a check that no tracked file is a symlink, a QML contract check, a `qmllint` syntax check with a two-minute limit, and shell-load smoke tests. The same portable checks run in GitHub Actions. `qmllint` reports many unresolved-import warnings because Quickshell and Omarchy imports only resolve inside `omarchy-shell`. The script ignores those and fails only on syntax errors, so a pass does not prove the widget loads.
+
+```sh
+./scripts/load-smoke.sh
+```
+
+That loads the service and panel in a throwaway Quickshell instance, outside `omarchy-shell`, and fails on QML errors. It runs only read-only Proton and NetworkManager probes. Then test the widget in the bar before releasing; [docs/release-checklist.md](docs/release-checklist.md) lists what to check.
 
 ## Architecture
 

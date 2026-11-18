@@ -15,6 +15,7 @@
 - Follow NetworkManager events through `nmcli monitor` instead of polling every 4 seconds, with a poll once a minute as a safety net. `linkWatchIntervalSec` now applies only while events are unavailable.
 - Read traffic counters in place instead of starting `python3` and `cat` for every sample.
 - Fix a successful command with no output reporting "Command failed".
+- Refresh the README screenshots and the marketplace preview in Tokyo Night, Matte Black, and InkyPinky.
 - Keep agent skill folders out of the plugin, validate the files a clone would contain, and add `scripts/load-smoke.sh`, which loads the widget in a throwaway Quickshell instance.
 
 ## 1.3.0 — 2026-10-05
