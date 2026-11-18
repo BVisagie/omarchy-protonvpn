@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.5.0 — unreleased
+## 1.5.0 — 2026-11-18
 
 - Check that IPv4, IPv6, and DNS really go through the tunnel while connected, from local routing and systemd-resolved state only: `ip route get` looks a route up without sending anything, and `resolvectl status` says where lookups go. When a Tailscale exit node, another VPN, or another DNS server takes some of it, the panel says which device or server, the icon warns, the tooltip says so, and a notification arrives while the panel is closed. A finding shows only once a second check five seconds later agrees. Proton's Kill Switch and IPv6 leak protection count as blocked, not leaked. `statusJson` gains `routing` and `leaks`.
 
