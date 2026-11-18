@@ -2135,7 +2135,7 @@ var ROUTING_CONFIRM_MS = 5000
 // explicit --git-dir never finds a repository above a plugin that is not one.
 function pluginBuildCommand(dir) {
   return ["/usr/bin/git", "--no-optional-locks", "--git-dir=" + dir + "/.git", "--work-tree=" + dir,
-    "describe", "--always", "--dirty", "--exclude=*"]
+    "describe", "--always", "--dirty", "--abbrev=7", "--exclude=*"]
 }
 
 // The short commit, and "-dirty" after local edits; null for anything else.
