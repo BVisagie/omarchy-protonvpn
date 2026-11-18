@@ -2160,14 +2160,15 @@ function routeVerdict(result, tunnelDevice) {
 
 // Proton's opt-in nftables Kill Switch blocks at the firewall, where a route
 // lookup cannot see. Its D-Bus service has a pid only once it has started.
-function firewallKillSwitchRunning(result) {
-  var names = result && result.exitCode === 0 ? parseJson(result.stdout) : null
-  if (!names || !names.length) return false
+// "running", "stopped", or "unknown" when the bus listing failed.
+function firewallKillSwitchState(result) {
+  var names = result && result.exitCode === 0 && result.timedOut !== true ? parseJson(result.stdout) : null
+  if (!names || typeof names.length !== "number" || names.length === 0) return "unknown"
   for (var i = 0; i < names.length; i++) {
     var n = names[i] || {}
-    if (n.name === "me.proton.vpn.kill_switch" && Number(n.pid) > 0) return true
+    if (n.name === "me.proton.vpn.kill_switch" && Number(n.pid) > 0) return "running"
   }
-  return false
+  return "stopped"
 }
 
 function serverText(server) {
@@ -2217,7 +2218,8 @@ function routingVerdict(results, tunnelDevice) {
   var r = results || {}
   var v4 = routeVerdict(r.ipv4, tunnelDevice)
   var v6 = routeVerdict(r.ipv6, tunnelDevice)
-  if (v6.status === "leak" && firewallKillSwitchRunning(r.firewall)) v6 = { status: "unknown", device: v6.device }
+  // IPv6 counts as leaking only when the firewall Kill Switch is known to be off.
+  if (v6.status === "leak" && firewallKillSwitchState(r.firewall) !== "stopped") v6 = { status: "unknown", device: v6.device }
   var dns = dnsVerdict(r.dns, tunnelDevice)
   var leaks = []
   if (v4.status === "leak") leaks.push({ kind: "ipv4", device: v4.device })
@@ -2354,7 +2356,7 @@ if (typeof module !== "undefined") {
     ROUTING_CONFIRM_MS: ROUTING_CONFIRM_MS,
     routingCommands: routingCommands,
     routeVerdict: routeVerdict,
-    firewallKillSwitchRunning: firewallKillSwitchRunning,
+    firewallKillSwitchState: firewallKillSwitchState,
     dnsVerdict: dnsVerdict,
     routingVerdict: routingVerdict,
     emptyRouting: emptyRouting,

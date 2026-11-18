@@ -956,7 +956,7 @@ describe("tunnel routing check", () => {
   })
 
   it("names the device traffic leaves through outside the tunnel", () => {
-    const verdict = Model.routingVerdict({ ipv4: routing("route4-disconnected.json"), ipv6: routing("route6-disconnected.json"), dns: routing("resolved-connected.json") }, "proton0")
+    const verdict = Model.routingVerdict({ ipv4: routing("route4-disconnected.json"), ipv6: routing("route6-disconnected.json"), dns: routing("resolved-connected.json"), firewall: routing("busctl-killswitch-idle.json") }, "proton0")
     assert.deepEqual(verdict.leaks, [{ kind: "ipv4", device: "enp0s1" }, { kind: "ipv6", device: "enp0s1" }])
     const exitNode = ok('[{"dst":"1.1.1.1","dev":"tailscale0","table":"52","flags":[]}]')
     assert.deepEqual(Model.routeVerdict(exitNode, "proton0"), { status: "leak", device: "tailscale0" })
@@ -972,14 +972,20 @@ describe("tunnel routing check", () => {
     assert.equal(Model.routeVerdict(ok("not json"), "proton0").status, "unknown")
   })
 
-  it("cannot judge IPv6 while Proton's firewall Kill Switch runs", () => {
+  it("cannot judge IPv6 while Proton's firewall Kill Switch runs, or when unsure", () => {
     const idle = routing("busctl-killswitch-idle.json")
-    assert.equal(Model.firewallKillSwitchRunning(idle), false)
     const running = ok('[{"name":"me.proton.vpn.kill_switch","pid":4242,"connection":":1.80"}]')
-    assert.equal(Model.firewallKillSwitchRunning(running), true)
+    assert.equal(Model.firewallKillSwitchState(idle), "stopped")
+    assert.equal(Model.firewallKillSwitchState(running), "running")
+    assert.equal(Model.firewallKillSwitchState(ok("[]")), "unknown")
+    assert.equal(Model.firewallKillSwitchState(ok("{}")), "unknown")
+    assert.equal(Model.firewallKillSwitchState({ exitCode: 1, stdout: "", timedOut: false }), "unknown")
+    assert.equal(Model.firewallKillSwitchState({ exitCode: 124, stdout: "", timedOut: true }), "unknown")
     const results = { ipv4: routing("route4-connected.json"), ipv6: routing("route6-disconnected.json"), dns: routing("resolved-connected.json") }
     assert.equal(Model.routingVerdict(Object.assign({ firewall: idle }, results), "proton0").ipv6, "leak")
     assert.equal(Model.routingVerdict(Object.assign({ firewall: running }, results), "proton0").ipv6, "unknown")
+    assert.equal(Model.routingVerdict(Object.assign({ firewall: { exitCode: 1, stdout: "" } }, results), "proton0").ipv6, "unknown")
+    assert.equal(Model.routingVerdict(results, "proton0").ipv6, "unknown")
   })
 
   it("follows resolved: a tunnel with ~. takes every ordinary lookup", () => {
