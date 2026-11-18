@@ -43,4 +43,8 @@ if grep -Eq 'ERROR|TypeError|ReferenceError|is not a type|is not defined' <<<"$l
   echo "load smoke: QML errors above" >&2
   exit 1
 fi
+if [[ -e $root/.git ]] && grep -q 'build=null' <<<"$log"; then
+  echo "load smoke: the version line found no commit in this git checkout" >&2
+  exit 1
+fi
 echo "load smoke: Service.qml and Panel.qml load"

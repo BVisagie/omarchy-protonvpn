@@ -2,7 +2,7 @@
 
 ## 1.6.0 — unreleased
 
-- Show which plugin code runs at the foot of the panel, in every state: "Plugin 1.6.0 · e991c06", with ", modified" after local edits. Every merge to `main` reaches installs and updates bring no tags, so the commit comes from the checkout itself, read once per load with `git describe`. Outside a git checkout the line shows the version alone.
+- Show which plugin code runs at the foot of the panel, in every state: "Plugin 1.6.0 · e991c06", with ", modified" after local edits. Every merge to `main` reaches installs and updates bring no tags, so the commit comes from the checkout itself, read once per load with `git status`. Outside a git checkout the line shows the version alone.
 - Move panel use, privacy, troubleshooting, and development notes from the README into `docs/`, so the README covers what the plugin does and how to install it.
 - Stop shipping `AGENTS.md` and `CLAUDE.md`, the local instructions for the coding agents used to develop the plugin.
 

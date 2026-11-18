@@ -1351,10 +1351,12 @@ describe("live traffic", () => {
 })
 
 describe("plugin version line", () => {
-  it("reads the commit, and local edits, from git describe", () => {
-    assert.deepEqual(Model.parsePluginBuild("e991c06\n"), { commit: "e991c06", modified: false })
-    assert.deepEqual(Model.parsePluginBuild("e991c06-dirty\n"), { commit: "e991c06", modified: true })
-    for (const bad of ["", "v1.6.0", "fatal: not a git repository", "e991c06-dirty extra", null]) {
+  it("reads the commit, and local edits, from git status", () => {
+    const head = "# branch.oid e991c06b84c0028c2fa0d45f6cc64089331f4551\n# branch.head main\n# branch.ab +0 -0\n"
+    assert.deepEqual(Model.parsePluginBuild(head), { commit: "e991c06", modified: false })
+    assert.deepEqual(Model.parsePluginBuild(head + "1 .M N... 100644 100644 100644 9873f90 9873f90 README.md\n"), { commit: "e991c06", modified: true })
+    assert.deepEqual(Model.parsePluginBuild(head + "? i18n/de.json\n"), { commit: "e991c06", modified: true })
+    for (const bad of ["", "# branch.oid (initial)\n# branch.head main\n", "fatal: not a git repository", null]) {
       assert.equal(Model.parsePluginBuild(bad), null)
     }
   })
@@ -1368,6 +1370,6 @@ describe("plugin version line", () => {
 
   it("asks git about the plugin's own checkout only", () => {
     assert.deepEqual(Model.pluginBuildCommand("/p"), ["/usr/bin/git", "--no-optional-locks", "--git-dir=/p/.git",
-      "--work-tree=/p", "describe", "--always", "--dirty", "--abbrev=7", "--exclude=*"])
+      "--work-tree=/p", "status", "--porcelain=v2", "--branch"])
   })
 })

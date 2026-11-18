@@ -17,6 +17,8 @@ resolve inside `omarchy-shell`. Before tagging a release, load it in a real bar.
    - the bar icon and tooltip for connected and disconnected;
    - the panel opens, the keyboard cursor moves through every row, and `Esc`
      closes it (with a tooltip showing, the first `Esc` hides the tooltip);
+   - the foot of the panel reads "Plugin <version> · <commit>", with
+     ", modified" after you change a tracked file;
    - SETTINGS folds open and closed, and every value matches
      `protonvpn config list`;
    - QUICK CONNECT lists favorites and recents by full name, and `f` stars a row;

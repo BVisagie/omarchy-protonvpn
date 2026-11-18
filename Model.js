@@ -2133,15 +2133,24 @@ var ROUTING_CONFIRM_MS = 5000
 // Every merge to main reaches installs, so the version alone cannot say which
 // code runs. Updates fetch no tags, so the commit stands in for them. An
 // explicit --git-dir never finds a repository above a plugin that is not one.
+// `status` with --no-optional-locks never writes the index; `describe --dirty` does.
 function pluginBuildCommand(dir) {
   return ["/usr/bin/git", "--no-optional-locks", "--git-dir=" + dir + "/.git", "--work-tree=" + dir,
-    "describe", "--always", "--dirty", "--abbrev=7", "--exclude=*"]
+    "status", "--porcelain=v2", "--branch"]
 }
 
-// The short commit, and "-dirty" after local edits; null for anything else.
+// The commit from "# branch.oid", modified when any line is a change rather
+// than a "#" header; null without a commit.
 function parsePluginBuild(text) {
-  var m = /^([0-9a-f]{7,40})(-dirty)?$/.exec(String(text || "").trim())
-  return m ? { commit: m[1], modified: m[2] !== undefined } : null
+  var lines = String(text || "").split("\n").filter(function(line) { return line !== "" })
+  var commit = ""
+  var modified = false
+  for (var i = 0; i < lines.length; i++) {
+    var oid = /^# branch\.oid ([0-9a-f]{40,64})$/.exec(lines[i])
+    if (oid) commit = oid[1].substring(0, 7)
+    else if (lines[i].charAt(0) !== "#") modified = true
+  }
+  return commit !== "" ? { commit: commit, modified: modified } : null
 }
 
 function pluginVersionText(build, loc) {

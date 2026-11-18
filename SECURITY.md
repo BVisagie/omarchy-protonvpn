@@ -9,7 +9,7 @@ This plugin:
 - passes commands as argument arrays without shell interpolation; the one script it hands to a terminal, for sign-in, is a fixed string with no plugin values in it;
 - supervises every command whose output it reads with output limits, deadlines, process-group cleanup, and, for `protonvpn`, a per-user lock, except `nmcli monitor`, a long-running stream whose lines are read one at a time and discarded (`wl-copy`, `omarchy-install-app`, Omarchy's update terminal, and the sign-in terminal start directly, only when you use the matching control, and `omarchy-notification-send` starts directly with fixed text when the tunnel changes, or the tunnel check finds a leak, while the panel is closed);
 - reads tunnel byte counters from `/sys/class/net/<device>/statistics` only for a validated `proton0`-style device and only while that tunnel is up, in place and without starting a process;
-- reads the plugin's own commit once when it loads, with `git describe` on its checkout, for the version line;
+- reads the plugin's own commit once when it loads, with `git status` on its checkout, for the version line;
 - uses `nmcli` only to read active connection metadata and to follow NetworkManager's change events (`nmcli monitor`);
 - while connected, reads routes with `ip route get` (a lookup that sends nothing), systemd-resolved's state with `resolvectl status`, and, only when IPv6 seems to leave outside the tunnel, the system bus's service list with `busctl list`;
 - never asks for or stores Proton credentials; the sign-in terminal passes only the username, and the CLI asks for the rest;
